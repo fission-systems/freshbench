@@ -22,7 +22,8 @@ A function is ELIGIBLE in a build when all of these hold:
   * the name is not in DecBench's SKIP_NAMES and occurs at one address only in
     its binary.
 Selection: eligible functions ordered by
-  sha256("freshbench-v1/<project>/<source path>/<name>"), first N (default 300).
+  sha256("freshbench-v1/<project>/<source path>/<name>"), first N (default 300)
+  per build. A project qualifies when both O0 builds have >= N eligible.
 Each function is scored in one binary: the first, in sorted path order, that
 defines it.
 """
@@ -326,7 +327,11 @@ def main() -> int:
                 p = tu_paths[sha]
                 (odir / "sources" / f"{sha[:16]}.{p.name.split('.')[0]}.i").write_bytes(p.read_bytes())
             (odir / "manifest.json").write_text(json.dumps(manifest, indent=1))
-    ok = all(b.get("eligible", 0) >= a.select for b in summary["builds"].values())
+    # Qualification: the full function set (O0, both compilers) holds at least
+    # N eligible functions. Optimised builds keep whatever survives, first N in
+    # the same hash order (fewer only if fewer exist).
+    o0 = [v for k, v in summary["builds"].items() if k.endswith("-O0")]
+    ok = bool(o0) and all(b.get("eligible", 0) >= a.select for b in o0)
     summary["qualifies"] = ok
     (a.out / "prepare_summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps({k: (v.get("eligible"), v.get("selected")) for k, v in summary["builds"].items()}))

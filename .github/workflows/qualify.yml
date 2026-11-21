@@ -43,7 +43,6 @@ jobs:
         with: { python-version: "3.12", cache: pip, cache-dependency-path: ci/pins.env }
       - uses: actions/download-artifact@v4
         with: { name: rust-joern-wheel, path: "${{ runner.temp }}/wheels" }
-      - run: ci/setup_scorer.sh
       - run: |
           source ci/pins.env
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -62,7 +61,7 @@ jobs:
           (cd "$d" && tar -czf "$RUNNER_TEMP/up/summary.tgz" status.json *.txt *summary.json prep/prepare_summary.json 2>/dev/null || true)
           (cd "$d" && tar -czf "$RUNNER_TEMP/up/buildlogs.tgz" builds/*.log builds/*/build.json 2>/dev/null || true)
           if grep -q '"result": "qualifies"' "$d/status.json"; then
-            tar -C "$d" -cf "$RUNNER_TEMP/up/prep.tar" prep status.json $(cd "$d"; ls LICEN* COPYING* 2>/dev/null)
+            tar -C "$d" -cf "$RUNNER_TEMP/up/prep.tar" prep status.json license
           fi
       - uses: actions/upload-artifact@v4
         if: always()
