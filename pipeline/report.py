@@ -47,6 +47,7 @@ def slices(k):
 agg = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
 for k, per in complete.items():
     common = all(per[t]["ged"] is not None for t in tools)
+    tcommon = all(per[t]["type_match"] is not None for t in tools)
     for s in slices(k):
         for t in tools:
             r = per[t]
@@ -60,6 +61,10 @@ for k, per in complete.items():
             if common:
                 a["common_rows"] += 1
                 a["ged_distance_common"] += r["ged"]
+            if tcommon:
+                a["type_common_rows"] += 1
+                a["type_common_sum"] += r["type_match"]
+                a["type_common_perfect"] += bool(r["type_match_perfect"])
             if r["type_match"] is not None:
                 a["type_scored"] += 1
                 a["type_sum"] += r["type_match"]
@@ -72,6 +77,8 @@ for s, per in agg.items():
     for t, a in per.items():
         d = dict(a)
         d["type_mean"] = d.get("type_sum", 0) / d["type_scored"] if d.get("type_scored") else None
+        d["type_common_mean"] = (d.get("type_common_sum", 0) / d["type_common_rows"]
+                                 if d.get("type_common_rows") else None)
         d["union_pct"] = 100 * d.get("union", 0) / d["rows"] if d["rows"] else None
         summary[s][t] = {k: (int(v) if isinstance(v, float) and v.is_integer() else v) for k, v in d.items()}
 
@@ -103,8 +110,8 @@ for rj in runs:
 
 def table(slice_names, title):
     out = [f"### {title}", "",
-           "| slice | tool | rows | decompiled | GED perfect | GED scored | GED distance (common rows) | type perfect / scored (mean) | Union(GED,type) |",
-           "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
+           "| slice | tool | rows | decompiled | GED perfect | GED scored | GED distance (common rows) | type perfect / scored (mean) | type mean, common rows | Union(GED,type) |",
+           "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for s in slice_names:
         if s not in summary:
             continue
@@ -114,6 +121,7 @@ def table(slice_names, title):
             out.append(f"| {s} | {t} | {d['rows']} | {d.get('decompiled', 0)} | {d.get('ged_perfect', 0)} | "
                        f"{d.get('ged_scored', 0)} | {d.get('ged_distance_common', 0)} ({d.get('common_rows', 0)}) | "
                        f"{d.get('type_perfect', 0)} / {d.get('type_scored', 0)} ({tm}) | "
+                       f"{(d['type_common_mean'] or 0):.3f} ({d.get('type_common_rows', 0)}) | "
                        f"{d.get('union', 0)} ({d['union_pct']:.1f}%) |")
     return "\n".join(out) + "\n"
 
