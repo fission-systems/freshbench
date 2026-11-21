@@ -65,6 +65,13 @@ perfect = {m: MetricRegistry.get(m).perfect_value for m in METRICS}
 for binf, info in manifest["binaries"].items():
     orig = prep / "binaries" / binf
     stripped = prep / "stripped" / binf
+    if binf.startswith("."):
+        # A leading dot (build output dir ".O/") makes Ghidra's project import
+        # fail with no output; give every tool the same bytes under a plain name.
+        safe = out / "bin" / ("_" + binf.lstrip("."))
+        safe.parent.mkdir(exist_ok=True)
+        safe.write_bytes(stripped.read_bytes())
+        stripped = safe
     amap = {f["address"]: f["name"] for f in info["functions"]}
     names_file = out / f"{binf}.addrs.json"
     names_file.write_text(json.dumps(sorted(amap)))
