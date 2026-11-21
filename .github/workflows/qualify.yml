@@ -49,7 +49,7 @@ jobs:
           docker pull -q "$BUILD_IMAGE"
       - name: qualify
         run: |
-          r='${{ matrix.repo }}'; slug="${r//\//__}"
+          r='${{ matrix.repo }}'; r0="${r%@*}"; slug="${r0//\//__}"
           echo "SLUG=$slug" >> "$GITHUB_ENV"
           ci/qualify.sh "$r" "$RUNNER_TEMP/q/$slug"
           cat "$RUNNER_TEMP/q/$slug/status.json"

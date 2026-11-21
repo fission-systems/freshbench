@@ -4,7 +4,8 @@
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 source "$here/ci/pins.env"
-repo="$1"; out="$2"
+spec="$1"; out="$2"
+repo="${spec%@*}"; pin=""; [ "$spec" != "$repo" ] && pin="${spec#*@}"
 slug="${repo//\//__}"
 mkdir -p "$out/builds" "$out/prep"
 status() { python3 - "$out/status.json" "$@" <<'PY'
@@ -19,7 +20,13 @@ PY
 }
 status repo="$repo" stage=clone
 src="$RUNNER_TEMP/src/$slug"
-if ! timeout 900 git clone -q --depth 1 --recurse-submodules --shallow-submodules "https://github.com/$repo" "$src"; then
+if [ -n "$pin" ]; then
+  # re-run of a corpus project at the commit it was selected at
+  git init -q "$src" && git -C "$src" fetch -q --depth 1 "https://github.com/$repo" "$pin" \
+    && git -C "$src" checkout -q FETCH_HEAD \
+    && git -C "$src" submodule update -q --init --recursive --depth 1 \
+    || { status stage=clone result=clone_failed; exit 0; }
+elif ! timeout 900 git clone -q --depth 1 --recurse-submodules --shallow-submodules "https://github.com/$repo" "$src"; then
   status stage=clone result=clone_failed; exit 0
 fi
 sha=$(git -C "$src" rev-parse HEAD)

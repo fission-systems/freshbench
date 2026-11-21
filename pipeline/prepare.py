@@ -20,7 +20,9 @@ A function is ELIGIBLE in a build when all of these hold:
     (a file compiled twice with different macros is ambiguous and dropped);
   * rust-joern (DecBench's extract_cfgs_from_source) yields a CFG for the name;
   * the name is not in DecBench's SKIP_NAMES and occurs at one address only in
-    its binary.
+    its binary;
+  * DW_AT_low_pc lies inside an executable section (a function the linker
+    discarded with --gc-sections keeps its DWARF with low_pc 0).
 Selection: eligible functions ordered by
   sha256("freshbench-v1/<project>/<source path>/<name>"), first N (default 300)
   per build. A project qualifies when both O0 builds have >= N eligible.
@@ -171,6 +173,11 @@ def analyse_build(bdir: Path, compiler: str, config: str, submodules: list[str],
             continue
         file_tables: dict = {}
         found: dict[str, list] = defaultdict(list)
+        from elftools.elf.elffile import ELFFile
+        with open(path, "rb") as fh:
+            exec_ranges = [(s["sh_addr"], s["sh_addr"] + s["sh_size"])
+                           for s in ELFFile(fh).iter_sections()
+                           if s["sh_flags"] & 0x4 and s["sh_size"]]
         for cu in dw.iter_CUs():
             top = cu.get_top_DIE()
             lang = top.attributes.get("DW_AT_language")
@@ -187,6 +194,10 @@ def analyse_build(bdir: Path, compiler: str, config: str, submodules: list[str],
                 if not fname:
                     continue
                 stats["dwarf_defined"] += 1
+                lo = int(die.attributes["DW_AT_low_pc"].value)
+                if not any(a <= lo < b for a, b in exec_ranges):
+                    stats["x_low_pc_not_in_code"] += 1
+                    continue
                 if not producer_ok(prod, compiler, config):
                     stats["x_producer"] += 1
                     continue
