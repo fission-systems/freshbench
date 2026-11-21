@@ -4,6 +4,8 @@
 * sources/: keep DecBench's form, the header-stripped TU text
   (decbench.utils.cfg.strip_system_headers), as <sha16>.<stem>.c, one file per
   distinct text per (build, project); the sha is the manifest's tu_sha256.
+  (The published tree then moves them to sources/<project>/, de-duplicated
+  across builds by that sha, to keep the file count down.)
 * hidden names: a binary whose name starts with "." (".O/usr/bin/x") is
   renamed "_..." everywhere (files, manifests, scores), the same name the
   decompilers were given.
