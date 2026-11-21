@@ -41,7 +41,7 @@ from pathlib import Path
 os.environ.setdefault("DECBENCH_DWARF_ABSTRACT_ORIGIN", "1")
 
 from decbench.decompilers.raw.common import SKIP_NAMES  # noqa: E402
-from decbench.publish.cfg_export import _write_cfg_json, relabel_cfg  # noqa: E402
+from decbench.publish.cfg_export import _stripped_sha, _write_cfg_json, relabel_cfg  # noqa: E402
 from decbench.utils import binfmt  # noqa: E402
 from decbench.utils.cfg import extract_cfgs_from_source  # noqa: E402
 
@@ -139,7 +139,10 @@ def full_file_table(dw, cu, cache: dict) -> list:
 
 
 def cfg_cache_key(i_path: Path) -> str:
-    return hashlib.sha256(i_path.read_bytes()).hexdigest()
+    """TU identity = DecBench's _stripped_sha: the text after system headers are
+    stripped. Two compiles of one file that differ only in predefined macros
+    (e.g. -fPIC shifts the <built-in> line marker) are the same TU."""
+    return _stripped_sha(i_path)
 
 
 def analyse_build(bdir: Path, compiler: str, config: str, submodules: list[str], cfg_cache: dict):
