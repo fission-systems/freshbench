@@ -1,0 +1,185 @@
+{
+ "tried_in_order": 391,
+ "projects": [
+  {
+   "slug": "OpenDUNE__OpenDUNE",
+   "repo": "OpenDUNE/OpenDUNE",
+   "stars": 1705,
+   "license": "GPL-2.0",
+   "hash": "00032cb26ba56d2fc661098b274b231afd69f102c32947b763443f45f19fac87",
+   "html_url": "https://github.com/OpenDUNE/OpenDUNE",
+   "description": "DUNE, REINVENTED"
+  },
+  {
+   "slug": "buserror__simavr",
+   "repo": "buserror/simavr",
+   "stars": 1804,
+   "license": "GPL-3.0",
+   "hash": "003947ad77a6e7dc6e4e16a3b1ad56f9bdee40a8c57195e3c461deacaad492b6",
+   "html_url": "https://github.com/buserror/simavr",
+   "description": "simavr is a lean, mean and hackable AVR simulator for linux & OSX"
+  },
+  {
+   "slug": "aliyun__iotkit-embedded",
+   "repo": "aliyun/iotkit-embedded",
+   "stars": 508,
+   "license": "Apache-2.0",
+   "hash": "00bd0e70de5afa66e2c5078edfd39c1d04b7d6c0382dae293089e6a2ae158734",
+   "html_url": "https://github.com/aliyun/iotkit-embedded",
+   "description": "\u9ad8\u901f\u955c\u50cf: https://code.aliyun.com/linkkit/c-sdk"
+  },
+  {
+   "slug": "ondra-novak__gates_of_skeldal",
+   "repo": "ondra-novak/gates_of_skeldal",
+   "stars": 67,
+   "license": "MIT",
+   "hash": "00dbe2be596fe5a9e4144d7168e411629cb089c3184a8a69179eaa954bfe0e11",
+   "html_url": "https://github.com/ondra-novak/gates_of_skeldal",
+   "description": null
+  },
+  {
+   "slug": "cc65__cc65",
+   "repo": "cc65/cc65",
+   "stars": 2714,
+   "license": "Zlib",
+   "hash": "0148948779888702e4345922af23f57f885dc19a080995f912140f2db8ba9d84",
+   "html_url": "https://github.com/cc65/cc65",
+   "description": "cc65 - a freeware C compiler for 6502 based systems"
+  },
+  {
+   "slug": "kakahuote1__TinyPKI",
+   "repo": "kakahuote1/TinyPKI",
+   "stars": 264,
+   "license": "Apache-2.0",
+   "hash": "014aae0ca3d9a2122a7ecd8f7d0be31dfff82e1ab3a622e3cab182c2551707a8",
+   "html_url": "https://github.com/kakahuote1/TinyPKI",
+   "description": "TinyPKI is a lightweight C11/OpenSSL PKI core for constrained IoT and edge networks, combining ECQV implicit certificates, sparse Merkle revocation proofs, MMR issuance transparency, CA-signed checkpoints, t-of-n edge witnesses, and SM2/SM3/SM4 sessions."
+  },
+  {
+   "slug": "jgaeddert__liquid-dsp",
+   "repo": "jgaeddert/liquid-dsp",
+   "stars": 2336,
+   "license": "MIT",
+   "hash": "030ac63ca6b77db59b6a64be3f9a9094e7693ab9e8ebc93b5df5b815cb1118c1",
+   "html_url": "https://github.com/jgaeddert/liquid-dsp",
+   "description": "digital signal processing library for software-defined radios"
+  },
+  {
+   "slug": "milgra__sov",
+   "repo": "milgra/sov",
+   "stars": 379,
+   "license": "GPL-3.0",
+   "hash": "0348c4c32a77ae6a40fd33872ab4a43a32b5b40d503550e778ad673cd7c0e825",
+   "html_url": "https://github.com/milgra/sov",
+   "description": "An overlay that shows schemas for all workspaces to make navigation in sway easier."
+  },
+  {
+   "slug": "bmc0__dsp",
+   "repo": "bmc0/dsp",
+   "stars": 263,
+   "license": "ISC",
+   "hash": "03c6bff8a5230ebb53cd0feb8027ae18078962a8daf6e638a4e7b8cef606aa6e",
+   "html_url": "https://github.com/bmc0/dsp",
+   "description": "An audio processing program with an interactive mode."
+  },
+  {
+   "slug": "libfirm__libfirm",
+   "repo": "libfirm/libfirm",
+   "stars": 570,
+   "license": "LGPL-2.1",
+   "hash": "05c965832ab12d36dfa5edd1908cc8def9518a96afb5b1c8ab059314105b6055",
+   "html_url": "https://github.com/libfirm/libfirm",
+   "description": "graph based intermediate representation and backend for optimising compilers"
+  },
+  {
+   "slug": "libretro__libretro-lutro",
+   "repo": "libretro/libretro-lutro",
+   "stars": 200,
+   "license": "MIT",
+   "hash": "060ad28b53b4a3c4283e4d65a4d3a6a0846723f2eb8b2cbbdea1f40fc9e406b5",
+   "html_url": "https://github.com/libretro/libretro-lutro",
+   "description": "An experimental lua game framework for libretro following the L\u00d6VE API"
+  },
+  {
+   "slug": "lastpass__lastpass-cli",
+   "repo": "lastpass/lastpass-cli",
+   "stars": 2914,
+   "license": "GPL-2.0",
+   "hash": "065c0ed43bae02ec0d58c23f235f59d0e0260da2d1b6a044a406b1b49ce8a017",
+   "html_url": "https://github.com/lastpass/lastpass-cli",
+   "description": "LastPass command line interface tool"
+  },
+  {
+   "slug": "c2lang__c2compiler",
+   "repo": "c2lang/c2compiler",
+   "stars": 841,
+   "license": "Apache-2.0",
+   "hash": "0769c6807f9aa9edeb59725fb032245b0795c682d651efd6b0e397f9a330aa58",
+   "html_url": "https://github.com/c2lang/c2compiler",
+   "description": "the c2 programming language"
+  },
+  {
+   "slug": "JustVugg__lumabri",
+   "repo": "JustVugg/lumabri",
+   "stars": 235,
+   "license": "Apache-2.0",
+   "hash": "08627847d996f948afe92da2b05a795003e77885b07544077d388aab01a7c387",
+   "html_url": "https://github.com/JustVugg/lumabri",
+   "description": "Run large AI models across your computers and servers. Powered by Colibri. Pure C."
+  },
+  {
+   "slug": "mbuesch__razer",
+   "repo": "mbuesch/razer",
+   "stars": 256,
+   "license": "GPL-2.0",
+   "hash": "09180a160683e66eeef534d363106bf33193db48b1ad76fcbef0f7af882a8bea",
+   "html_url": "https://github.com/mbuesch/razer",
+   "description": "Razer device library and tools"
+  },
+  {
+   "slug": "dictu-lang__Dictu",
+   "repo": "dictu-lang/Dictu",
+   "stars": 279,
+   "license": "MIT",
+   "hash": "09334cf16ef040b9b22fc282d1dcd1a5ba5d91636cc827c65e12ddef4b6ce5f3",
+   "html_url": "https://github.com/dictu-lang/Dictu",
+   "description": "Dictu is a high-level dynamically typed, multi-paradigm, interpreted programming language."
+  },
+  {
+   "slug": "libretro__virtualjaguar-libretro",
+   "repo": "libretro/virtualjaguar-libretro",
+   "stars": 64,
+   "license": "GPL-3.0",
+   "hash": "09ef5f52bed470de472c08c40c659f6fcc0bfca33773a64d08248ddcf47f47b9",
+   "html_url": "https://github.com/libretro/virtualjaguar-libretro",
+   "description": "Atari Jaguar and Jaguar CD emulator for libretro/RetroArch \u2014 the actively maintained continuation of Virtual Jaguar. Embedded BIOS, save states, netplay link cable, RetroAchievements."
+  },
+  {
+   "slug": "libretro__libretro-fceumm",
+   "repo": "libretro/libretro-fceumm",
+   "stars": 159,
+   "license": "GPL-2.0",
+   "hash": "0a252c570cdff5a6929aeccc69cae2034a6ba6773405d6184a24ebd59ad2a0e1",
+   "html_url": "https://github.com/libretro/libretro-fceumm",
+   "description": "FCEUmm libretro port."
+  },
+  {
+   "slug": "openargus__argus",
+   "repo": "openargus/argus",
+   "stars": 81,
+   "license": "GPL-3.0",
+   "hash": "0b61d7cea20e8376b87453e7c44885f5b75190eaa59025a9172a06b9a384b5ac",
+   "html_url": "https://github.com/openargus/argus",
+   "description": "Argus Sensor"
+  },
+  {
+   "slug": "Matroska-Org__foundation-source",
+   "repo": "Matroska-Org/foundation-source",
+   "stars": 68,
+   "license": "BSD-3-Clause",
+   "hash": "0bb4a4f547bb3df8981c1f6447048be388ae06cea2af5478cffc5031cf64f90f",
+   "html_url": "https://github.com/Matroska-Org/foundation-source",
+   "description": "libEBML2, libMatroska2, mkvalidator, mkclean and the specifications"
+  }
+ ]
+}
