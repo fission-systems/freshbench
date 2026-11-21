@@ -1,0 +1,14 @@
+name: build-image
+on: workflow_dispatch
+permissions: { contents: read, packages: write }
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: source ci/pins.env && echo "BUILD_IMAGE=$BUILD_IMAGE" >> "$GITHUB_ENV"
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - run: docker build -t "$BUILD_IMAGE" build/ && docker push "$BUILD_IMAGE"
+      - run: docker run --rm "$BUILD_IMAGE" sh -c 'gcc --version | head -1; /opt/llvm/bin/clang --version | head -1; ld --version | head -1' | tee versions.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: image-versions, path: versions.txt }

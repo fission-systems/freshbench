@@ -1,0 +1,83 @@
+name: decompile
+on:
+  workflow_dispatch:
+    inputs:
+      qualify_run: { description: "run id of the qualify workflow holding qual-<slug> artifacts", required: true }
+      projects: { description: "JSON list of slugs (owner__repo)", required: true }
+      tools: { description: "JSON list", default: '["ghidra","angr","kuna","fission"]' }
+      compilers: { description: "JSON list", default: '["gcc","clang"]' }
+      configs: { description: "space-separated", default: "O0 O1 O2 O3 Os O2-noinline" }
+      binary_memory_gib: { description: "DECBENCH_BINARY_MEMORY_LIMIT_GIB", default: "12" }
+permissions: { contents: read, actions: read }
+jobs:
+  fission-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: source ci/pins.env && echo "FISSION_SHA=$FISSION_SHA" >> "$GITHUB_ENV" && echo "FISSION_REPO=$FISSION_REPO" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: c
+        with: { path: fission-bin, key: "fission-cli-${{ env.FISSION_SHA }}" }
+      - if: steps.c.outputs.cache-hit != 'true'
+        run: |
+          git clone -q "$FISSION_REPO" fsrc && git -C fsrc checkout -q "$FISSION_SHA"
+          (cd fsrc && cargo build -p fission-cli --release --locked)
+          mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/
+      - uses: actions/upload-artifact@v4
+        with: { name: fission-cli, path: fission-bin }
+  run:
+    needs: fission-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        project: ${{ fromJSON(inputs.projects) }}
+        tool: ${{ fromJSON(inputs.tools) }}
+        compiler: ${{ fromJSON(inputs.compilers) }}
+    env:
+      DECBENCH_BINARY_MEMORY_LIMIT_GIB: ${{ inputs.binary_memory_gib }}
+      DECBENCH_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: ci/pins.env }
+      - uses: actions/setup-java@v4
+        if: matrix.tool == 'ghidra'
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/download-artifact@v4
+        with: { name: rust-joern-wheel, path: "${{ runner.temp }}/wheels", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+      - uses: actions/download-artifact@v4
+        with: { name: "qual-${{ matrix.project }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+      - if: matrix.tool == 'fission'
+        uses: actions/download-artifact@v4
+        with: { name: fission-cli, path: "${{ runner.temp }}/fission/target/release" }
+      - if: matrix.tool == 'fission'
+        run: |
+          source ci/pins.env
+          git clone -q --filter=blob:none --no-checkout "$FISSION_REPO" "$RUNNER_TEMP/fsrc"
+          git -C "$RUNNER_TEMP/fsrc" checkout -q "$FISSION_SHA" -- utils
+          mv "$RUNNER_TEMP/fsrc/utils" "$RUNNER_TEMP/fission/utils"
+          chmod +x "$RUNNER_TEMP/fission/target/release/fission_cli"
+      - run: ci/setup_scorer.sh
+      - run: ci/setup_tool.sh ${{ matrix.tool }}
+      - run: ci/setup_systemd_user.sh
+      - name: decompile and score
+        run: |
+          mkdir -p "$RUNNER_TEMP/prep" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/prep"
+          for conf in ${{ inputs.configs }}; do
+            key="${{ matrix.compiler }}-$conf"
+            [ -f "$RUNNER_TEMP/prep/prep/$key/manifest.json" ] || { echo "no $key"; continue; }
+            echo "::group::$key"
+            /usr/bin/time -v python -I pipeline/run_tool.py "$DECBENCH_ROOT" "$RUNNER_TEMP/prep/prep/$key" \
+              ${{ matrix.tool }} "$RUNNER_TEMP/res/$key/${{ matrix.tool }}" 2> "$RUNNER_TEMP/time-$key.txt" || echo "run_tool failed $?"
+            tail -25 "$RUNNER_TEMP/time-$key.txt"; mkdir -p "$RUNNER_TEMP/res/$key/${{ matrix.tool }}"
+            cp "$RUNNER_TEMP/time-$key.txt" "$RUNNER_TEMP/res/$key/${{ matrix.tool }}/time.txt"
+            echo "::endgroup::"
+          done
+          find "$RUNNER_TEMP/res" -name '*.addrs.json' -delete; rm -rf "$RUNNER_TEMP"/res/*/*/decompiled
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "res-${{ matrix.project }}-${{ matrix.tool }}-${{ matrix.compiler }}", path: "${{ runner.temp }}/res", retention-days: 90 }
