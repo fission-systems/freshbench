@@ -40,7 +40,11 @@ def filt(args):
 
 
 args = filt(sys.argv[1:])
-final = args + BASE + FB_FLAGS
+# GCC 15+ defaults to C23 (bool/true/false keywords), which breaks code that
+# typedefs bool; a project that names no -std gets gnu17, the default of every
+# GCC 8-14 and of Clang. Dialect only, no codegen effect.
+STD = [] if cxx or any(a.startswith(("-std=", "--std")) for a in args) else ["-std=gnu17"]
+final = args + STD + BASE + FB_FLAGS
 if fam == "clang":
     final += ["-Wno-error", "-Wno-unused-command-line-argument"]
 rc = subprocess.call([REAL] + final)
@@ -70,7 +74,7 @@ if log and outdir:
             src = os.path.realpath(s)
             tag = hashlib.sha256((src + "\0" + " ".join(base)).encode()).hexdigest()[:16]
             ipath = os.path.join(outdir, f"{os.path.splitext(os.path.basename(src))[0]}.{tag}.i")
-            r = subprocess.call([REAL] + base + BASE + FB_FLAGS + ["-E", s, "-o", ipath],
+            r = subprocess.call([REAL] + base + STD + BASE + FB_FLAGS + ["-E", s, "-o", ipath],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if r == 0:
                 with open(log, "a") as f:

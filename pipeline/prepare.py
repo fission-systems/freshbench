@@ -107,6 +107,36 @@ def overlaps(name, serial) -> bool:
     return False
 
 
+def full_file_table(dw, cu, cache: dict) -> list:
+    """The CU's line-table file names as normalised absolute paths, indexed by
+    DW_AT_decl_file (DWARF 5: 0-based; DWARF 2-4: 1-based, slot 0 = None).
+    binfmt.cu_file_table returns basenames only, which cannot tell sub/x.c
+    from x.c, so the directory is resolved here."""
+    off = cu.cu_offset
+    if off in cache:
+        return cache[off]
+    top = cu.get_top_DIE()
+    comp_dir = binfmt.die_str_attr(top, "DW_AT_comp_dir") or ""
+    lp = dw.line_program_for_CU(cu)
+    out: list = []
+    if lp is not None:
+        hdr = lp.header
+        v5 = hdr["version"] >= 5
+        dec = lambda x: x.decode(errors="replace") if isinstance(x, bytes) else str(x)
+        dirs = [dec(d) for d in hdr["include_directory"]]
+        if not v5:
+            out.append(None)
+        for fe in hdr["file_entry"]:
+            di = fe.dir_index
+            if v5:
+                d = dirs[di] if di < len(dirs) else ""
+            else:
+                d = comp_dir if di == 0 else (dirs[di - 1] if di - 1 < len(dirs) else "")
+            out.append(os.path.normpath(os.path.join(comp_dir, d, dec(fe.name))))
+    cache[off] = out
+    return out
+
+
 def cfg_cache_key(i_path: Path) -> str:
     return hashlib.sha256(i_path.read_bytes()).hexdigest()
 
@@ -160,11 +190,11 @@ def analyse_build(bdir: Path, compiler: str, config: str, submodules: list[str],
                 if fi is None:
                     stats["x_no_decl_file"] += 1
                     continue
-                files = binfmt.cu_file_table(dw, owner.cu, file_tables)
+                files = full_file_table(dw, owner.cu, file_tables)
                 if not (0 <= fi.value < len(files)) or files[fi.value] is None:
                     stats["x_no_decl_file"] += 1
                     continue
-                decl = os.path.normpath(os.path.join(comp_dir, files[fi.value]))
+                decl = files[fi.value]
                 if decl != cu_src:
                     stats["x_decl_not_primary"] += 1
                     continue
