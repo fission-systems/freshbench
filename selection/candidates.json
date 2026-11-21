@@ -1,6 +1,6 @@
 {
  "snapshot": "2026-11-22",
- "count": 7834,
+ "count": 7773,
  "repos": [
   {
    "full_name": "OpenDUNE/OpenDUNE",
@@ -1665,22 +1665,6 @@
    "topics": [],
    "html_url": "https://github.com/LNH-team/pico-launcher",
    "hash": "0272e51642788d460ee8344477969667cc77a511398df183b4c651f90d8c9beb",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "libretro/tyrquake",
-   "stars": 51,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-10-12T21:36:43Z",
-   "size_kb": 10584,
-   "default_branch": "master",
-   "description": "Libretro port of Tyrquake (Quake 1 engine)",
-   "topics": [
-    "quake",
-    "quake-engine"
-   ],
-   "html_url": "https://github.com/libretro/tyrquake",
-   "hash": "0275f810dc069a8610c184a3d767fd17633ae016101dd254035dcfd145b4b753",
    "rule_excluded": null
   },
   {
@@ -4025,26 +4009,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "osmzoso/pbf2sqlite",
-   "stars": 84,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-11-21T12:08:23Z",
-   "size_kb": 1276,
-   "default_branch": "main",
-   "description": "A command line tool for importing OpenStreetMap PBF or XML files into a SQLite database. ",
-   "topics": [
-    "database",
-    "openstreetmap",
-    "osm",
-    "pbf",
-    "sqlite",
-    "xml"
-   ],
-   "html_url": "https://github.com/osmzoso/pbf2sqlite",
-   "hash": "06ceddd397c224a6debfa798ba0c51ef8085cc816913d392f4479dd5c20d41fc",
-   "rule_excluded": null
-  },
-  {
    "full_name": "liaozhelin/yds-charger",
    "stars": 632,
    "license": "Apache-2.0",
@@ -5886,25 +5850,6 @@
    "topics": [],
    "html_url": "https://github.com/kennylevinsen/seatd",
    "hash": "09fd871ad705fbd62041e0ba6fc1bdece6cd23a98261b325d9bf728e462c3480",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Lax/traffic-accounting-nginx-module",
-   "stars": 288,
-   "license": "BSD-2-Clause",
-   "pushed_at": "2026-11-21T08:28:53Z",
-   "size_kb": 939,
-   "default_branch": "master",
-   "description": "Monitor the incoming and outgoing traffic metrics in realtime for NGINX",
-   "topics": [
-    "nginx",
-    "observability",
-    "realtime",
-    "traffic-accounting",
-    "traffic-metrics"
-   ],
-   "html_url": "https://github.com/Lax/traffic-accounting-nginx-module",
-   "hash": "0a064caa9ca91608dd82583b853068239d986295f9cd6a5dc2e6934c43a4a98a",
    "rule_excluded": null
   },
   {
@@ -16876,23 +16821,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "duckdb/duckdb-sqlite",
-   "stars": 298,
-   "license": "MIT",
-   "pushed_at": "2026-11-17T19:42:26Z",
-   "size_kb": 3236,
-   "default_branch": "main",
-   "description": "DuckDB extension to read and write to SQLite databases",
-   "topics": [
-    "duckdb",
-    "sql",
-    "sqlite"
-   ],
-   "html_url": "https://github.com/duckdb/duckdb-sqlite",
-   "hash": "1e0b4888833b2e0187b3bfc5f674e2b0aceadcc1df3bcb4cbcb37bba533dc90a",
-   "rule_excluded": null
-  },
-  {
    "full_name": "maxim2266/str",
    "stars": 362,
    "license": "BSD-3-Clause",
@@ -17977,19 +17905,6 @@
    ],
    "html_url": "https://github.com/J-Lentz/iwgtk",
    "hash": "20082988624e9a2f38f1f55a69ba19b872aa7c41215838e32d0a2ddf00e8ae6f",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "gd-arnold/tiny-nginx",
-   "stars": 187,
-   "license": "MIT",
-   "pushed_at": "2025-08-01T17:37:43Z",
-   "size_kb": 85,
-   "default_branch": "main",
-   "description": "Lightweight non-blocking HTTP server in C inspired by nginx's event-driven architecture",
-   "topics": [],
-   "html_url": "https://github.com/gd-arnold/tiny-nginx",
-   "hash": "20260967073e5d4a6fe481c72a23770955d3f3ef47abd00570831e9918ec7b50",
    "rule_excluded": null
   },
   {
@@ -21196,24 +21111,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "touchlab/SQLiter",
-   "stars": 215,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-09-14T17:56:42Z",
-   "size_kb": 4107,
-   "default_branch": "main",
-   "description": "Minimal multiplatform sqlite library",
-   "topics": [
-    "kotlin-library",
-    "kotlin-multiplatform",
-    "kotlin-native",
-    "sqlite"
-   ],
-   "html_url": "https://github.com/touchlab/SQLiter",
-   "hash": "25dc44a4eaf551b1d5e44137facd2790895c20cf264f9849b0c0ad865bb76c47",
-   "rule_excluded": null
-  },
-  {
    "full_name": "zombieCraig/uds-server",
    "stars": 366,
    "license": "GPL-2.0",
@@ -23492,28 +23389,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "eddelbuettel/rcppredis",
-   "stars": 56,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-04-14T17:01:04Z",
-   "size_kb": 3236,
-   "default_branch": "master",
-   "description": "R interface to Redis / Valkey via hiredis",
-   "topics": [
-    "c-plus-plus",
-    "cran",
-    "hiredis",
-    "r",
-    "rcpp",
-    "redis",
-    "redis-client",
-    "valkey"
-   ],
-   "html_url": "https://github.com/eddelbuettel/rcppredis",
-   "hash": "2a2c2caaf697ca4649c1684c6e8bc1ceacd442516200ed75bca7be52bd27b022",
-   "rule_excluded": null
-  },
-  {
    "full_name": "mittinatten/freesasa",
    "stars": 211,
    "license": "MIT",
@@ -25366,25 +25241,6 @@
    ],
    "html_url": "https://github.com/haakonnessjoen/MAC-Telnet",
    "hash": "2ea921f47d23b38681eb66979f6b4cba28494c95bbe1762cc528c8a16fd5ebea",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "muzipiao/GMOpenSSL",
-   "stars": 60,
-   "license": "MIT",
-   "pushed_at": "2025-01-16T07:01:52Z",
-   "size_kb": 192323,
-   "default_branch": "master",
-   "description": "openssl 1.1.1w \u7684 framework \u7248\u672c\uff0c\u53d1\u5e03\u81f3 cocoapods\uff0c\u65b9\u4fbf\u96c6\u6210\u3002",
-   "topics": [
-    "cocoapods",
-    "framework-cocoapods",
-    "gmopenssl",
-    "ios",
-    "openssl"
-   ],
-   "html_url": "https://github.com/muzipiao/GMOpenSSL",
-   "hash": "2eeaeb3feb1ea39d27c60f26b267d7b1016de8d88919f844f389d452a8789aa1",
    "rule_excluded": null
   },
   {
@@ -29373,29 +29229,6 @@
    "topics": [],
    "html_url": "https://github.com/FoloToy/ai-passport",
    "hash": "360032a09a4abcd021fa20af20a3afb1ca9b0ead66650a534c98695c0d110ece",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Henrique194/chocolate-quake",
-   "stars": 235,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-09-07T13:07:49Z",
-   "size_kb": 2879,
-   "default_branch": "main",
-   "description": "A purist Quake source port that restores the original look and feel of v1.09 and earlier.",
-   "topics": [
-    "c",
-    "fps",
-    "fps-game",
-    "games",
-    "gplv3",
-    "quake",
-    "retro",
-    "retrogaming",
-    "sdl2"
-   ],
-   "html_url": "https://github.com/Henrique194/chocolate-quake",
-   "hash": "36029f1bf098f285174e7154e7fae345be79ec4dbaeb6856272f0c29bb98ff58",
    "rule_excluded": null
   },
   {
@@ -34420,31 +34253,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "swiftlyfalling/SQLiteLib",
-   "stars": 81,
-   "license": "MIT",
-   "pushed_at": "2026-09-27T12:19:22Z",
-   "size_kb": 21116,
-   "default_branch": "master",
-   "description": "Easily build a custom SQLite static library for use in macOS and iOS frameworks and apps.",
-   "topics": [
-    "ios",
-    "macos",
-    "osx",
-    "sqlite",
-    "sqlite3",
-    "static-library",
-    "tvos",
-    "watchos",
-    "xcode",
-    "xcodebuild",
-    "xcodeproj"
-   ],
-   "html_url": "https://github.com/swiftlyfalling/SQLiteLib",
-   "hash": "3f8695b486c56c44a63eded81d47a053fa5ffd9c2edd1048c1bf0fc6f6c9f2db",
-   "rule_excluded": null
-  },
-  {
    "full_name": "MormonFTP-hub/gt5-recomp",
    "stars": 76,
    "license": "MIT",
@@ -35251,23 +35059,6 @@
    ],
    "html_url": "https://github.com/nuta/microkernel-book",
    "hash": "416a039cb78ab2f12a1efc04d8a77cdb7adb6b954992aa834719d115aa13fc1a",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "tpm2-software/tpm2-openssl",
-   "stars": 132,
-   "license": "BSD-3-Clause",
-   "pushed_at": "2026-09-10T14:14:31Z",
-   "size_kb": 419,
-   "default_branch": "master",
-   "description": "OpenSSL Provider for TPM2 integration",
-   "topics": [
-    "openssl-provider",
-    "tpm",
-    "tpm2"
-   ],
-   "html_url": "https://github.com/tpm2-software/tpm2-openssl",
-   "hash": "417910722d3db586116f79161748a8971adda0cfa95cbb4d18818eceab6ef071",
    "rule_excluded": null
   },
   {
@@ -36967,25 +36758,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "Novum/vkQuake",
-   "stars": 2330,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-11-15T21:03:15Z",
-   "size_kb": 139304,
-   "default_branch": "master",
-   "description": "Vulkan Quake port based on QuakeSpasm",
-   "topics": [
-    "3d-graphics",
-    "gpu",
-    "hardware-acceleration",
-    "quake",
-    "vulkan"
-   ],
-   "html_url": "https://github.com/Novum/vkQuake",
-   "hash": "45361c1782841b6fe25a24d3f287e158e3a70a69fb67ce181ad76620efacfcd8",
-   "rule_excluded": null
-  },
-  {
    "full_name": "Nanolat/c-callstack",
    "stars": 52,
    "license": "Apache-2.0",
@@ -37128,23 +36900,6 @@
    ],
    "html_url": "https://github.com/talsec/Free-RASP-iOS",
    "hash": "458f87b5138174e706de922b1585ac95936518e227f20892b7773bf7b839a880",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "nopnop2002/esp32-idf-sqlite3",
-   "stars": 50,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-09-25T04:23:22Z",
-   "size_kb": 20669,
-   "default_branch": "main",
-   "description": "sqlite3 for esp-idf",
-   "topics": [
-    "esp-idf",
-    "esp32",
-    "sqlite3"
-   ],
-   "html_url": "https://github.com/nopnop2002/esp32-idf-sqlite3",
-   "hash": "4593a8e64500cd3c549357d84eb57424647343ceb8f342d78f2f6fa6a840d74e",
    "rule_excluded": null
   },
   {
@@ -38188,19 +37943,6 @@
    ],
    "html_url": "https://github.com/tsuyopon123/pix-smb400-mirakurun",
    "hash": "47ce5ff64cc562ebdb92dcc3d54d76095310ba82bf9f4ad990eed61cc522cf04",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "leanprover/leansqlite",
-   "stars": 56,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-11-18T14:21:08Z",
-   "size_kb": 2772,
-   "default_branch": "main",
-   "description": "SQLite bindings for Lean",
-   "topics": [],
-   "html_url": "https://github.com/leanprover/leansqlite",
-   "hash": "47d43b0463c5f4d35f4c263a9677448a542a650a4c51b3a0a2c857ca1aa3a30a",
    "rule_excluded": null
   },
   {
@@ -39818,25 +39560,6 @@
    ],
    "html_url": "https://github.com/pbatard/Mosby",
    "hash": "4ad2ac0f371b2393c5a3f6863ff24ecaa08db5be77b7b2d4cffa73b74680cd57",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "siara-cc/esp32-idf-sqlite3",
-   "stars": 181,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-04-05T09:59:46Z",
-   "size_kb": 18258,
-   "default_branch": "master",
-   "description": "Sqlite library for esp-idf (esp32) framework",
-   "topics": [
-    "esp-idf",
-    "esp32",
-    "esp32-idf",
-    "sqlite",
-    "sqlite3"
-   ],
-   "html_url": "https://github.com/siara-cc/esp32-idf-sqlite3",
-   "hash": "4ad85593ac1a7588001bc9cf19509012354af12877d71259ebcd469909421d1f",
    "rule_excluded": null
   },
   {
@@ -42817,19 +42540,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "FrenkelS/Doom64KB",
-   "stars": 63,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-08-11T20:30:30Z",
-   "size_kb": 11941,
-   "default_branch": "main",
-   "description": "Doom for computers with only 64 KB of RAM",
-   "topics": [],
-   "html_url": "https://github.com/FrenkelS/Doom64KB",
-   "hash": "50c7b3d9b6068241770da773f56bbe8a7e735e24937f863fa1a7d5cf842ddd3d",
-   "rule_excluded": null
-  },
-  {
    "full_name": "thisiseth/esp32-serprog",
    "stars": 51,
    "license": "GPL-3.0",
@@ -45248,22 +44958,6 @@
    "topics": [],
    "html_url": "https://github.com/doctor64/tuyaZigbee",
    "hash": "55b165c0a07f48147ee4d4326d59701670abbbedfb42c3f860b8b6f41ca37eff",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Rinnegatamante/vitaQuake",
-   "stars": 145,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-05-01T15:39:29Z",
-   "size_kb": 4124,
-   "default_branch": "master",
-   "description": "Port of Quake for Playstation Vita",
-   "topics": [
-    "psvita",
-    "quake"
-   ],
-   "html_url": "https://github.com/Rinnegatamante/vitaQuake",
-   "hash": "55b1c7f7855aeb1bfd0b450a89e63e054542426ef3e472d5a2e862aa80e30756",
    "rule_excluded": null
   },
   {
@@ -52787,19 +52481,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "mmzeeman/esqlite",
-   "stars": 147,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-11-12T15:55:56Z",
-   "size_kb": 10536,
-   "default_branch": "master",
-   "description": "Erlang NIF for sqlite",
-   "topics": [],
-   "html_url": "https://github.com/mmzeeman/esqlite",
-   "hash": "63281bdd1e6ad1fceeaa753087be92d7abe740ed377be9be08c25f0508e545fc",
-   "rule_excluded": null
-  },
-  {
    "full_name": "clark15b/xupnpd",
    "stars": 93,
    "license": "GPL-2.0",
@@ -55845,19 +55526,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "janet-lang/sqlite3",
-   "stars": 63,
-   "license": "MIT",
-   "pushed_at": "2026-09-26T22:18:15Z",
-   "size_kb": 4695,
-   "default_branch": "master",
-   "description": "Bindings to sqlite for the Janet language.",
-   "topics": [],
-   "html_url": "https://github.com/janet-lang/sqlite3",
-   "hash": "6894f73fdcfed1fc4d84b05214b857c8498fe891a17f03a68574eef8e6881c4b",
-   "rule_excluded": null
-  },
-  {
    "full_name": "moylali/OTGMaster",
    "stars": 61,
    "license": "GPL-3.0",
@@ -56382,19 +56050,6 @@
    "topics": [],
    "html_url": "https://github.com/isec-tugraz/cache_template_attacks",
    "hash": "69aad4222faf3bb8a961b090b54de241fefccac62af7a973040b7e6e086caa29",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "kilograham/rp2040-doom",
-   "stars": 940,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-07-02T17:55:47Z",
-   "size_kb": 17892,
-   "default_branch": "rp2",
-   "description": "Fully-featured Doom port for the Raspberry Pi RP2040 microcontroller",
-   "topics": [],
-   "html_url": "https://github.com/kilograham/rp2040-doom",
-   "hash": "69ba6e1a4aa8561bc4128ccf200665804a167005fa9eddfece271bdc3c2d4d62",
    "rule_excluded": null
   },
   {
@@ -57192,37 +56847,6 @@
    ],
    "html_url": "https://github.com/Farigh/memcheck-cover",
    "hash": "6b411bda217645e81067fe5083834298a54002c6b02f6ff53571499e95808e6e",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "niiknow/docker-nginx-image-proxy",
-   "stars": 111,
-   "license": "MIT",
-   "pushed_at": "2026-11-19T00:19:20Z",
-   "size_kb": 77159,
-   "default_branch": "master",
-   "description": "on the fly image cropping with gravity, resize and compression microservice",
-   "topics": [
-    "cdn",
-    "center",
-    "crop",
-    "docker",
-    "dynamic",
-    "gravity",
-    "image",
-    "imageproxy",
-    "libgd",
-    "microservice",
-    "nginx",
-    "nginx-image-proxy",
-    "proxy",
-    "resize",
-    "transform",
-    "ubuntu",
-    "xenial"
-   ],
-   "html_url": "https://github.com/niiknow/docker-nginx-image-proxy",
-   "hash": "6b43ac4edd150ffdede3f196f71cdac9bdcb6127f775f1cb30f1ccabd6404b1f",
    "rule_excluded": null
   },
   {
@@ -58076,23 +57700,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "CN-annotation-team/redis7.0-chinese-annotated",
-   "stars": 1053,
-   "license": "BSD-3-Clause",
-   "pushed_at": "2025-04-08T12:15:11Z",
-   "size_kb": 106321,
-   "default_branch": "7.0-cn-annotated",
-   "description": "Redis 7.0.5 \u7248\u672c\u2014\u2014\u4e2d\u6587\u6ce8\u91ca\uff0c\u6301\u7eed\u66f4\u65b0\uff01\u6b22\u8fce\u53c2\u4e0e\u672c\u9879\u76ee\uff01\ud83c\udf6d\ud83c\udf6d\ud83c\udf6d",
-   "topics": [
-    "chinese-simplified",
-    "redis",
-    "redis-annotated"
-   ],
-   "html_url": "https://github.com/CN-annotation-team/redis7.0-chinese-annotated",
-   "hash": "6c9ea14f4e6771065f1d0af67245b48f9faad16d82b9b6d153b33470d9471c97",
-   "rule_excluded": null
-  },
-  {
    "full_name": "DotFox/edn.c",
    "stars": 191,
    "license": "MIT",
@@ -58383,26 +57990,6 @@
    ],
    "html_url": "https://github.com/maxevans60/cm0102-bosman-edition",
    "hash": "6d070b21555d90b7834abf57d287ecac1fb4227f296be75c2ed1b6b64b7e3a83",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "ilyakurdyukov/fpdoom",
-   "stars": 150,
-   "license": "Unlicense",
-   "pushed_at": "2026-11-13T09:45:08Z",
-   "size_kb": 927,
-   "default_branch": "main",
-   "description": "Doom for feature phones",
-   "topics": [
-    "doom",
-    "feature-phone",
-    "sc6530",
-    "sc6531",
-    "sc6531e",
-    "spreadtrum"
-   ],
-   "html_url": "https://github.com/ilyakurdyukov/fpdoom",
-   "hash": "6d0a0cfc1449362365abc57831d0c1f9620cee7eb39b23d4075d7d320afd4efd",
    "rule_excluded": null
   },
   {
@@ -63021,24 +62608,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "fgsfdsfgs/quakepsx",
-   "stars": 57,
-   "license": "GPL-2.0",
-   "pushed_at": "2025-12-14T19:36:19Z",
-   "size_kb": 930,
-   "default_branch": "master",
-   "description": "work-in-progress port of Quake to the PS1",
-   "topics": [
-    "homebrew",
-    "ps1",
-    "psx",
-    "quake"
-   ],
-   "html_url": "https://github.com/fgsfdsfgs/quakepsx",
-   "hash": "7563600da464e40fbb7a5bb715dd04be5417b82a249d73561af2a1c88c01e9a3",
-   "rule_excluded": null
-  },
-  {
    "full_name": "khanhduytran0/LiveSimBooter",
    "stars": 135,
    "license": "MIT",
@@ -67570,24 +67139,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "SilentisVox/DoomSyscalls",
-   "stars": 102,
-   "license": "MIT",
-   "pushed_at": "2026-04-30T05:53:00Z",
-   "size_kb": 225,
-   "default_branch": "main",
-   "description": "Clean Indirect Syscalls with Hook Evasion & Return Address Spoofing.",
-   "topics": [
-    "av-evasion",
-    "edr-evasion",
-    "indirect-syscall",
-    "rop-gadgets"
-   ],
-   "html_url": "https://github.com/SilentisVox/DoomSyscalls",
-   "hash": "7ea5c0369915b13553809993fd4beead96136298c530185239f2c39e501a88d8",
-   "rule_excluded": null
-  },
-  {
    "full_name": "pst-format/libpst",
    "stars": 51,
    "license": "GPL-2.0",
@@ -68397,19 +67948,6 @@
    "topics": [],
    "html_url": "https://github.com/ExcessiveMotion/drive-software",
    "hash": "7ff0769516318dfa3ae7deabbf8bf8455af762a72f3f1a9242ca4ae15470311d",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "openresty/stream-lua-nginx-module",
-   "stars": 750,
-   "license": "BSD-2-Clause",
-   "pushed_at": "2026-11-19T01:00:26Z",
-   "size_kb": 1879,
-   "default_branch": "master",
-   "description": "Embed the power of Lua into NGINX TCP/UDP servers",
-   "topics": [],
-   "html_url": "https://github.com/openresty/stream-lua-nginx-module",
-   "hash": "7ff838facff935c04eb198c8197efd48b0c0afdbe9a2aac624a5ebf573ee1060",
    "rule_excluded": null
   },
   {
@@ -69390,23 +68928,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "vrischmann/zig-sqlite",
-   "stars": 625,
-   "license": "MIT",
-   "pushed_at": "2026-11-06T18:52:06Z",
-   "size_kb": 4702,
-   "default_branch": "master",
-   "description": "zig-sqlite is a small wrapper around sqlite's C API, making it easier to use with Zig. ",
-   "topics": [
-    "sqlite",
-    "zig",
-    "zig-package"
-   ],
-   "html_url": "https://github.com/vrischmann/zig-sqlite",
-   "hash": "81aed2494d40c85b4976f68dcb88485b8af2d3a18050eae73b4a7878b6fc7aa9",
-   "rule_excluded": null
-  },
-  {
    "full_name": "teapotlaboratories/plantpal",
    "stars": 98,
    "license": "MIT",
@@ -70257,23 +69778,6 @@
    ],
    "html_url": "https://github.com/dmsc/emu2",
    "hash": "8366b27d90a3ca762412636aaf2d6f6793a591d19dd39555426306f012137be4",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "yhirose/cpp-sqlitelib",
-   "stars": 64,
-   "license": "MIT",
-   "pushed_at": "2025-10-08T21:09:39Z",
-   "size_kb": 3929,
-   "default_branch": "master",
-   "description": "C++ SQLite wrapper library",
-   "topics": [
-    "cpp",
-    "head-only",
-    "sqlite"
-   ],
-   "html_url": "https://github.com/yhirose/cpp-sqlitelib",
-   "hash": "836cff8ec72dc2cec412e538594d1b47b4a2274bd47893680aa9205fe0a36471",
    "rule_excluded": null
   },
   {
@@ -71426,19 +70930,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "happyfish100/fastdfs-nginx-module",
-   "stars": 430,
-   "license": "LGPL-3.0",
-   "pushed_at": "2026-06-30T08:08:39Z",
-   "size_kb": 121,
-   "default_branch": "master",
-   "description": "FastDFS nginx module",
-   "topics": [],
-   "html_url": "https://github.com/happyfish100/fastdfs-nginx-module",
-   "hash": "861259374c41d5d94d40bb3397ec6d036e361f6305f720a0401441dba85d234c",
-   "rule_excluded": null
-  },
-  {
    "full_name": "stenzek/pce",
    "stars": 83,
    "license": "GPL-3.0",
@@ -72452,31 +71943,6 @@
    ],
    "html_url": "https://github.com/libts/tslib",
    "hash": "877651bc49321043d5325814ebc5fecf53865f537f0ff96550b466a9f21ad50b",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "gilzoide/unity-sqlite-net",
-   "stars": 302,
-   "license": "MIT",
-   "pushed_at": "2026-10-14T12:24:01Z",
-   "size_kb": 104234,
-   "default_branch": "main",
-   "description": "SQLite-net for Unity, supports Windows, Linux, macOS, iOS, tvOS, visionOS, Android and WebGL",
-   "topics": [
-    "encrypted-database",
-    "encrypted-sqlite-database",
-    "sqlite",
-    "sqlite-net",
-    "sqlite-orm",
-    "sqlite3",
-    "sqlite3-multiple-ciphers",
-    "unity",
-    "unity3d",
-    "upm",
-    "upm-package"
-   ],
-   "html_url": "https://github.com/gilzoide/unity-sqlite-net",
-   "hash": "87797d572a224e4ee648f1d369a8f72c26640109e3539b194fb2f5da402a4f26",
    "rule_excluded": null
   },
   {
@@ -84046,19 +83512,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "quakeforge/quakeforge",
-   "stars": 73,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-11-21T11:40:11Z",
-   "size_kb": 32585,
-   "default_branch": "master",
-   "description": null,
-   "topics": [],
-   "html_url": "https://github.com/quakeforge/quakeforge",
-   "hash": "9e0ec442c6ed3d678e61c0bb61f4ebc87dd2821e7caf11e7bff6a2e563d90f7b",
-   "rule_excluded": null
-  },
-  {
    "full_name": "nvfuse/nvfuse",
    "stars": 113,
    "license": "GPL-2.0",
@@ -85379,32 +84832,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "jasonacox/Build-OpenSSL-cURL",
-   "stars": 464,
-   "license": "MIT",
-   "pushed_at": "2026-01-06T03:38:11Z",
-   "size_kb": 1600,
-   "default_branch": "master",
-   "description": "Scripts to build OpenSSL, HTTP/2 (nghttp2) and cURL (libcurl) for MacOS, iOS and tvOS devices (x86_64, armv7, armv7s, arm64, arm64e). Now Supporting Apple Silicon, OpenSSL 3.0.x with TLS 1.3 and Mac Catalyst builds.",
-   "topics": [
-    "applesilicon",
-    "arm64",
-    "armv7",
-    "ios",
-    "iphone",
-    "libcurl",
-    "mac-catalyst",
-    "nghttp2",
-    "openssl",
-    "openssl-engine",
-    "tvos",
-    "xcode"
-   ],
-   "html_url": "https://github.com/jasonacox/Build-OpenSSL-cURL",
-   "hash": "a0ce8fa0ceb68c3d98dc3a9ff0dcae3ca3f60d0915026e3e887dc7e45f9b2abb",
-   "rule_excluded": null
-  },
-  {
    "full_name": "reveng007/reveng_rtkit",
    "stars": 273,
    "license": "MIT",
@@ -86293,19 +85720,6 @@
    "topics": [],
    "html_url": "https://github.com/nunuhara/alice-tools",
    "hash": "a316c99d74384011aeb54bc4c8c416625db2eac2b12b12e34619ef413b00b91f",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "openresty/echo-nginx-module",
-   "stars": 1194,
-   "license": "BSD-2-Clause",
-   "pushed_at": "2026-10-24T12:32:48Z",
-   "size_kb": 1206,
-   "default_branch": "master",
-   "description": "An Nginx module for bringing the power of \"echo\", \"sleep\", \"time\" and more to Nginx's config file",
-   "topics": [],
-   "html_url": "https://github.com/openresty/echo-nginx-module",
-   "hash": "a31a6428721b6c23876da49d6912853be07f70300d07e79e1370c27f449674c9",
    "rule_excluded": null
   },
   {
@@ -87211,19 +86625,6 @@
    ],
    "html_url": "https://github.com/ImVexed/muon",
    "hash": "a4ca91de42d574e4b3ebbf051f2cbb15deba441bcf6157bdc0e9652be8f15dad",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "KDAB/android_openssl",
-   "stars": 417,
-   "license": "Apache-2.0",
-   "pushed_at": "2026-01-26T10:44:13Z",
-   "size_kb": 197301,
-   "default_branch": "master",
-   "description": "OpenSSL scripts and bins for Android (useful for Qt on Android apps)",
-   "topics": [],
-   "html_url": "https://github.com/KDAB/android_openssl",
-   "hash": "a4e214294efca874a3ec984132867bd2b4f6b1ac57768befad8791953626a527",
    "rule_excluded": null
   },
   {
@@ -88909,19 +88310,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "Team-Beef-Studios/QuakeQuest",
-   "stars": 146,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-09-29T18:33:21Z",
-   "size_kb": 13726,
-   "default_branch": "master",
-   "description": "The first (and only I think!) 6DoF implementation of Quake, using the DarkPlaces Engine for the OpenXR Standalone VR HMDs",
-   "topics": [],
-   "html_url": "https://github.com/Team-Beef-Studios/QuakeQuest",
-   "hash": "a85f952cbd1217483b0bce6c8c5789265479ad9907856fb358f960829b0f576e",
-   "rule_excluded": null
-  },
-  {
    "full_name": "abedegno/underworld-exhumed",
    "stars": 106,
    "license": "MIT",
@@ -90548,22 +89936,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "jserv/kitty-doom",
-   "stars": 53,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-09-11T13:51:31Z",
-   "size_kb": 146,
-   "default_branch": "main",
-   "description": "Play DOOM in modern terminals with Kitty Graphics Protocol",
-   "topics": [
-    "doom-source-port",
-    "kitty-terminal"
-   ],
-   "html_url": "https://github.com/jserv/kitty-doom",
-   "hash": "ab6ff31e43da7a311803617283369dbe2e39b298eab1066dad11a864a7607a05",
-   "rule_excluded": null
-  },
-  {
    "full_name": "linuxmint/pix",
    "stars": 272,
    "license": "GPL-2.0",
@@ -91530,19 +90902,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "coleifer/pysqlite3",
-   "stars": 246,
-   "license": "Zlib",
-   "pushed_at": "2026-11-05T14:33:07Z",
-   "size_kb": 205,
-   "default_branch": "master",
-   "description": "SQLite3 DB-API 2.0 driver from Python 3, packaged separately, with improvements",
-   "topics": [],
-   "html_url": "https://github.com/coleifer/pysqlite3",
-   "hash": "adb3c6b5402280e2c446aaf2592a4cb08b3b0ea0ef9d4c325d71a32ea641a350",
-   "rule_excluded": null
-  },
-  {
    "full_name": "igtoth/sidetone",
    "stars": 55,
    "license": "MIT",
@@ -92506,23 +91865,6 @@
    "topics": [],
    "html_url": "https://github.com/bitbank2/unzipLIB",
    "hash": "afd30d635a09c756d030a269960802d7ee9117d52922a8432b0c881d61db58b2",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "suijingfeng/vkQuake3",
-   "stars": 114,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-06-14T16:04:17Z",
-   "size_kb": 66514,
-   "default_branch": "master",
-   "description": "Its based on ioq3\uff0cI add a vulkan based modular render back end which originally from https://github.com/kennyalive/Quake-III-Arena-Kenny-Edition",
-   "topics": [
-    "quake",
-    "quake3",
-    "vulkan"
-   ],
-   "html_url": "https://github.com/suijingfeng/vkQuake3",
-   "hash": "afd4d0ee653142eaa93828722a1d7718044312f6bded90803eae3b17863c3650",
    "rule_excluded": null
   },
   {
@@ -96109,19 +95451,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "RedisLabsModules/RedisModulesSDK",
-   "stars": 184,
-   "license": "MIT",
-   "pushed_at": "2026-08-31T10:00:16Z",
-   "size_kb": 498,
-   "default_branch": "master",
-   "description": "Tools, utilities and scripts to help you write redis modules!",
-   "topics": [],
-   "html_url": "https://github.com/RedisLabsModules/RedisModulesSDK",
-   "hash": "b6be52a66ce5be1e5a02d72aa8c1d79a370f3f038374fdf69cf5da8055cfcd93",
-   "rule_excluded": null
-  },
-  {
    "full_name": "lets-all-be-stupid-forever/circuit-artist",
    "stars": 485,
    "license": "GPL-3.0",
@@ -96178,19 +95507,6 @@
    ],
    "html_url": "https://github.com/phoenix-rtos/phoenix-rtos-project",
    "hash": "b6df330a5bc3e5b73782597e476dfaa985927a269e545de7daaf7683dd7a02e5",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "microsoft/SymCrypt-OpenSSL",
-   "stars": 83,
-   "license": "MIT",
-   "pushed_at": "2026-11-18T18:40:40Z",
-   "size_kb": 6956,
-   "default_branch": "main",
-   "description": "OpenSSL engine for use with SymCrypt cryptographic library",
-   "topics": [],
-   "html_url": "https://github.com/microsoft/SymCrypt-OpenSSL",
-   "hash": "b6e4e32549977049cfecef8406cd08a57743a810a61be15ec64a4f6d4bc733cf",
    "rule_excluded": null
   },
   {
@@ -96888,23 +96204,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "Russian-Doom/russian-doom",
-   "stars": 89,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-05-11T18:32:17Z",
-   "size_kb": 112517,
-   "default_branch": "master",
-   "description": "A limit-removing source port of Doom, Heretic and Hexen. It has numerous vanilla bug fixes, enhanced 640x400 and 1280x800 rendering resolutions, improved game palettes and offers many optional aesthetic game enhancements along with the maximum possible translation to the Russian language.",
-   "topics": [
-    "doom",
-    "heretic",
-    "hexen"
-   ],
-   "html_url": "https://github.com/Russian-Doom/russian-doom",
-   "hash": "b8853254f78fa06c771e56ffe8a1fbe7b0e2334eea8780500937432067af9fa4",
-   "rule_excluded": null
-  },
-  {
    "full_name": "fanzhidongyzby/cit",
    "stars": 399,
    "license": "GPL-2.0",
@@ -97227,28 +96526,6 @@
    ],
    "html_url": "https://github.com/prashnts/pybloomfiltermmap3",
    "hash": "b9030fb10253929e904ff945296e6629900f920575ac0d9a7d82c3191c2317a6",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "JNechaevsky/international-doom",
-   "stars": 53,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-11-17T19:03:25Z",
-   "size_kb": 115174,
-   "default_branch": "main",
-   "description": "Small, functional and simple source ports, created with help, efforts and bits of code from people around the world.",
-   "topics": [
-    "demo-compatible",
-    "doom",
-    "heretic",
-    "hexen",
-    "limit-removing",
-    "source-port",
-    "true-color",
-    "vanilla"
-   ],
-   "html_url": "https://github.com/JNechaevsky/international-doom",
-   "hash": "b9076ce53ce6c2f9232e86da7b7c1a224988ab362d02b60aa10527e32daaeedd",
    "rule_excluded": null
   },
   {
@@ -98070,19 +97347,6 @@
    ],
    "html_url": "https://github.com/jsdf/pce",
    "hash": "ba6975567687978515eac0861429b7d1ec69df6d5e817ae8971ca79dfc8309b3",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Erick194/DOOM64-RE",
-   "stars": 239,
-   "license": "GPL-3.0",
-   "pushed_at": "2025-05-30T05:04:00Z",
-   "size_kb": 598,
-   "default_branch": "main",
-   "description": "Doom 64 Reverse Engineering By [GEC]",
-   "topics": [],
-   "html_url": "https://github.com/Erick194/DOOM64-RE",
-   "hash": "ba7d642fe7d1c46a771f7cff3e9be8c7ca9f3b5f3ff444cd53a3fbf65d23a305",
    "rule_excluded": null
   },
   {
@@ -99373,19 +98637,6 @@
    ],
    "html_url": "https://github.com/grate-driver/grate",
    "hash": "bc7747c6b98bf595429633d6fa7105d06b00c66c4cd237ed455a1ed3ed4aa8ae",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "api7/grpc-client-nginx-module",
-   "stars": 50,
-   "license": "Apache-2.0",
-   "pushed_at": "2024-12-28T05:53:45Z",
-   "size_kb": 212,
-   "default_branch": "main",
-   "description": null,
-   "topics": [],
-   "html_url": "https://github.com/api7/grpc-client-nginx-module",
-   "hash": "bc79b4098d61a61983227178c91a7db8a7c04350ae3bd668f1a049c5f811a2a2",
    "rule_excluded": null
   },
   {
@@ -101248,19 +100499,6 @@
    "topics": [],
    "html_url": "https://github.com/gfacciol/bm3d",
    "hash": "bf9d4b180412c0a1b4b094f272a6fcb45f9605f300ff4bc0cb115951dc8575a2",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Cacodemon345/uefidoom",
-   "stars": 342,
-   "license": "GPL-2.0",
-   "pushed_at": "2024-12-22T18:13:02Z",
-   "size_kb": 4257,
-   "default_branch": "master",
-   "description": "Port of Doom to UEFI.",
-   "topics": [],
-   "html_url": "https://github.com/Cacodemon345/uefidoom",
-   "hash": "bfa2d0d8a8b3ba306a888a8e5c334af46996abb9a11f9e51d23508dc34d61401",
    "rule_excluded": null
   },
   {
@@ -103936,26 +103174,6 @@
    ],
    "html_url": "https://github.com/venice1200/MiSTer_tty2oled",
    "hash": "c4ac0c54b15f6a8574b0f948596e1761ba42bae13bb1cd73df3041825b735246",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "ip2location/ip2location-nginx",
-   "stars": 73,
-   "license": "MIT",
-   "pushed_at": "2026-07-30T07:27:55Z",
-   "size_kb": 57,
-   "default_branch": "master",
-   "description": "This is IP2Location Nginx module that enables the user to find the country, region (state), city, latitude, longitude, zip code, time zone, ISP, domain name, connection type, area code, weather, mobile network, elevation, usage type, address type and IAB category by IP address or hostname originates from.",
-   "topics": [
-    "geolocation",
-    "ip-database",
-    "ip-geolocation",
-    "ip-lookup",
-    "ip2location",
-    "nginx"
-   ],
-   "html_url": "https://github.com/ip2location/ip2location-nginx",
-   "hash": "c4ad71b2df31a99886a284bdb04aa1a3cd5c3ea52993e61458e652abee7a1ff1",
    "rule_excluded": null
   },
   {
@@ -107514,36 +106732,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "kondrak/vkQuake2",
-   "stars": 1027,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-08-26T14:49:03Z",
-   "size_kb": 5853,
-   "default_branch": "master",
-   "description": "id Software's Quake 2 v3.21 with mission packs and Vulkan support (Windows, Linux, macOS, FreeBSD, Raspberry Pi 4)",
-   "topics": [
-    "3d-graphics",
-    "freebsd",
-    "gpu",
-    "hardware-acceleration",
-    "linux",
-    "macos",
-    "moltenvk",
-    "quake",
-    "quake2",
-    "vkquake",
-    "vkquake2",
-    "vkquake3",
-    "vulkan",
-    "vulkan-api",
-    "vulkan-game-engine",
-    "vulkan-renderer"
-   ],
-   "html_url": "https://github.com/kondrak/vkQuake2",
-   "hash": "cb7dd1598b913dab3ce8988d8be81ce1e49a7aa0f915fe84809ecc929d08f0f0",
-   "rule_excluded": null
-  },
-  {
    "full_name": "0xjrx/magnetar",
    "stars": 97,
    "license": "MIT",
@@ -110272,25 +109460,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "utelle/SQLite3MultipleCiphers",
-   "stars": 698,
-   "license": "MIT",
-   "pushed_at": "2026-11-21T14:05:06Z",
-   "size_kb": 21700,
-   "default_branch": "main",
-   "description": "SQLite3 encryption extension with support for multiple ciphers",
-   "topics": [
-    "database-encryption",
-    "sqlite",
-    "sqlite3",
-    "sqlite3-encryption",
-    "sqlite3-extension"
-   ],
-   "html_url": "https://github.com/utelle/SQLite3MultipleCiphers",
-   "hash": "d1193b18bcdf3c17ca06a50407f6bb84f67dc263d78504b95464cc55217173db",
-   "rule_excluded": null
-  },
-  {
    "full_name": "kilobyte/termrec",
    "stars": 67,
    "license": "LGPL-3.0",
@@ -110327,19 +109496,6 @@
    "topics": [],
    "html_url": "https://github.com/corsix/amx",
    "hash": "d120029783e8f5c6ba80ae429c215f9a3e637cf14826992947c3c3c4e6d64fd0",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "nuskey8/CsSqlite",
-   "stars": 98,
-   "license": "MIT",
-   "pushed_at": "2026-10-01T09:43:58Z",
-   "size_kb": 9696,
-   "default_branch": "main",
-   "description": "Extremely fast, robust, and lightweight SQLite bindings for .NET and Unity",
-   "topics": [],
-   "html_url": "https://github.com/nuskey8/CsSqlite",
-   "hash": "d122287aeee568f648c2a02d0dccd10e787cbfe869ac7971437c0b5d5ff09a2d",
    "rule_excluded": null
   },
   {
@@ -111002,28 +110158,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "seandewar/actually-doom.nvim",
-   "stars": 141,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-04-15T08:50:50Z",
-   "size_kb": 6101,
-   "default_branch": "master",
-   "description": "Play DOOM in Neovim v0.11+ on Linux & macOS",
-   "topics": [
-    "audio",
-    "doom",
-    "game",
-    "kitty-graphics",
-    "linux",
-    "macos",
-    "neovim",
-    "neovim-plugin"
-   ],
-   "html_url": "https://github.com/seandewar/actually-doom.nvim",
-   "hash": "d296585d752334c000f56c509a2ffbd79b4f4f48364e4ffe4c31312b35a8d02f",
-   "rule_excluded": null
-  },
-  {
    "full_name": "umpolungfish/byvalver",
    "stars": 64,
    "license": "Unlicense",
@@ -111447,34 +110581,6 @@
    ],
    "html_url": "https://github.com/Vrekrer/Vrekrer_scpi_parser",
    "hash": "d3884e3cfe1d13fb44b99e7ddfaf70db312274d1f6bbe4579e10990fbf06ab90",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "margelo/react-native-nitro-sqlite",
-   "stars": 588,
-   "license": "MIT",
-   "pushed_at": "2026-11-17T19:06:17Z",
-   "size_kb": 18673,
-   "default_branch": "main",
-   "description": "\ud83d\udcbd Fast SQLite library for React Native built using Nitro Modules",
-   "topics": [
-    "android",
-    "cplusplus",
-    "cpp",
-    "ios",
-    "lib",
-    "native",
-    "nitro",
-    "nitro-modules",
-    "nitrogen",
-    "react",
-    "react-native",
-    "sql",
-    "sqlite",
-    "storage"
-   ],
-   "html_url": "https://github.com/margelo/react-native-nitro-sqlite",
-   "hash": "d39b539d6df3b748b185bbd8d6c6b4d355831ffb6f5aba78bb67c8805231c80a",
    "rule_excluded": null
   },
   {
@@ -114566,23 +113672,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "Rinnegatamante/vitaQuakeIII",
-   "stars": 72,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-05-16T18:29:19Z",
-   "size_kb": 13718,
-   "default_branch": "master",
-   "description": "ioquake3 port for PSVITA (Currently supporting Quake III: Arena, Quake III: Team Arena, OpenArena, Urban Terror and Q3Rally)",
-   "topics": [
-    "game",
-    "ioquake3",
-    "psvita"
-   ],
-   "html_url": "https://github.com/Rinnegatamante/vitaQuakeIII",
-   "hash": "d8f13ef77653066b2453ee8ab9f95d5fd575d90a71c689826415db76c58d59e7",
-   "rule_excluded": null
-  },
-  {
    "full_name": "zhulianhua/dugksFoam",
    "stars": 99,
    "license": "MIT",
@@ -115702,19 +114791,6 @@
    ],
    "html_url": "https://github.com/Huai-Tian/GeptHooks",
    "hash": "dadccd5d497d5201f45087510adfc84020452d09c249fbbc3f9776a598b2c5bb",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Team-Beef-Studios/QuestZDoom",
-   "stars": 72,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-09-30T08:00:17Z",
-   "size_kb": 77789,
-   "default_branch": "master",
-   "description": "Quest VR Port of the popular LZDoom/GZDoom Engine with full 6DoF",
-   "topics": [],
-   "html_url": "https://github.com/Team-Beef-Studios/QuestZDoom",
-   "hash": "dae555b5a77100f9ef22bdfa8228a7e7951afb3fe9c2ff17162f90e767b06a9a",
    "rule_excluded": null
   },
   {
@@ -117763,25 +116839,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "cyanbun96/qrustyquake",
-   "stars": 71,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-11-20T22:53:49Z",
-   "size_kb": 34954,
-   "default_branch": "main",
-   "description": "Quake like you remember it.",
-   "topics": [
-    "quake",
-    "quake-engine",
-    "sdl3",
-    "sdl3-mixer",
-    "software-rendering"
-   ],
-   "html_url": "https://github.com/cyanbun96/qrustyquake",
-   "hash": "debc628cc060f5c379e71aa017b82af9706f8a06bd6a2cf3974a08c5091d04f9",
-   "rule_excluded": null
-  },
-  {
    "full_name": "dorakyuraduang/whitealbum2-Android",
    "stars": 259,
    "license": "MIT",
@@ -119642,25 +118699,6 @@
    "topics": [],
    "html_url": "https://github.com/keepkey/keepkey-firmware",
    "hash": "e281e19d383905ba60a77eb387ee1e519ca9615b6ae80fb891ec32cd215ae857",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "tg123/websockify-nginx-module",
-   "stars": 153,
-   "license": "MIT",
-   "pushed_at": "2026-06-05T17:16:50Z",
-   "size_kb": 113,
-   "default_branch": "master",
-   "description": "Embed websockify into Nginx  (convert any tcp connection into websocket) ",
-   "topics": [
-    "nginx",
-    "novnc",
-    "websocket",
-    "websocket-proxy",
-    "websockify"
-   ],
-   "html_url": "https://github.com/tg123/websockify-nginx-module",
-   "hash": "e2883ef3b6b46ab2012afb5459f2b5dd6ee3b20c91da1db89495e278d43ff51f",
    "rule_excluded": null
   },
   {
@@ -122581,24 +121619,6 @@
    ],
    "html_url": "https://github.com/ChatAFLndss/ChatAFL",
    "hash": "e7e2b6cf56e2ec47c9567e09273b605181fd61326e8f553b8287bd12db37a37f",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "ec-/Quake3e",
-   "stars": 1575,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-11-15T21:14:04Z",
-   "size_kb": 41661,
-   "default_branch": "main",
-   "description": "Improved Quake III Arena engine",
-   "topics": [
-    "opengl",
-    "quake3",
-    "qvm",
-    "vulkan"
-   ],
-   "html_url": "https://github.com/ec-/Quake3e",
-   "hash": "e7eddc8ed9e3d9c53b57f2aeacfbf9cfc31a59b85546349572c559493fb5a06c",
    "rule_excluded": null
   },
   {
@@ -127009,19 +126029,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "SRombauts/SQLiteCpp",
-   "stars": 2816,
-   "license": "MIT",
-   "pushed_at": "2026-10-24T18:52:51Z",
-   "size_kb": 14554,
-   "default_branch": "master",
-   "description": "SQLiteC++ (SQLiteCpp) is a smart and easy to use C++ SQLite3 wrapper.",
-   "topics": [],
-   "html_url": "https://github.com/SRombauts/SQLiteCpp",
-   "hash": "f1644bbdee72a591416be9da985850b439bb918f313953c2837d7ee2d4c9bc37",
-   "rule_excluded": null
-  },
-  {
    "full_name": "xoreaxeaxeax/asm-hall-of-shame",
    "stars": 998,
    "license": "MIT",
@@ -127691,33 +126698,6 @@
    "topics": [],
    "html_url": "https://github.com/TF-RMM/tf-rmm",
    "hash": "f2d03862000789a502be03483c6f1d356f157e41e1ec2c320b74bd1f12f178b5",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "chocolate-doom/chocolate-doom",
-   "stars": 2459,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-10-25T03:19:10Z",
-   "size_kb": 18441,
-   "default_branch": "master",
-   "description": "Chocolate Doom is a Doom source port that is minimalist and historically accurate.",
-   "topics": [
-    "c",
-    "doom",
-    "fps",
-    "fps-game",
-    "games",
-    "gplv2",
-    "heretic",
-    "hexen",
-    "retro",
-    "retrogaming",
-    "sdl",
-    "sdl2",
-    "strife"
-   ],
-   "html_url": "https://github.com/chocolate-doom/chocolate-doom",
-   "hash": "f2d33b74d0d75a3edc2909cbebb280541be36e35e37375c16f19f8879ec4ff2f",
    "rule_excluded": null
   },
   {
@@ -129649,19 +128629,6 @@
    "topics": [],
    "html_url": "https://github.com/OpenAnnePro/AnnePro2-Shine",
    "hash": "f6a36dc1499b983d888f57234ba51b3ceaf19128a737f811ec8023b3887b59d6",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "m-x-d/Heretic2R",
-   "stars": 281,
-   "license": "GPL-3.0",
-   "pushed_at": "2026-08-21T12:42:22Z",
-   "size_kb": 26043,
-   "default_branch": "main",
-   "description": "Heretic II (1998, Raven Software) reverse-engineered source port.",
-   "topics": [],
-   "html_url": "https://github.com/m-x-d/Heretic2R",
-   "hash": "f6abc30608bafdba1bccf31aa625688be82a85d6df561f7cce2b2f56cafdd6b5",
    "rule_excluded": null
   },
   {
@@ -131807,25 +130774,6 @@
    "rule_excluded": null
   },
   {
-   "full_name": "QW-Group/ezquake-source",
-   "stars": 424,
-   "license": "GPL-2.0",
-   "pushed_at": "2026-11-18T19:32:59Z",
-   "size_kb": 93554,
-   "default_branch": "master",
-   "description": "main ezQuake source code base",
-   "topics": [
-    "ezquake",
-    "modern-quakeworld-clients",
-    "nquake",
-    "quake",
-    "quakeworld"
-   ],
-   "html_url": "https://github.com/QW-Group/ezquake-source",
-   "hash": "fab7f6baf614889958ad63ae69ff36761bbc555d28ec46bf3f1f4e8c7ab5bc0c",
-   "rule_excluded": null
-  },
-  {
    "full_name": "Sguan-ZhouQing/SguanFOC_Library",
    "stars": 1174,
    "license": "MIT",
@@ -133448,19 +132396,6 @@
    "topics": [],
    "html_url": "https://github.com/Meckazin/ChromeKatz",
    "hash": "fd91b815d49534d4f2e058234d11b139ba405eabaecc34f0a4c061d4ee063f30",
-   "rule_excluded": null
-  },
-  {
-   "full_name": "Erick194/PSXDOOM-RE",
-   "stars": 163,
-   "license": "GPL-3.0",
-   "pushed_at": "2025-05-30T04:58:59Z",
-   "size_kb": 2900,
-   "default_branch": "master",
-   "description": "Psx Doom Reverse Engineering By [GEC]",
-   "topics": [],
-   "html_url": "https://github.com/Erick194/PSXDOOM-RE",
-   "hash": "fd937bd1c51d8b307944b9e26e4564da37cf45b48eaed3d0bd64ab12645f65b1",
    "rule_excluded": null
   },
   {

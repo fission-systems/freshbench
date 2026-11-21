@@ -1,5 +1,5 @@
 {
- "count": 6286,
+ "count": 6347,
  "repos": [
   {
    "full_name": "espressif/esp-usb",
@@ -310,6 +310,11 @@
    "full_name": "intel/mOS",
    "stars": 147,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "libretro/tyrquake",
+   "stars": 51,
+   "reason": "name:quake"
   },
   {
    "full_name": "davisp/jiffy",
@@ -767,6 +772,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "osmzoso/pbf2sqlite",
+   "stars": 84,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "Hades2001/OdradekScanner",
    "stars": 50,
    "reason": "license:None"
@@ -1180,6 +1190,11 @@
    "full_name": "prusa3d/Prusa-Firmware-Buddy",
    "stars": 1636,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "Lax/traffic-accounting-nginx-module",
+   "stars": 288,
+   "reason": "name:nginx"
   },
   {
    "full_name": "brodieG/vetr",
@@ -3427,6 +3442,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "duckdb/duckdb-sqlite",
+   "stars": 298,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "Vonger/vocore2",
    "stars": 106,
    "reason": "license:None"
@@ -3700,6 +3720,11 @@
    "full_name": "espressif/esp-homekit-sdk",
    "stars": 660,
    "reason": "license:None"
+  },
+  {
+   "full_name": "gd-arnold/tiny-nginx",
+   "stars": 187,
+   "reason": "name:nginx"
   },
   {
    "full_name": "PeleAB/STM32N6-FaceRecognition",
@@ -4382,6 +4407,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "touchlab/SQLiter",
+   "stars": 215,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "Marco-Sola-Lab/WFA2-lib",
    "stars": 234,
    "reason": "license:NOASSERTION"
@@ -4870,6 +4900,11 @@
    "full_name": "RT-Thread-Studio/sdk-bsp-stm32f407-spark",
    "stars": 50,
    "reason": "license:None"
+  },
+  {
+   "full_name": "eddelbuettel/rcppredis",
+   "stars": 56,
+   "reason": "name:redis"
   },
   {
    "full_name": "fiorix/go-daemon",
@@ -5485,6 +5520,11 @@
    "full_name": "milabs/drop-tcp-sock",
    "stars": 78,
    "reason": "license:None"
+  },
+  {
+   "full_name": "muzipiao/GMOpenSSL",
+   "stars": 60,
+   "reason": "name:openssl"
   },
   {
    "full_name": "OpokXeno/xenogears-recomp",
@@ -6455,6 +6495,11 @@
    "full_name": "Makerfabs/Makerfabs-ESP32-S3-Parallel-TFT-with-Touch",
    "stars": 73,
    "reason": "license:None"
+  },
+  {
+   "full_name": "Henrique194/chocolate-quake",
+   "stars": 235,
+   "reason": "name:quake"
   },
   {
    "full_name": "sysprog21/lab0-c",
@@ -7582,6 +7627,11 @@
    "reason": "name:linux"
   },
   {
+   "full_name": "swiftlyfalling/SQLiteLib",
+   "stars": 81,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "acreloaded/acr",
    "stars": 150,
    "reason": "license:None"
@@ -7820,6 +7870,11 @@
    "full_name": "OpenSmalltalk/opensmalltalk-vm",
    "stars": 626,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "tpm2-software/tpm2-openssl",
+   "stars": 132,
+   "reason": "name:openssl"
   },
   {
    "full_name": "garagetinkering/Video_Game_Mini_Maps",
@@ -8169,7 +8224,7 @@
   {
    "full_name": "Nordix/hiredis-cluster",
    "stars": 111,
-   "reason": "name:hiredis"
+   "reason": "name:redis"
   },
   {
    "full_name": "star-sg/CVE",
@@ -8267,6 +8322,11 @@
    "reason": "size:583818KB"
   },
   {
+   "full_name": "Novum/vkQuake",
+   "stars": 2330,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "LeoKemp223/llm2lvgl",
    "stars": 89,
    "reason": "license:None"
@@ -8295,6 +8355,11 @@
    "full_name": "RP6conrad/ESP-GPS-Logger",
    "stars": 59,
    "reason": "size:220366KB"
+  },
+  {
+   "full_name": "nopnop2002/esp32-idf-sqlite3",
+   "stars": 50,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "riebl/vanetza",
@@ -8610,6 +8675,11 @@
    "full_name": "cran/bnlearn",
    "stars": 64,
    "reason": "license:None"
+  },
+  {
+   "full_name": "leanprover/leansqlite",
+   "stars": 56,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "lieff/minimp3",
@@ -8970,6 +9040,11 @@
    "full_name": "ArtemioUrbina/240pTestSuite",
    "stars": 373,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "siara-cc/esp32-idf-sqlite3",
+   "stars": 181,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "civctp2/civctp2",
@@ -9677,6 +9752,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "FrenkelS/Doom64KB",
+   "stars": 63,
+   "reason": "name:doom"
+  },
+  {
    "full_name": "aardappel/procrastitracker",
    "stars": 592,
    "reason": "license:None"
@@ -10365,6 +10445,11 @@
    "full_name": "miroslavdanutalexandru-alt/Resistance-Fall-of-Man-Recomp",
    "stars": 132,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "Rinnegatamante/vitaQuake",
+   "stars": 145,
+   "reason": "name:quake"
   },
   {
    "full_name": "villager1314/CVE-2026-64560-Analysis",
@@ -12017,6 +12102,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "mmzeeman/esqlite",
+   "stars": 147,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "zeranemesis/Marioparty4",
    "stars": 90,
    "reason": "license:None"
@@ -12677,6 +12767,11 @@
    "reason": "name:linux"
   },
   {
+   "full_name": "janet-lang/sqlite3",
+   "stars": 63,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "utoni/PastDSE",
    "stars": 161,
    "reason": "license:None"
@@ -12860,6 +12955,11 @@
    "full_name": "bbenchoff/MacSSL",
    "stars": 70,
    "reason": "license:None"
+  },
+  {
+   "full_name": "kilograham/rp2040-doom",
+   "stars": 940,
+   "reason": "name:doom"
   },
   {
    "full_name": "Digilent/linux-digilent",
@@ -13097,6 +13197,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "niiknow/docker-nginx-image-proxy",
+   "stars": 111,
+   "reason": "name:nginx"
+  },
+  {
    "full_name": "plv8/pljs",
    "stars": 227,
    "reason": "license:NOASSERTION"
@@ -13282,6 +13387,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "CN-annotation-team/redis7.0-chinese-annotated",
+   "stars": 1053,
+   "reason": "name:redis"
+  },
+  {
    "full_name": "kotte-computer-electronics/batoid",
    "stars": 84,
    "reason": "license:None"
@@ -13320,6 +13430,11 @@
    "full_name": "n0xa/m5stick-nemo",
    "stars": 1328,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "ilyakurdyukov/fpdoom",
+   "stars": 150,
+   "reason": "name:doom"
   },
   {
    "full_name": "snowflakedb/pdo_snowflake",
@@ -14305,6 +14420,11 @@
    "full_name": "iustin/mt-st",
    "stars": 56,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "fgsfdsfgs/quakepsx",
+   "stars": 57,
+   "reason": "name:quake"
   },
   {
    "full_name": "kaloz/mwlwifi",
@@ -15377,6 +15497,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "SilentisVox/DoomSyscalls",
+   "stars": 102,
+   "reason": "name:doom"
+  },
+  {
    "full_name": "Mellanox/mstflint",
    "stars": 276,
    "reason": "license:NOASSERTION"
@@ -15560,6 +15685,11 @@
    "full_name": "openwch/ch32v307",
    "stars": 495,
    "reason": "license:None"
+  },
+  {
+   "full_name": "openresty/stream-lua-nginx-module",
+   "stars": 750,
+   "reason": "name:nginx"
   },
   {
    "full_name": "adafruit/Adafruit_Learning_System_Guides",
@@ -15767,6 +15897,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "vrischmann/zig-sqlite",
+   "stars": 625,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "snort3/libdaq",
    "stars": 65,
    "reason": "license:NOASSERTION"
@@ -15889,7 +16024,7 @@
   {
    "full_name": "tokers/zstd-nginx-module",
    "stars": 257,
-   "reason": "name:zstd"
+   "reason": "name:nginx"
   },
   {
    "full_name": "DUSTINODELLOFFICIAL/openheart",
@@ -15990,6 +16125,11 @@
    "full_name": "cragson/a53-code-exec",
    "stars": 75,
    "reason": "license:None"
+  },
+  {
+   "full_name": "yhirose/cpp-sqlitelib",
+   "stars": 64,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "dlbeer/quirc",
@@ -16367,6 +16507,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "happyfish100/fastdfs-nginx-module",
+   "stars": 430,
+   "reason": "name:nginx"
+  },
+  {
    "full_name": "mozilla/nss",
    "stars": 198,
    "reason": "license:NOASSERTION"
@@ -16530,6 +16675,11 @@
    "full_name": "nckstwrt/SafeDiscLoader",
    "stars": 56,
    "reason": "license:None"
+  },
+  {
+   "full_name": "gilzoide/unity-sqlite-net",
+   "stars": 302,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "charlesvestal/schwung",
@@ -17344,7 +17494,7 @@
   {
    "full_name": "pekingduck/emacs-sqlite3-api",
    "stars": 64,
-   "reason": "name:emacs"
+   "reason": "name:sqlite"
   },
   {
    "full_name": "mario-deluna/php-glfw",
@@ -19242,6 +19392,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "quakeforge/quakeforge",
+   "stars": 73,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "feilipu/Arduino_FreeRTOS_Library",
    "stars": 964,
    "reason": "name:arduino"
@@ -19612,6 +19767,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "jasonacox/Build-OpenSSL-cURL",
+   "stars": 464,
+   "reason": "name:openssl"
+  },
+  {
    "full_name": "libreswan/libreswan",
    "stars": 1019,
    "reason": "license:NOASSERTION"
@@ -19927,6 +20087,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "openresty/echo-nginx-module",
+   "stars": 1194,
+   "reason": "name:nginx"
+  },
+  {
    "full_name": "nikhil-robinson/klipper_esp32",
    "stars": 94,
    "reason": "license:None"
@@ -20120,6 +20285,11 @@
    "full_name": "0xsp-SRD/0xsp.com",
    "stars": 74,
    "reason": "license:None"
+  },
+  {
+   "full_name": "KDAB/android_openssl",
+   "stars": 417,
+   "reason": "name:openssl"
   },
   {
    "full_name": "kostop/ops9",
@@ -20607,6 +20777,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "Team-Beef-Studios/QuakeQuest",
+   "stars": 146,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "StefanSchippers/xschem",
    "stars": 519,
    "reason": "license:NOASSERTION"
@@ -21087,6 +21262,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "jserv/kitty-doom",
+   "stars": 53,
+   "reason": "name:doom"
+  },
+  {
    "full_name": "sgkdev/page_inject",
    "stars": 77,
    "reason": "license:None"
@@ -21365,6 +21545,11 @@
    "full_name": "AndrewBelt/osdialog",
    "stars": 150,
    "reason": "license:CC0-1.0"
+  },
+  {
+   "full_name": "coleifer/pysqlite3",
+   "stars": 246,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "GPUOpen-LibrariesAndSDKs/RadeonProRenderSDK",
@@ -21655,6 +21840,11 @@
    "full_name": "zhangjiantao/tcmips",
    "stars": 67,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "suijingfeng/vkQuake3",
+   "stars": 114,
+   "reason": "name:quake"
   },
   {
    "full_name": "ExoCore-Kernel/Juice",
@@ -22447,6 +22637,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "RedisLabsModules/RedisModulesSDK",
+   "stars": 184,
+   "reason": "name:redis"
+  },
+  {
    "full_name": "lemonjesus/ipad-touch-screen",
    "stars": 168,
    "reason": "license:None"
@@ -22480,6 +22675,11 @@
    "full_name": "FreeMyXe/FreeMyXe",
    "stars": 589,
    "reason": "license:None"
+  },
+  {
+   "full_name": "microsoft/SymCrypt-OpenSSL",
+   "stars": 83,
+   "reason": "name:openssl"
   },
   {
    "full_name": "alex85k/wingetopt",
@@ -22682,6 +22882,11 @@
    "reason": "license:CC0-1.0"
   },
   {
+   "full_name": "Russian-Doom/russian-doom",
+   "stars": 89,
+   "reason": "name:doom"
+  },
+  {
    "full_name": "kanawati975/Voron_Switchwire",
    "stars": 74,
    "reason": "license:None"
@@ -22740,6 +22945,11 @@
    "full_name": "przemyslawzaworski/CPP-Programming",
    "stars": 54,
    "reason": "license:None"
+  },
+  {
+   "full_name": "JNechaevsky/international-doom",
+   "stars": 53,
+   "reason": "name:doom"
   },
   {
    "full_name": "asset-group/U-Fuzz",
@@ -22905,6 +23115,11 @@
    "full_name": "Foundation-Devices/passport2",
    "stars": 86,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "Erick194/DOOM64-RE",
+   "stars": 239,
+   "reason": "name:doom"
   },
   {
    "full_name": "trusteddomainproject/OpenDKIM",
@@ -23135,6 +23350,11 @@
    "full_name": "ACreTeam/forest",
    "stars": 89,
    "reason": "license:CC0-1.0"
+  },
+  {
+   "full_name": "api7/grpc-client-nginx-module",
+   "stars": 50,
+   "reason": "name:nginx"
   },
   {
    "full_name": "GPUOpen-LibrariesAndSDKs/HIPRTSDK",
@@ -23515,6 +23735,11 @@
    "full_name": "asg017/sqlite-tg",
    "stars": 50,
    "reason": "license:None"
+  },
+  {
+   "full_name": "Cacodemon345/uefidoom",
+   "stars": 342,
+   "reason": "name:doom"
   },
   {
    "full_name": "supabase/pg_crdt",
@@ -24110,6 +24335,11 @@
    "full_name": "ForsakenX/forsaken",
    "stars": 182,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "ip2location/ip2location-nginx",
+   "stars": 73,
+   "reason": "name:nginx"
   },
   {
    "full_name": "jllodra/ncdump-json",
@@ -24842,6 +25072,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "kondrak/vkQuake2",
+   "stars": 1027,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "gsmk/hexagon",
    "stars": 241,
    "reason": "license:None"
@@ -25507,9 +25742,19 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "utelle/SQLite3MultipleCiphers",
+   "stars": 698,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "begoon/i8080-core",
    "stars": 84,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "nuskey8/CsSqlite",
+   "stars": 98,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "FanKang2021/GPU-Health-eXpert",
@@ -25722,6 +25967,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "seandewar/actually-doom.nvim",
+   "stars": 141,
+   "reason": "name:doom"
+  },
+  {
    "full_name": "openresty/xss-nginx-module",
    "stars": 150,
    "reason": "license:None"
@@ -25925,6 +26175,11 @@
    "full_name": "sonydevworld/spresense",
    "stars": 201,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "margelo/react-native-nitro-sqlite",
+   "stars": 588,
+   "reason": "name:sqlite"
   },
   {
    "full_name": "ClassiCube/ClassiCube",
@@ -26359,7 +26614,7 @@
   {
    "full_name": "redis/hiredis-py",
    "stars": 526,
-   "reason": "name:hiredis"
+   "reason": "name:redis"
   },
   {
    "full_name": "GNOME/gnumeric",
@@ -26632,6 +26887,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "Rinnegatamante/vitaQuakeIII",
+   "stars": 72,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "smokindinesh/Mini-Project-in-C",
    "stars": 134,
    "reason": "license:None"
@@ -26850,6 +27110,11 @@
    "full_name": "yugecin/nfsu2-re",
    "stars": 120,
    "reason": "license:None"
+  },
+  {
+   "full_name": "Team-Beef-Studios/QuestZDoom",
+   "stars": 72,
+   "reason": "name:doom"
   },
   {
    "full_name": "guillemj/dpkg",
@@ -27337,6 +27602,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "cyanbun96/qrustyquake",
+   "stars": 71,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "chao-shushu/CS2-DMA",
    "stars": 113,
    "reason": "size:280877KB"
@@ -27750,6 +28020,11 @@
    "full_name": "dolthub/doltlite",
    "stars": 346,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "tg123/websockify-nginx-module",
+   "stars": 153,
+   "reason": "name:nginx"
   },
   {
    "full_name": "wolfSSL/wolfGuard",
@@ -28404,7 +28679,7 @@
   {
    "full_name": "jdolan/quake2",
    "stars": 241,
-   "reason": "name:quake2"
+   "reason": "name:quake"
   },
   {
    "full_name": "Skeli789/Complete-Fire-Red-Upgrade",
@@ -28480,6 +28755,11 @@
    "full_name": "antonic901/xbmc4xbox-redux",
    "stars": 137,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "ec-/Quake3e",
+   "stars": 1575,
+   "reason": "name:quake"
   },
   {
    "full_name": "WHUCodingAndOpen/OpenCourseResources",
@@ -28809,7 +29089,7 @@
   {
    "full_name": "glampert/quake2-ps2",
    "stars": 62,
-   "reason": "name:quake2"
+   "reason": "name:quake"
   },
   {
    "full_name": "pvvx/TLSRPGM",
@@ -29652,6 +29932,11 @@
    "reason": "license:None"
   },
   {
+   "full_name": "SRombauts/SQLiteCpp",
+   "stars": 2816,
+   "reason": "name:sqlite"
+  },
+  {
    "full_name": "dimkr/loksh",
    "stars": 132,
    "reason": "license:None"
@@ -29805,6 +30090,11 @@
    "full_name": "bbuhrow/yafu",
    "stars": 388,
    "reason": "license:None"
+  },
+  {
+   "full_name": "chocolate-doom/chocolate-doom",
+   "stars": 2459,
+   "reason": "name:doom"
   },
   {
    "full_name": "stossy11/maciOS",
@@ -30255,6 +30545,11 @@
    "full_name": "waltligon/orangefs",
    "stars": 79,
    "reason": "license:NOASSERTION"
+  },
+  {
+   "full_name": "m-x-d/Heretic2R",
+   "stars": 281,
+   "reason": "name:heretic"
   },
   {
    "full_name": "ericmigi/pebble-qemu-wasm",
@@ -30777,6 +31072,11 @@
    "reason": "license:NOASSERTION"
   },
   {
+   "full_name": "QW-Group/ezquake-source",
+   "stars": 424,
+   "reason": "name:quake"
+  },
+  {
    "full_name": "lich0821/SilkMp3Converter",
    "stars": 69,
    "reason": "license:None"
@@ -31095,6 +31395,11 @@
    "full_name": "kercre123/WirePod",
    "stars": 90,
    "reason": "license:None"
+  },
+  {
+   "full_name": "Erick194/PSXDOOM-RE",
+   "stars": 163,
+   "reason": "name:doom"
   },
   {
    "full_name": "kimtg/arcadia",

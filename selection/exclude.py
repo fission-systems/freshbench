@@ -32,6 +32,11 @@ mesa xorg wayland weston libinput alsa pulseaudio pipewire jack mpv vlc gstreame
 opus libvorbis libogg flac lame sox imagemagick graphicsmagick gimp inkscape blender
 tinycc tcc chibicc 8cc lcc cproc qbe stb nuklear raylib cosmopolitan""".split()
 NAMES = {n.lower() for n in DECBENCH + FAMOUS}
+# Added 2026-11-22 after batch b001 surfaced libretro/tyrquake (a Quake engine
+# port whose name has no separator): famous code bases matched as SUBSTRINGS of
+# the repository name. Applied to every candidate, before any decompiler ran.
+SUBSTRINGS = ["quake", "doom", "wolf3d", "wolfenstein", "duke3d", "heretic", "hexen",
+              "sqlite", "busybox", "openssl", "ffmpeg", "nginx", "redis", "coreutils"]
 
 
 def norm(s):
@@ -40,6 +45,9 @@ def norm(s):
 
 def hit(name):
     n = norm(name)
+    for x in SUBSTRINGS:
+        if x in n:
+            return x
     for x in NAMES:
         if n == x or n.startswith(x + "-"):
             return x
