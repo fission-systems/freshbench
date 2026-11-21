@@ -11,7 +11,6 @@
    "description": "DUNE, REINVENTED",
    "sha": "ebea79aeba025be2fe9004570e9255044aacc0be",
    "submodules": "",
-   "qual_dir": "qual/b001/OpenDUNE__OpenDUNE",
    "eligible": {
     "gcc-O0": 906,
     "gcc-O1": 771,
@@ -39,7 +38,6 @@
    "description": "simavr is a lean, mean and hackable AVR simulator for linux & OSX",
    "sha": "13d4ed32433ad7a37bb757b7e0f7dbb5373396c0",
    "submodules": "",
-   "qual_dir": "qual/b001/buserror__simavr",
    "eligible": {
     "gcc-O0": 419,
     "gcc-O1": 343,
@@ -67,7 +65,6 @@
    "description": "\u9ad8\u901f\u955c\u50cf: https://code.aliyun.com/linkkit/c-sdk",
    "sha": "0d3beeedb31a39f4b54fb4c521e8ce63f23e817c",
    "submodules": "",
-   "qual_dir": "qual/b001/aliyun__iotkit-embedded",
    "eligible": {
     "gcc-O0": 452,
     "gcc-O1": 379,
@@ -95,7 +92,6 @@
    "description": null,
    "sha": "f9e845228c6cf834954befaa2f37efe5584ecbad",
    "submodules": "",
-   "qual_dir": "qual/b001/ondra-novak__gates_of_skeldal",
    "eligible": {
     "gcc-O0": 1415,
     "gcc-O1": 1233,
@@ -123,7 +119,6 @@
    "description": "cc65 - a freeware C compiler for 6502 based systems",
    "sha": "eebf54af545f4ae52f8489a2f6d4d5f93e7942d2",
    "submodules": "",
-   "qual_dir": "qual/b001/cc65__cc65",
    "eligible": {
     "gcc-O0": 3477,
     "gcc-O1": 2987,
@@ -151,7 +146,6 @@
    "description": "TinyPKI is a lightweight C11/OpenSSL PKI core for constrained IoT and edge networks, combining ECQV implicit certificates, sparse Merkle revocation proofs, MMR issuance transparency, CA-signed checkpoints, t-of-n edge witnesses, and SM2/SM3/SM4 sessions.",
    "sha": "764a63ad82e13ac5929dcd566de72c5681e83b43",
    "submodules": "",
-   "qual_dir": "qual/b001/kakahuote1__TinyPKI",
    "eligible": {
     "gcc-O0": 625,
     "gcc-O1": 439,
@@ -179,7 +173,6 @@
    "description": "digital signal processing library for software-defined radios",
    "sha": "10041f70cebbe3b97887e75bb41e48b73dda1b23",
    "submodules": "",
-   "qual_dir": "qual/b002/jgaeddert__liquid-dsp",
    "eligible": {
     "gcc-O0": 1016,
     "gcc-O1": 1016,
@@ -207,7 +200,6 @@
    "description": "An overlay that shows schemas for all workspaces to make navigation in sway easier.",
    "sha": "19809ae535f8417098020f86ceefa25dbd3c5a90",
    "submodules": "",
-   "qual_dir": "qual/b002/milgra__sov",
    "eligible": {
     "gcc-O0": 406,
     "gcc-O1": 404,
@@ -235,7 +227,6 @@
    "description": "An audio processing program with an interactive mode.",
    "sha": "2e7eac120f21484f76db478d62eaed02489a6d56",
    "submodules": "",
-   "qual_dir": "qual/b002/bmc0__dsp",
    "eligible": {
     "gcc-O0": 523,
     "gcc-O1": 425,
@@ -263,7 +254,6 @@
    "description": "graph based intermediate representation and backend for optimising compilers",
    "sha": "114012d1d93427e63ba2f2ab51318e8a1b92f06c",
    "submodules": "",
-   "qual_dir": "qual/b002/libfirm__libfirm",
    "eligible": {
     "gcc-O0": 6192,
     "gcc-O1": 5365,
@@ -291,7 +281,6 @@
    "description": "An experimental lua game framework for libretro following the L\u00d6VE API",
    "sha": "6224157a615b18507bc0b117a3398c7a324cd3e5",
    "submodules": "",
-   "qual_dir": "qual/b002/libretro__libretro-lutro",
    "eligible": {
     "gcc-O0": 535,
     "gcc-O1": 517,
@@ -319,7 +308,6 @@
    "description": "LastPass command line interface tool",
    "sha": "949bad64e9db1bed89606cba78f32f6708cef3f0",
    "submodules": "",
-   "qual_dir": "qual/b002/lastpass__lastpass-cli",
    "eligible": {
     "gcc-O0": 390,
     "gcc-O1": 291,
@@ -347,7 +335,6 @@
    "description": "the c2 programming language",
    "sha": "1be5152164048442c6e6962698a1bac54f3afcaf",
    "submodules": "",
-   "qual_dir": "qual/b002/c2lang__c2compiler",
    "eligible": {
     "gcc-O0": 2349,
     "gcc-O1": 645,
@@ -375,7 +362,6 @@
    "description": "Run large AI models across your computers and servers. Powered by Colibri. Pure C.",
    "sha": "dc660b6637285d120bc0277a2d5cc2b0b5dbf41d",
    "submodules": "",
-   "qual_dir": "qual/b002/JustVugg__lumabri",
    "eligible": {
     "gcc-O0": 541,
     "gcc-O1": 387,
@@ -403,7 +389,6 @@
    "description": "Razer device library and tools",
    "sha": "877482f8ba2be341c219f0f3f04998913b3cf673",
    "submodules": "",
-   "qual_dir": "qual/b002/mbuesch__razer",
    "eligible": {
     "gcc-O0": 501,
     "gcc-O1": 368,
@@ -431,7 +416,6 @@
    "description": "Dictu is a high-level dynamically typed, multi-paradigm, interpreted programming language.",
    "sha": "3a34a90dc57bbe0caf814d1320b4b505bc427fa1",
    "submodules": "",
-   "qual_dir": "qual/b002/dictu-lang__Dictu",
    "eligible": {
     "gcc-O0": 770,
     "gcc-O1": 691,
@@ -459,23 +443,23 @@
    "description": "Atari Jaguar and Jaguar CD emulator for libretro/RetroArch \u2014 the actively maintained continuation of Virtual Jaguar. Embedded BIOS, save states, netplay link cable, RetroAchievements.",
    "sha": "4e27ea44da58978d7f02a68a4d6bf36553cc25a2",
    "submodules": "",
-   "qual_dir": "qual/b002/libretro__virtualjaguar-libretro",
    "eligible": {
-    "gcc-O0": 4575,
-    "gcc-O1": 4356,
-    "gcc-O2": 3905,
-    "gcc-O3": 3855,
-    "gcc-Os": 4125,
-    "gcc-O2-noinline": 4339,
-    "clang-O0": 4574,
-    "clang-O1": 4222,
-    "clang-O2": 4223,
-    "clang-O3": 4224,
-    "clang-Os": 4292,
-    "clang-O2-noinline": 4574
+    "gcc-O0": 2794,
+    "gcc-O1": 2571,
+    "gcc-O2": 2276,
+    "gcc-O3": 2034,
+    "gcc-Os": 2555,
+    "gcc-O2-noinline": 2773,
+    "clang-O0": 2794,
+    "clang-O1": 2387,
+    "clang-O2": 2389,
+    "clang-O3": 2389,
+    "clang-Os": 2471,
+    "clang-O2-noinline": 2790
    },
    "build_system": "make",
-   "binaries_gcc_O0": 1
+   "binaries_gcc_O0": 1,
+   "rerun": "low_pc filter (gc-sections tombstones); re-qualified at the same commit, run 44947838541"
   },
   {
    "slug": "libretro__libretro-fceumm",
@@ -487,7 +471,6 @@
    "description": "FCEUmm libretro port.",
    "sha": "77468e568d9fe9c48d684ca911f1a3fe7259fdf7",
    "submodules": "",
-   "qual_dir": "qual/b002/libretro__libretro-fceumm",
    "eligible": {
     "gcc-O0": 3897,
     "gcc-O1": 3408,
@@ -515,7 +498,6 @@
    "description": "Argus Sensor",
    "sha": "a5e3034e1130c60bdf9d81983eb27e05f81ec041",
    "submodules": "",
-   "qual_dir": "qual/b003/openargus__argus",
    "eligible": {
     "gcc-O0": 737,
     "gcc-O1": 615,
@@ -543,7 +525,6 @@
    "description": "libEBML2, libMatroska2, mkvalidator, mkclean and the specifications",
    "sha": "d69761114b79c1dfcb2226ceca84452835e745c3",
    "submodules": "",
-   "qual_dir": "qual/b003/Matroska-Org__foundation-source",
    "eligible": {
     "gcc-O0": 920,
     "gcc-O1": 870,
