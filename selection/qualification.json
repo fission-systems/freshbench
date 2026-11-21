@@ -1,0 +1,3915 @@
+{
+ "tried": 391,
+ "rows": [
+  {
+   "repo": "OpenDUNE/OpenDUNE",
+   "hash": "00032cb26ba56d2fc661098b274b231afd69f102c32947b763443f45f19fac87",
+   "stars": 1705,
+   "license": "GPL-2.0",
+   "result": "qualifies",
+   "sha": "ebea79aeba025be2fe9004570e9255044aacc0be",
+   "quick_gcc_O0": "943",
+   "quick_clang_O0": "942"
+  },
+  {
+   "repo": "arthur-liberman/hcfr-code",
+   "hash": "0006bfe9b56133cc9127527e13c895380ab128eeff215b76c2e34dd2d53e2b5f",
+   "stars": 92,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8ea621629aa1224ecacde49836d2675100111d0b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "LloydLabs/shellcode-plain-sight",
+   "hash": "001664dbc753edd450dba1a95119c1ae4a12ad5d7f43d3b833f2b4d37cc6195b",
+   "stars": 209,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ae4381b99ea8438148bf254d06f1e0335ef1ecfe",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "digital-sound-antiques/emu8950",
+   "hash": "00228fa35eb96bc506b1c8d993d250160bf89478d9759292e5f688ab35bc1b31",
+   "stars": 82,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bf9f0112e5bcbbbbd598212514601f9c992fb673",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "sysprog21/vwifi",
+   "hash": "0025afea88ef7aebf8e5323ecda9a2c50b9de749a246a3101e3bdcde26fe0059",
+   "stars": 248,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "11569dd8cbc70bf366d2208c075e373c01f806ac",
+   "quick_gcc_O0": "6",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Twotoz/C5VRX",
+   "hash": "0033044a374efa1d555f938392fe1c75bf3603c1d2a416bdf9e9af56bc617bf2",
+   "stars": 559,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8b60fef0f43f43a5305d941568c5975386867fc0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "buserror/simavr",
+   "hash": "003947ad77a6e7dc6e4e16a3b1ad56f9bdee40a8c57195e3c461deacaad492b6",
+   "stars": 1804,
+   "license": "GPL-3.0",
+   "result": "qualifies",
+   "sha": "13d4ed32433ad7a37bb757b7e0f7dbb5373396c0",
+   "quick_gcc_O0": "532",
+   "quick_clang_O0": "532"
+  },
+  {
+   "repo": "antirez/toyforth",
+   "hash": "003c7445f5ee3a99382bd269ab3651997c593d9e293e614e08bbeb4b4e41ee76",
+   "stars": 91,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f3b3a9868002ac3fdc14a229884654797b4fe246",
+   "quick_gcc_O0": "32",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RemiFM/USB-LiDAR-VL53L9",
+   "hash": "003d7dcab8431f9a15a398f559935c55c343f8f987d8195970a7c22e02a942fd",
+   "stars": 178,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "39a2dd4e7c7c7ae66775648af1e4133274bc5a8b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ssj71/infamousPlugins",
+   "hash": "003daf796fcdd9ebd5602019b97f57b8072fc98ea327a6831f4b7151e9091123",
+   "stars": 98,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8c0e11ecac624e014caba00e5cf4fb0ca2faa806",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cc-hpc-itwm/GPI-2",
+   "hash": "0043cd143e87bf439d4dcc870220015116f655d4fcc5fd9493121263984fa921",
+   "stars": 61,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5005181c3b6b5c18beba9b3377d439b7b0d2c897",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lyte2d/lyte2d",
+   "hash": "004447feeb48b64e246a851ef5fa4253278221bd6bd8f29e8640e975bf17e0f9",
+   "stars": 91,
+   "license": "MIT",
+   "result": "fails_O0_eligible",
+   "sha": "4a69adb543854855f765c31a029fe7e4681cf35b",
+   "quick_gcc_O0": "503",
+   "quick_clang_O0": "503"
+  },
+  {
+   "repo": "Lorenzooone/Pokemon-Gen3-to-Gen-X",
+   "hash": "00514c322cb8bbd4eb135e28f8aedeedfd4320204b9b9a36aac21bb8c6686742",
+   "stars": 150,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c1c1deeb01ae575dda1f4af249ce862f5e58d3e8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Netsukuku/netsukuku",
+   "hash": "0062f1a1b0142aeaff03d0660ed701e81bf18c096fb9cd3f514ea02b5af1433d",
+   "stars": 174,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "886a24aa580f97007150d784cfdda941eff20a3a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "OrangeLab/Hummer-Virtual-JS-Engine",
+   "hash": "0066dbcde513d4a7dff57ec0b6585987b021d1c071b4e0e632b505eb6e1d9b71",
+   "stars": 50,
+   "license": "Apache-2.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "microsoft/SymCrypt",
+   "hash": "0073b803f8dc1f4e12bc2a4f6a1816fab4967924d909190c4c6e3dc56a9fda3c",
+   "stars": 900,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "286762b7730e2b780678f5ab11fef2b1bad639e0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ripxorip/PWAR",
+   "hash": "0074dac4f33a4b2c728b311459d22128b4d9f95ca38baf47766db5e5dfcd9e66",
+   "stars": 128,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ed5b07c44c7635d006422d646d56368600504b3f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dis0rder0x00/obex",
+   "hash": "00758df611385cc4ff536fd7abebc5bbe9e1ae4b472d98625cf17de4345bbdfc",
+   "stars": 283,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8f91d4bb7d0d168f60f172c64d630330137252f0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "fbiego/esp32-lvgl-watchface",
+   "hash": "00783ca06b4bead953820fd0c639ebf1447b96474196e363085dd6a16a8ec761",
+   "stars": 75,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7ba3a93b1d2882c4e990927f13c8b0a2bdafbf61",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Thorlabs/Motion_Control_Examples",
+   "hash": "00829edbc25d89f51da3961ff1ec4130887b07a45e9e59ec015c742db69a5172",
+   "stars": 156,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7c753e89f15f4aa0ef775fc46c3ed36bef4946ae",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dlemstra/Magick.Native",
+   "hash": "0086afc859979c2adbeabc4150d0e7d8bd22837d746d6b4b6d1f0cb6e1567e62",
+   "stars": 55,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5116b40de4966867edefe56daf90912cfb86be36",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "endaaman/tym",
+   "hash": "009062ca163e849f1c365da5b204306291d194f80cb79fbb8ccc4c4bc4dbe0dd",
+   "stars": 198,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "df0702f066fb5582b9cee4a81e80701293b7d402",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "AlbanBedel/scummc",
+   "hash": "009b353a34b2311c78b723d73bb71b6c361f711c770c62c648c369e6773a59cd",
+   "stars": 152,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2f61ce0f7b5051e920876dc4b71935dc99f38fff",
+   "quick_gcc_O0": "1",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "rtissera/libchdr",
+   "hash": "009dfbe83ce0f379450571c0de92c00259ba6abefbd774a0bbd1762e44d7ceda",
+   "stars": 139,
+   "license": "BSD-3-Clause",
+   "result": "fails_O0_eligible",
+   "sha": "47d794151b2b64f6aba60304e6480f4f5a2bc24b",
+   "quick_gcc_O0": "4952",
+   "quick_clang_O0": "4844"
+  },
+  {
+   "repo": "KaiNorberg/PatchworkOS",
+   "hash": "009f8dbddf1ff6f789feb0af3a48cd2209c5c53071d456bcdf9e82ef9c0c5155",
+   "stars": 448,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dbbdc990701ea51015be2911d15019c2880746e3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SWI-Prolog/packages-swipy",
+   "hash": "00a07bda4993f6c66f9ca60e290823b207aea0002f05644e09a61e3ca6e3869a",
+   "stars": 54,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "96e02ac79f99013fa0414a52f967530907c79586",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "GaryOderNichts/recovery_menu",
+   "hash": "00a48492e794c5d2be34be84d1ef2abbbbba5a252c19290328dd70674826906a",
+   "stars": 187,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4f08fa4555dbb71b47a5e0edc77b14b87fd5b2ee",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "FreeSpacenav/spacenavd",
+   "hash": "00ae041b99b14d35fa923e7c75ec846917e03a59986a6831f8aaf65b4239b786",
+   "stars": 411,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "05cc67938e77ac7ad9c5b34267984d944cfd57dd",
+   "quick_gcc_O0": "143",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "donniebreve/touchcursor-linux",
+   "hash": "00b1e37c278cb1a2ffdfbb7da06448c0ba0e74e6673c2e8ecfbafeb6a6be7bba",
+   "stars": 142,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a45fd0adeab766f34b712153a5548d7510f6c243",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "couchbase/libcouchbase",
+   "hash": "00b48a6933f75373f69b91dc143b2c79e08c1c97d51321b2a39ed05fcb2a9fd7",
+   "stars": 181,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "39ea7eb10fcf532403dd88728c18950030b2711d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "raul-ortega/u360gts",
+   "hash": "00b512c32790538d5dfe559c3a8fb610e5026d7ca6db00190e392e2131b9d274",
+   "stars": 279,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7fd434daae6ef450994acf56d4698339bbb73910",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "meyskens/fahrplan",
+   "hash": "00b7f50de338db28f7c8c5c3a9363f4ac3fc53c97b86fafe301961f7f17f2326",
+   "stars": 50,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d7d926b4fa8333f3fb1e334a5910753028903460",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "aliyun/iotkit-embedded",
+   "hash": "00bd0e70de5afa66e2c5078edfd39c1d04b7d6c0382dae293089e6a2ae158734",
+   "stars": 508,
+   "license": "Apache-2.0",
+   "result": "qualifies",
+   "sha": "0d3beeedb31a39f4b54fb4c521e8ce63f23e817c",
+   "quick_gcc_O0": "1093",
+   "quick_clang_O0": "1093"
+  },
+  {
+   "repo": "django-88/NomadScanner",
+   "hash": "00c41e0c2f26818390fcf4ffc118d26592c7f781df30d7a4bb3338d62665e670",
+   "stars": 168,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8f425f3d89b662d16fabf36285a24f62c11c5c94",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "openziti/tlsuv",
+   "hash": "00cdbe6839daf8810da4f9380ad432c89a1ead9dae1c0e7306ee603cf9d97363",
+   "stars": 80,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6e13692d3bafbe7acd9bb5d22117aae0f576e165",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "icculus/mojozork",
+   "hash": "00d089613d23bc093cf495eb466aaae25b7939bdbb706f13c079a25b6c9137c9",
+   "stars": 148,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ff7e00742a00acec8e175ddefb97520fb270df2d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "clamwin/clamav",
+   "hash": "00d4ff74eee31dfdbd7536893ba8683398c22871f9a0d3e9bb7854f9f1e24e61",
+   "stars": 57,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ea3b6793a23e020e10c863e2332716a1e5a329f5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ondra-novak/gates_of_skeldal",
+   "hash": "00dbe2be596fe5a9e4144d7168e411629cb089c3184a8a69179eaa954bfe0e11",
+   "stars": 67,
+   "license": "MIT",
+   "result": "qualifies",
+   "sha": "f9e845228c6cf834954befaa2f37efe5584ecbad",
+   "quick_gcc_O0": "1485",
+   "quick_clang_O0": "1485"
+  },
+  {
+   "repo": "bitluni/Mdot2Matrix",
+   "hash": "00e511eec376f360e6ec8f90015ef13f601f937f0adcc67f10702eba56e308bd",
+   "stars": 104,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "41eafb7b33792c4fd7c685be171cdfdd535e761a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Mange/rofi-emoji",
+   "hash": "00fcab0b5a43a043e2e108da87471dfcb27c52b0412e2bda8701943c67e22db3",
+   "stars": 715,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "794fecfbb14a53016208793da527f69fbdff6ad5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "openSUSE/catatonit",
+   "hash": "010696f4a2441c54e7dd7347fa2bb448e3f9154ddd332e67051b2f3030bb1c24",
+   "stars": 286,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "00f6c0f296695daecc9ef0708c72e0a39a7cac76",
+   "quick_gcc_O0": "12",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zompiexx/wargames",
+   "hash": "010df2e7555dc2ae5eb8d441c10cba5377be5fe2fda10f53eb26deceddfda95c",
+   "stars": 133,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9848dbaf1cef65c60431ae8a94a517c6f5891899",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "roelj/inklingreader",
+   "hash": "010e6f960954d9e1bf4500a7488c830207d212d07ce3afe981920f1fa6718ac1",
+   "stars": 50,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "44026d82e494b8068ebd8be377516053487cc2c6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "baptisterajaut/radmin-vpn-linux",
+   "hash": "011ba97b3909d62c83157868d14258bdf096b394831317304d2292033afb2430",
+   "stars": 287,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0ba21e092835f262277143cdcc6fb4dabb20768d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "vstakhov/libucl",
+   "hash": "011f18ef689c2cb0b465351a01455980e83784555b91e37b68df465e83f0bbed",
+   "stars": 1745,
+   "license": "BSD-2-Clause",
+   "result": "fails_O0_eligible",
+   "sha": "963f4600a0f2910df16a2a2c8a485476814ade4c",
+   "quick_gcc_O0": "9570",
+   "quick_clang_O0": "8187"
+  },
+  {
+   "repo": "endurodave/C_StateMachine",
+   "hash": "012028b357be038096a5d43c9434f1d9109c257db9cb5ac141976d476869df0a",
+   "stars": 215,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "36ecbd71a06f6544d36ae8e56c392bc87215a362",
+   "quick_gcc_O0": "50",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "iCyberon/pg_hashids",
+   "hash": "0126c342920c61bd6999d530449b0bf18db3d63e710b40668b5a14e6fc99376c",
+   "stars": 324,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8c404dd86408f3a987a3ff6825ac7e42bd618b98",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RinCat/RTL88x2BU-Linux-Driver",
+   "hash": "013850d4c6f7812c33613e757f2b77a07e1251d128fa9695c528bcf8ddfc70e6",
+   "stars": 1556,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "465ae7cb522a382adc85ea5c31f228af8d172148",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dosemu2/dosemu2",
+   "hash": "013b0de16fc7ab7315901b29a6053edc74fc64dc6c4b74fb6ae7ddf35cc6b291",
+   "stars": 749,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7e7f3da9596ce8035274843f61dc6c71e9733d3a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "GaryOderNichts/WiiUIdent",
+   "hash": "01410057c9704684547551dbbaa01094adae6a863ab657f0413c5d8ae2caa85f",
+   "stars": 142,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b39f7db86ff8bd588fbe40c44ef2a96136038fd5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cc65/cc65",
+   "hash": "0148948779888702e4345922af23f57f885dc19a080995f912140f2db8ba9d84",
+   "stars": 2714,
+   "license": "Zlib",
+   "result": "qualifies",
+   "sha": "eebf54af545f4ae52f8489a2f6d4d5f93e7942d2",
+   "quick_gcc_O0": "5700",
+   "quick_clang_O0": "5699"
+  },
+  {
+   "repo": "Tiiffi/mcrcon",
+   "hash": "014a1dcb18f9e576b8d554153cfea7c27f9df3603619ac1205cba3eb704714c8",
+   "stars": 1105,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b5951e96349ec2ecf72b468459fc503a7067ba1f",
+   "quick_gcc_O0": "19",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kakahuote1/TinyPKI",
+   "hash": "014aae0ca3d9a2122a7ecd8f7d0be31dfff82e1ab3a622e3cab182c2551707a8",
+   "stars": 264,
+   "license": "Apache-2.0",
+   "result": "qualifies",
+   "sha": "764a63ad82e13ac5929dcd566de72c5681e83b43",
+   "quick_gcc_O0": "5033",
+   "quick_clang_O0": "5029"
+  },
+  {
+   "repo": "yasukata/zpoline",
+   "hash": "015529d0a2c22e347312cd0e71917d200649757e8a5dbdaf5a396d6d0be62b2a",
+   "stars": 648,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "56aec879727af984ed7ebc28067f4f9c7cb60bdf",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "KirillKryukov/naf",
+   "hash": "015b184221e097cfea9cd076b44039d63439541f7bf5a25b25e81d63b5b12ba8",
+   "stars": 64,
+   "license": "Zlib",
+   "result": "fails_O0_eligible",
+   "sha": "2c8684c17de96f0b4da3b43393c230d3a39d0b67",
+   "quick_gcc_O0": "1423",
+   "quick_clang_O0": "1285"
+  },
+  {
+   "repo": "bootleg/ret-sync",
+   "hash": "015bb5c01d1213403d0f3e48383ab4dd016aa6b4b3180edb7fa1dc2d4be560e5",
+   "stars": 2416,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "60e7b0fd1bea7bad44da7688801b2bd12fb02040",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Ysurac/openmptcprouter-feeds",
+   "hash": "015bb8d93ee48056c4e5d8abbb7bea080e19852dc5964b98349f317dad7ed86e",
+   "stars": 131,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "861f42a1a2ad9933f9482dde008cd9f5fcee6bbd",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jedypod/open-display-transform",
+   "hash": "0170919308c6ce15c1b77d3d82aca39abe052948a22e3da6a28e7b42f4f7e94e",
+   "stars": 548,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "af683323e2a8a63501f02c0a724ec538e3228ad0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "tukidev-lgtm/Tera-recomp",
+   "hash": "018025b21a4a597b622b210b199b67095cc9982b5a25b7e5f201ddfd0801aa5d",
+   "stars": 84,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3a3ea7518db7bc5346902510d44ec82b68f6e336",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SeraphYuki/zimedit",
+   "hash": "0188563313e6a502a798576e0404b9a0754d707c8946a0babe7e023889a402d5",
+   "stars": 56,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2732bada29c3b95934ef0a90eca5e9f577c0aa93",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "incursi0n/ClipboardStealBOF",
+   "hash": "0189e9535fc049291793b0a7d6ab1be780474fe5c45b7635fcc4208a51a447dc",
+   "stars": 117,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "91f72e61012348d8d3dad2130b43a70172aa61d1",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "nirenjan/libx52",
+   "hash": "018a8fdfeaec8ee3b6b15b416d2ab06236035f092b39dfe92136df6d8560cd75",
+   "stars": 135,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4528495f61ca6f81bd2e233e8f66c3dab9ae9fe6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "MrFrenik/gs_examples",
+   "hash": "018bab0f9d8fcdc7b8fbc410f099a6c352aa295a08c89cb98f3db85067a2628e",
+   "stars": 68,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5196615813bb6494d4fdda4700a98aa04f5355f9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "nathants/mighty-snitch",
+   "hash": "0190c8a0b879f65843d332945eef5755ca36788970894c23b08133b916bb0afe",
+   "stars": 84,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ddef9ce0389ec157057fa4353252ad4a58b8dec0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "skarnet/s6",
+   "hash": "01941d4377b873572e7d1339804704605c97226c65b2c9da304b029a822068a2",
+   "stars": 994,
+   "license": "ISC",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c7c24531c294e2573e79380de8c2d21849cb39ad",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "fancycode/pylzma",
+   "hash": "01a0b3f66ccaa10073fcb4e1f37abaaf73f1b932374469ee497cc7b2061ddc20",
+   "stars": 242,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ab40409ff6239cacfda92369ffe616d561e7a6b8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "charlesvestal/fm1-loom",
+   "hash": "01a0ccb21ecb0acfe6e06950588b92dbe216a29000b4441bea4db0c7f4482f32",
+   "stars": 88,
+   "license": "MPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e82c9cf6575fa05f5a20847e3b732690f26614a5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Maldev-Academy/ElectronVulnScanner",
+   "hash": "01a8e1d4ea3495acb231bd47040547e99144e62899380feff278894f054277b0",
+   "stars": 169,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "42137d8e1fbffb846a08671f4613a03e6a86b046",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mozilla/nestegg",
+   "hash": "01b237aa408bb59a494b43ce1360bd29c65fb0cf72f33b8b3f6787252d970dba",
+   "stars": 52,
+   "license": "ISC",
+   "result": "fails_quick_gcc-O0",
+   "sha": "767aab25013acefbdcc6d68a2a7a2c9081303e3f",
+   "quick_gcc_O0": "115",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ZiZc3/LiveShell",
+   "hash": "01cfab9997f29edd5f578f149e5087490c098f9f7ef4631494a9866951384785",
+   "stars": 223,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0cf248ea5a4d92026ebbbdbe0963116473a67791",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jaredgei/wow-forever-android",
+   "hash": "01d0dc499f2923997e07461035fc13935660bb6d9d1010093a7777389c3af35b",
+   "stars": 302,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "52e95c3ffc0e2b72221ddd642a3e62b3b65257d9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Xinyuan-LilyGO/T-Dongle-S3",
+   "hash": "01e1c0aa02d22ab2df50a52298553d738d7d2db49de48fe925f86fe94d2858d7",
+   "stars": 436,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "03d51691e70271aeb988d0d1d930650595176736",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lcp0578/book-note",
+   "hash": "01e295eca9d785c7c3fdd85de8f70b6367f68ffa401d28e11e8a1ab22fc33ca3",
+   "stars": 214,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dee271b42a11eccb1112a8a5b13c440a366c2af6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cqu20160901/yolov11_dfl_rknn_Cplusplus",
+   "hash": "01e9eb9fb74edf6fa2abcff5f5954eaaba8fa4226c4fd31d08f1b81c4d6d64d7",
+   "stars": 87,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e698a3820cdb91ec952ff37c71140c2ad804cfbc",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "EarthScope/mseed2sac",
+   "hash": "01ea7214c340e962f4f0dd5a95ef1f176022518543f75876570d1177327b5a0c",
+   "stars": 53,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "934ad74f6edc3ab132aafacea224199819712421",
+   "quick_gcc_O0": "178",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "timmbogner/Farm-Data-Relay-System",
+   "hash": "01ead8d2b7f99250673ce740d7d7b13f85d3d6d572be6c5a56926d5d2a8cdcda",
+   "stars": 631,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "70f5ede9450d239740552226c553b102ed0a7e2d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zecruel/CadZinho",
+   "hash": "01ef3bde1167d2361fc851b709b8641df8c648e02f8c68f5c0d80b13a87c4636",
+   "stars": 230,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7d95da3826963f38028943208e04764f4d476468",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "apple-oss-distributions/libdispatch",
+   "hash": "01f067edcb3f29d5501b5152953e26732a21cf729de4ecf3e5ff092348e5565c",
+   "stars": 151,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2361ffb78a76f7ee488cd052eb0bc5c767118bf9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "b0hemia/diskOS",
+   "hash": "01f806b3babcfc62097beb00f352d91c78b950933328852339ade8dce8171135",
+   "stars": 112,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "30d36f99d70480d5211bda49fab3c497d93fc21e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mickjc750/str",
+   "hash": "0207228f335f3acc6809bb17db42812297c97e501df65399f6c9d0a0b48b0c14",
+   "stars": 262,
+   "license": "Unlicense",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e6b7b61e3216e654909012aef086e82b7528d51d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "baylej/tmx",
+   "hash": "020924915534995723db84425a82da9413adcdaacf011dd5c1f9725e4cc4fa30",
+   "stars": 287,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b671187d51a5616b80774c94650a360ce48a872f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "hirrolot/datatype99",
+   "hash": "021ac3f003b47d037ce5feac02aa30bc7f581e5555d1a3fb608c2a41c00f3003",
+   "stars": 1517,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e24fc6a8baadc82a99708829a38aeba027bbcdd9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ThomasHabets/arping",
+   "hash": "021fff2498634b74fc8321f60061efd121b0fff2990ecd66e3910ed69b24a5e7",
+   "stars": 445,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dade00cbb51e585a35815c606203011b919af63b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ireader/avcodec",
+   "hash": "0220fbb67a3dd1c2c01dd09d310afbe535156ce840f225ef85e1a551517d546e",
+   "stars": 194,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f5637e6dfec3291f5bd697c092da91586c4faba8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "STMicroelectronics/STMems_Standard_C_drivers",
+   "hash": "022b53645862bb6f6a9e9e4d18932b00b49a4f37ada7ecbf0efe2d1a3e039ec6",
+   "stars": 887,
+   "license": "BSD-3-Clause",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "waveshareteam/Waveshare-ESP32-components",
+   "hash": "022e64717ed0796ffab1472b0b4108ed11d41a3f3384e3ab3d46d0b78b1ad50b",
+   "stars": 83,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "23a6012d5e87d27399cf90fb851cab3689e29159",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "icedman/nvim-textmate",
+   "hash": "0230fb5dffb0313d29f10dc2c919261c1366c7a316cc31181ef70d667a3df97d",
+   "stars": 94,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "30e118056684dd3ff9d76830e0db5b5ab22e4b29",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "tbeu/matio",
+   "hash": "0235ea031e77e168949eb59bc13eecc22e7c9924a2140e7f7d9be9c7b7b80c89",
+   "stars": 403,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "63af885f0900086147737aa4c4a8ef79132b7c89",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kbembedded/Flipper-Zero-Game-Boy-Pokemon-Trading",
+   "hash": "0237c33af23e9e01818cb962f983032a392358dfaeed8e30d7cda8b5e1a506e9",
+   "stars": 390,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e12ce8ac23c9a7a6a402a8e8b6128fcec6134115",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "whdd/whdd",
+   "hash": "0248ed5032da3e0ad85f218968580dc8e629049c261a282c7ecc5fad8f40dccc",
+   "stars": 230,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f8dec1e07b30c67464b32f3ec690f6ad34af8726",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SciresM/boot9strap",
+   "hash": "024ed0841f257a44e15845cc191984d28343666ed07f135b8fadf98e3b016781",
+   "stars": 1245,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "934e10092a9caab0dbc83038449878862b7fc7f7",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bbidulock/adwm",
+   "hash": "025391328335196d55ff859583bad8ebc903b6f79f0aeb04e729e89ca9c0c02f",
+   "stars": 67,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "93d2370b873c8489d129383a5e5f807a055b2693",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Core-2-Extreme/Battery_mark_for_3DS",
+   "hash": "0261e1c659070dc924e1661aed5dc7e72f73c9838e333090faddcbd86d44bdc4",
+   "stars": 80,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e9d5c84d18113e3e19730937e6e6085eb0326226",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Ossianaa/node-libcurl",
+   "hash": "02644ac88613f6de5f7f072abb73d9f338bb449bc49a4b7d92ccc863393e019c",
+   "stars": 80,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b4919320179fed33d9458edb895969689c75a02b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "skeeto/enchive",
+   "hash": "0264b8b525d5784f30ce604e6ddeea420798efd8a6aa902e0801d1e7031932ad",
+   "stars": 673,
+   "license": "Unlicense",
+   "result": "fails_quick_gcc-O0",
+   "sha": "59e6ae9f9b11e4a919aa316c2cb6aaadb44f311a",
+   "quick_gcc_O0": "87",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ColinIanKing/forkstat",
+   "hash": "026e7a213218f2d46542786420e817a21a6f8cbc93fa49a7feaf42df92b180d0",
+   "stars": 117,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4efddd6a9c31a942154abe3d6aa613ef8b3273a8",
+   "quick_gcc_O0": "42",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "LNH-team/pico-launcher",
+   "hash": "0272e51642788d460ee8344477969667cc77a511398df183b4c651f90d8c9beb",
+   "stars": 466,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dc64a34cabe26a9ac12d5592ada2d729cdfc6328",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "paolostivanin/OTPClient",
+   "hash": "0277dd04e57660b4938e9a0f4d32dbf71be307b46e565a751ef5fa2c68c24087",
+   "stars": 560,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f296a42739cf8066dbe0abe6b1bc85e455350de5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "okalachev/mavlink-arduino",
+   "hash": "0278a28b0381afc01b87ba40f76bee8a12fc8ee6b65dae6d1255db64fb877e9f",
+   "stars": 61,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6570cb5e191b867a5f50e54d02c66856dea9f470",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "profi200/open_agb_firm",
+   "hash": "027b7619b8559cff21bd4ebf3a5c897a8b0c3f59b116abe13680f1513939b322",
+   "stars": 1343,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "401c3dff900f658d3edf77ababcfaf5dca54a0a8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "tfonteyn/Sshd4a",
+   "hash": "0286fbb8ac5bec9856b74c9609301b8d5cefdbf9ca85ab094ba1f097f12ba947",
+   "stars": 159,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bb2d4ad2757ade43c4d11d18fa30c4e8aa415b82",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "termbox/termbox2",
+   "hash": "028d8377a246b9f318d799fc97f7cfc590e950a4e7f97111c64d45d82fa8cb23",
+   "stars": 792,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "41ac0b673331069a036c10d4a2fd02a2552a9f04",
+   "quick_gcc_O0": "201",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cardid/webcard",
+   "hash": "029aa35e7db4bcf568aecf86bad064c16c060cb648b118a13aeecfb0d3c4f61c",
+   "stars": 76,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fe9c9b88efd81640a085bc04cef52b13a43d358f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "microsoft/cpp_client_telemetry",
+   "hash": "029afe7a559fd6b9099d344bb83b95202692caf6b2362948d0d54b33b18ca876",
+   "stars": 104,
+   "license": "Apache-2.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RainbowDynamix/GhostKatz",
+   "hash": "02a8940bcc64a35ba612b6157f8f4e432593025a99b2b11a3ecf6ad6d9887c9b",
+   "stars": 346,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "abaaed13078f9c452cc1348a0bf85323d50afd8e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "vimpostor/copycat",
+   "hash": "02c6cc4249357deba2fda19c989c0efca7cffc70aab882c1456fcea883dccf96",
+   "stars": 104,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3aaf09b483c3b872ececb473c596df7a576c3b78",
+   "quick_gcc_O0": "26",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "HanminYIN/VibeStick-for-Mac",
+   "hash": "02ce04a46b89f63ae178bccb951372554ab003ada38583d9398c74ac2f87ac05",
+   "stars": 102,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7fdc0401e6ecf2d9a6c23ca432d1c0d7d0cabce2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "krgamestudios/Toy",
+   "hash": "02d58978cfcbb226da30bdf1bb50b5cb7897821698dd2ec0ab00c37cb1c84273",
+   "stars": 265,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5eb9bd6ae76ab4cb9625b52bed09c7cd4ce94024",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "temper-studios/graph-file-format",
+   "hash": "02df3ed5821b152585f924b18381876659c6ab97dbd5098c8e7e0a9c0af6e147",
+   "stars": 108,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a5e17b3645bbe9db16b70f2fb7f764ff32e4cd15",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "daniellerch/hstego",
+   "hash": "02e2a863064281b2384f17db3f96ad251a93f708cd543638fa0a1177bd66233a",
+   "stars": 57,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bf71f6e0d7faaa632ad8a988c0393e94bfd13b2a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "google/iconvg",
+   "hash": "02e2faeafc2c7818bab09f3ea1917c035ff0c727e98c7f000f218f50d5ef930c",
+   "stars": 695,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "21d2ef89d3b45aa52d341a2e957b099b0a76bb03",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lammertb/libfins",
+   "hash": "02e37783dfd91c403a902a9959cf953f7b485ec1bb637a31f572fee9dc88432d",
+   "stars": 134,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "173248e64275185f521d870cf2f89421885464d8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "pham-tuan-binh/watcher-mochi",
+   "hash": "02fb9bb7050b44b657f41c0eb85a19394d5c05c89bb1b0eb8405558a22bfeee2",
+   "stars": 51,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f01aac8e75261076a1b8c09a25c0b78216e5133e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "yunwei37/Eunomia",
+   "hash": "0301c228b9ab57e334c54761eeecd8dd2e14e5edfe6ba0be54c9ea3155ae022e",
+   "stars": 69,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "de6524d20922e9f1d1f1275b0d64ce3930fada1b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jgaeddert/liquid-dsp",
+   "hash": "030ac63ca6b77db59b6a64be3f9a9094e7693ab9e8ebc93b5df5b815cb1118c1",
+   "stars": 2336,
+   "license": "MIT",
+   "result": "qualifies",
+   "sha": "10041f70cebbe3b97887e75bb41e48b73dda1b23",
+   "quick_gcc_O0": "8240",
+   "quick_clang_O0": "8240"
+  },
+  {
+   "repo": "NVIDIA/pyxis",
+   "hash": "030f8fe7a77671d33c2b20b7a5f2769c075838aa8efb05df8b9f40e287c16cf1",
+   "stars": 478,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "107519944221822ea1dace4db8e7234b2eaa4cd5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "matreshka15/USV-STM32F103-part",
+   "hash": "0311ac34b1b7a4d548ef24844c76cf3d7b6f219a066ef727ef257a970af3ffc9",
+   "stars": 99,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "81945e9f31f8a3cb7729397eb4684306bd0560a9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "h2zero/n-able-Arduino",
+   "hash": "03207dff45a1a9cd505196a85e83ed4d31f0f48fcb3eb47e40411a0bd4f27864",
+   "stars": 60,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fa888f0b6dd3036fa2f415917bcdb8c209471388",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mourix/VCThunder",
+   "hash": "0330a7b04b42eb96715bce58284e06951f6383f90597c58541f743cea89c90f5",
+   "stars": 73,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e56289deda982405eb4f50c420802f50698b779e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "milgra/sov",
+   "hash": "0348c4c32a77ae6a40fd33872ab4a43a32b5b40d503550e778ad673cd7c0e825",
+   "stars": 379,
+   "license": "GPL-3.0",
+   "result": "qualifies",
+   "sha": "19809ae535f8417098020f86ceefa25dbd3c5a90",
+   "quick_gcc_O0": "658",
+   "quick_clang_O0": "658"
+  },
+  {
+   "repo": "sahib/rmlint",
+   "hash": "03524d2508b0fcae878d4c0bb78f7001e76dafcb8007c12755ec03c2e7c26e4f",
+   "stars": 2480,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fd20430ef830eab25b5726df8498a04d9a4b804f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "simondlevy/BreezySLAM",
+   "hash": "03595f2c30e024587e53ddf8ead8a66630d7d3ce6aa016cf90fcdde2ab100afc",
+   "stars": 818,
+   "license": "LGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "1170285cd42a88300eddd275fc3df36e642e3a2e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "AYM1607/zmk-driver-azoteq-iqs5xx",
+   "hash": "035cac3ece077162a9cf1b034d358c985fc00e82a9982703ff02d9dac44f8b4c",
+   "stars": 77,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "27321f0232b50f0af31eb27ff97d539933467ea4",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "antirez/iris.c",
+   "hash": "035cf81a1498697dfd3875975b5933e103433239007bf05ddd1da21215b11cd4",
+   "stars": 2083,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ff97831282ecc6691710828604165da84b0616f5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "moosefs/moosefs",
+   "hash": "037001c0d0f0051c3f8af92499168fc78f7e3fa4df2b18010865b9c4746a17f0",
+   "stars": 2011,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ac106b2ec8661ff00def725d042cb67d3ca2184d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "OpenFOAM/ThirdParty-dev",
+   "hash": "03753c4b21811cca5fdbd4bb9b23e4ade1f147051f99769cfe298e3e4c0a67c7",
+   "stars": 59,
+   "license": "LGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4b11545ee30fe1625e39b23df8b2fe916a42a198",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "hackerhouse-opensource/exploits",
+   "hash": "03759a839a4a3b0d4c068ee4063f97e42391ff677879ea33b85b7dde81a3a3a0",
+   "stars": 468,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "268e08341f5fe71b41873aefceda205efc74f9a7",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Barenboim/json-parser",
+   "hash": "03761386381f2647e35b1f66e71347493c9c40ba256683f661d1365d84dd2f89",
+   "stars": 700,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bd4415e2a877ab37cf23cf5366facee1992916c9",
+   "quick_gcc_O0": "124",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Velocidex/WinPmem",
+   "hash": "0385f264dfb769e9883c5896250701c11cfe53190be4e51d7d1358700a829d0a",
+   "stars": 1080,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7ffd418cf78d0819fdd77bd34d5c4799acbc7ab4",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "deftio/C-and-Cpp-Tests-with-CI-CD-Example",
+   "hash": "038aa212750dbb549d271a1c3f7a9433e6fd4d7f9a23bf6acee5101d03ff1be3",
+   "stars": 53,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "1221d863ab9aa7831227a8db676261891303aa45",
+   "quick_gcc_O0": "16",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "polhenarejos/pico-keys-sdk",
+   "hash": "038ee31164b7ef6aa585d683c4e5e4dd9854415b82ab9105200c764d71ef7207",
+   "stars": 64,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "325c0a9ab7fd7d5db99da478293208c992b3440a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "minosproject/minos",
+   "hash": "03934dbd83362ecfc02544e4ee6097407310a22d54f0ee2fc545879659a65604",
+   "stars": 267,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9e3ad3573c73596ccf41e7e5b99ad43268d3ecac",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ArcaneNibble/i-cant-believe-its-not-webusb",
+   "hash": "0395622c0b917ddc447bd96f331c61aee3f7b5eede33a8e63a6ee61dfda416b0",
+   "stars": 254,
+   "license": "0BSD",
+   "result": "fails_quick_gcc-O0",
+   "sha": "91ed16e98a816a13e8a5e7e2c0d455389a21d242",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SpartanJ/SOIL2",
+   "hash": "039d21a8e0ba610fe4544c2ec9d468eadd4c3f759fc413f3a371adcb17714fb6",
+   "stars": 490,
+   "license": "MIT-0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "18c62dfe47ef706f74f1b9791e0155d7debc245d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "chrisgleissner/c64stream",
+   "hash": "03a7ec26e4d4ba331c217e2a08096f1399b97506d023e2de3df7c132c403cafa",
+   "stars": 80,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2efd8707c7412cbd29874505f84a8c49c0d07e20",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "luc-github/ESP3D-TFT",
+   "hash": "03a99571ee5fd0683850c2e15ffa308f2b05c68ecc78779dee0db8130c820ab7",
+   "stars": 54,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "59e57d0d3be0b8e3c00b9a6d3cef0f01f5fa5edb",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "grisha/mod_python",
+   "hash": "03b2a84b36584a4674d2d11924364f2dc193b3292aa1d6d5aff621411d708353",
+   "stars": 311,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a638e01b7eb50d0cf127ac14c3e1b64347ee682e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "KNSoft/AlleyWind",
+   "hash": "03b78753e2a39df637eaee7682846cfea56ca9f89019e0cc39099f50d9dcf18f",
+   "stars": 56,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "89063b884d79cb1dfd2d5d270bb3b5ea1a77e96b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Ryuk17/SpeechAlgorithms",
+   "hash": "03c079545429ce7a7a3faa95aaf2eb5c291410b38ef4e1497bb7765c90c8c93f",
+   "stars": 878,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f99997581a93e3f574dc55cc375fe58c666139b5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bmc0/dsp",
+   "hash": "03c6bff8a5230ebb53cd0feb8027ae18078962a8daf6e638a4e7b8cef606aa6e",
+   "stars": 263,
+   "license": "ISC",
+   "result": "qualifies",
+   "sha": "2e7eac120f21484f76db478d62eaed02489a6d56",
+   "quick_gcc_O0": "672",
+   "quick_clang_O0": "672"
+  },
+  {
+   "repo": "DrMcCoy/dmc_unrar",
+   "hash": "03c9dfad2f3f45efcdeef0c5a7ab77952432cfe199c891a06aeea47a4878eb2d",
+   "stars": 71,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ab8bbddfb84f4b5853c8184be84a8c2565f4a4bb",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Seeed-Studio/OSHW-XIAO-Series",
+   "hash": "03cb7a1877bcb84104df57329dfc1dc3c5f76287ca013dfb5c909dd4d2c2926d",
+   "stars": 99,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a34abbf914a42e713d4c5b722e2d411ee53c8a17",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cmc-labo/tinyos-rtos",
+   "hash": "03de947c0cf8934c92bca772685f80d79d52ff4b69d647fc6640f4cf9cbafd3b",
+   "stars": 236,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fd397f64e65083eb8423fd316915dba7cb626ff5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "johanberntsson/PunyInform",
+   "hash": "03e2abe93750e379f4729549c5dc9dc9cc1eebdddfa2320216d0bc77b151ddfb",
+   "stars": 203,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9c449048c9675d81853ee444546d4cf743988f71",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "guimaraf/3sxw",
+   "hash": "03ec0c035b8bfb93e9ceb688c351980c2d399bd0642530a10e0139c4651411ea",
+   "stars": 71,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c6b8e98b00ef03796008a4130039819db568115b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "warrenm/GLTFKit2",
+   "hash": "03ef29694f6691a61ad031ba8afd37d16ee08eaca483fd6ae0b7fe451dda288c",
+   "stars": 235,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "be89e833aa85bde67bd27d4ecff3b7816c58ce56",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "gwenzek/cudaz",
+   "hash": "03f2003b0d26d8fa60bd8e3bd4b774bc1c65e302489647439a59b4b772f34c06",
+   "stars": 86,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bb187a1892d8e0e155eabfdac6afd42a3d225765",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "clarkwang/sexpect",
+   "hash": "03f7263d90841f85ecb342a16d4a950ffff0c4e5de36de13c63974c28fea9237",
+   "stars": 146,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "108b189f34d627b3fb14574b26f71664fdf698de",
+   "quick_gcc_O0": "1",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SuperCatElvis/UntilDawn_PC",
+   "hash": "0402132f74d312bbe5c951c1cfd6b98d65ac334bd9dd5272728b52f1c82a1e08",
+   "stars": 80,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9660fdcab83448aa971644b33aff95a2310bab41",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ThorstenBr/A2DVI-Firmware",
+   "hash": "04056d844a3d7f5c62c9f5bd8ff87dd7b5a950125dea6b7a985b6663b0a3b1be",
+   "stars": 81,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c37246b3a11ab4e30fc018b3fc3f87354a26a53f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "anggorodhanumurti/themaphack",
+   "hash": "04226e856f9e5a7c0cc5ee7203fc4d54ebd948601f395c5bb53c079f60049ae0",
+   "stars": 183,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "52d64484ac89b20fd8807a5c816d14f9ffe1e9e9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "pramsey/pgsql-http",
+   "hash": "0422811272c8bea258c676edd08759467f255ccccf5c614997c34909b6e2525d",
+   "stars": 1606,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ee52345b5929f63a3871685f85974f34b5fa8508",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "rozhuk-im/msd_lite",
+   "hash": "0428f3b3d38888b259a071eb68d8c5a175e79f2b1ad30fb479215a2b2dd430b2",
+   "stars": 371,
+   "license": "BSD-2-Clause",
+   "result": "fails_O0_eligible",
+   "sha": "fa68e131343fb58c67ad77b2d26f2cb7c49a2c95",
+   "quick_gcc_O0": "439",
+   "quick_clang_O0": "439"
+  },
+  {
+   "repo": "shaovoon/video_encoder_for_ogl_dx",
+   "hash": "042afaf60a10f5b9ed10e457c196590b6780987c5cd39748447a9e9451c19e62",
+   "stars": 63,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "acd3f623b76daf4751ae15c69f56f66266deaac5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "quantumaikr/quant.cpp",
+   "hash": "042b014787858a355f4ff96c38dc9d36e02d185a399d6c107c52ef569f444bd2",
+   "stars": 406,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9eed2dc5823a1b5bec269632d0f2237aee85f11f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "andrisgauracs/needle-2-esp32",
+   "hash": "042d37b9b7fae98c4bf1ebf321ca2ec743104e096bde2932bb0e103af9ab3a08",
+   "stars": 213,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "61cafad7014a5664bb3ffd5f0c457ce5aa6598ae",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "shady-gang/shady",
+   "hash": "0434a08606c0b395a8d3874f37a76322ecb6712bad05e7d42dc587b8980da822",
+   "stars": 337,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dd2787a7ebf78f8b51192bb23322057cfa8636c3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ximion/appstream",
+   "hash": "04444c871c626cdd7d7703685e7f7c38878e1934eb4b104eba94605fb5e72bf0",
+   "stars": 284,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ea656bafc039d6f8ccbb9fc39d5362a99847541e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Niko11111/SpoolmanScale",
+   "hash": "0448f4de93527dee1a58274ae4a0cfb2f99722a558bfabecc6468a3c1c559729",
+   "stars": 162,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "83b91986043a51b7663e653ad410fb39909839b1",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "armink/CmBacktrace",
+   "hash": "04511b07e512ed4ca9ea1ab64dc0157e2a28028085f52bca3f97d16965dcb8e2",
+   "stars": 2202,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3be35d99673805f258de5c2f156fac94eb896da4",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Kode/Kha",
+   "hash": "0454dcf736fa660c28267e51e4d1f46354cfbe13cee07049aef6fc6a40df09a7",
+   "stars": 1643,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d5c15d9f62915f94a99e30e546759e8e634f586f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "fumiama/CMoe-Counter",
+   "hash": "04814b8e85ba2bb1e76b953a01b7977924b48ce550c1b2cf2d2c407996a90c3d",
+   "stars": 71,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6dd4cbb1200f8fef5d6bea8362549a930c57e34f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "TheTorjanCaptain/CVE-2025-49144_PoC",
+   "hash": "0481d510c921f81971936ceb71886ea587de767036b6a9a23c8b00a02e63aafc",
+   "stars": 88,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "783412082b82d2b0873e8b33f73218386d86477c",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "containers/conmon",
+   "hash": "048364a9fa896bd087d0dc72bf9ad3814ca6c426ffd87fc0460bd2f722f7396d",
+   "stars": 510,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d37a16cc6801e4f8d06c1a1f476c2e8a11a66d2e",
+   "quick_gcc_O0": "138",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "HollowMan6/TinyML-ESP32",
+   "hash": "0483729cff0f8c05e29118d20792292fa43efaf60a97aa031cdb3eb84d3558bb",
+   "stars": 219,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2a11eb6a8406e721145e0d81bbae3ae84dd5a6e3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cwilsn/react-native-network-info",
+   "hash": "04889f0a2fc3df41cbf9695062997474d83ddf8fd448b7f4c9752f2b648639e4",
+   "stars": 370,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7a533073e0d807cf6dd0aa57c42811a8a1a0d044",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "veithen/knetstat",
+   "hash": "048cc6f60225c7481656ba701e4fc73a443c88396303360b04a00b8fdce5a92b",
+   "stars": 201,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5f56aa7043bf299471393ede9aa842198128f059",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "VendelinSlezak/BleskOS",
+   "hash": "048edbcf8bf037852397e174b641e79929dff301fc300bf38e56a4f9b1688086",
+   "stars": 191,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bfe7f117f91cfbabc2506bb34b318427322a1d36",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "NicholasDominici/super-mario-odyssey-ios",
+   "hash": "04a0db2fd92506b87edfa36c277c0b634526d1e6141b960033ae08af4b169b5e",
+   "stars": 53,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f50c81f1d2a0ef49eb9a7cac3e1f2c34d8dcdbb5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "amelielabs/amelie",
+   "hash": "04a119e761737b59f3fd61cddcdf535670dd37c81ea019fe1531f5c610cb80b0",
+   "stars": 121,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d725d2061e3f7a914a83c701a029a9b2dc2f51e1",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "amitdev/lru-dict",
+   "hash": "04b1547ed1bb093b0e1de49d3babc1b102e774ca805e4a2fee4e7a48a4befc97",
+   "stars": 283,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6b2ee068bd6465b8e9c5c53b7fcfc948888f41c0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mate-desktop/mate-applets",
+   "hash": "04c77b01854486498652e48080bc0d79779f3e58855b3d3c2bb994bc252a00ff",
+   "stars": 83,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "57488bf4a55a90abbb6710e159491f2f550ae08b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bgp/bgpq4",
+   "hash": "04c8d62fb27e8f926acd648ffe0cccdebe045d683a4194bac6db6fc4100ec92c",
+   "stars": 421,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4eba2c33be1a3a4e8ab2c889c1d1f73a5a0616f0",
+   "quick_gcc_O0": "165",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "decrazyo/pico-tpm-spider",
+   "hash": "04d6da865d8ad5802cb140faf587c4ffd2f75fa4b23e67af56abf5a51f4342a0",
+   "stars": 94,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "53494c1cdbb16232591a74acf27281280c8a1217",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mpimd-csc/flexiblas",
+   "hash": "04e31dfaf6cc6379b2de06053690973ce86b97e6a3533ac006f50996fe6b7285",
+   "stars": 63,
+   "license": "LGPL-3.0",
+   "result": "job_timeout",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RudjiGames/rprof",
+   "hash": "04e6153e3e1e6d3b246448f0a8b4084fc372042857f508fe49594496167b9d7f",
+   "stars": 104,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ca8cc830557cd3c0e83b48e5ce9ebdbc9e328ddd",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "j-kaltes/Juggluco",
+   "hash": "04fef4e2ab919c5a8b7a6a13c637a43f0f2d06ad59ed5a5cc4a9527ade2ea35d",
+   "stars": 485,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "81f59687334771a44a6e348994f95f0065a671b5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "AI4Engr/MADOLA",
+   "hash": "0501f7cee1e4a9732591bcd96bbf958a763173d5c703e70236da739e81864079",
+   "stars": 166,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8e2165effb16c588e86049956ada831f53b131bf",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SonixQMK/SonixFlasherC",
+   "hash": "05146597c02412dcbfbe3af18c6b9063d3122f6034f68ee5b8daa7e5fa3fe1c9",
+   "stars": 52,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e6ba5db11f703f89fd29a5bc0e56ed1ae42604c3",
+   "quick_gcc_O0": "63",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "storpipfugl/pykdtree",
+   "hash": "051c384b02241f23ea3428cadc09c4a95b630b5a55bded7a19e0a1ea693d9e27",
+   "stars": 255,
+   "license": "LGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "cde1cf99c09f72246aa7a5cc10c033e8699ec2c9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "MatheuZSecurity/Rootkit",
+   "hash": "051c4a0d90b35928f6944f311cb2bea191148615c35028b9fdc28dda9918514f",
+   "stars": 229,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "77af813f1826e05d46ab1370b4ae149700e03b33",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "glouw/nibble",
+   "hash": "05210691645fd6dd3833bd9b2ddf202e7b541570ee620a216a915852d8790f50",
+   "stars": 109,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "08dab5d9520fcb2450a4530d122c302e7f024c64",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "phryniszak/strtt",
+   "hash": "0527e209ac3788c1a154eebb09e46cc91972bf5f44de4e15d7c90af4fe6ae357",
+   "stars": 75,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "05e1f891a31fbda0d3a123265f74bf8260affca4",
+   "quick_gcc_O0": "162",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "haolipeng/ebpf-tutorial",
+   "hash": "0529282d7fe50269359e7c199141915f20501620640fb8bfe3ad4166f9703d53",
+   "stars": 147,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bd1dda1ad513368f75a9f6bff895676e8abf8cc2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "FDOS/freecom",
+   "hash": "05301f054870fb10d968e7872be57f06c8d836deb27e18085cafd3de40caeb55",
+   "stars": 202,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d52ba900a5e5b3ab29e0bba0735e6b8f076d2b53",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jtsiomb/libdrawtext",
+   "hash": "05340f07316b656c50f4a50884dfffd5dc41c1d13504a01d74aee0c0dfa2bd2c",
+   "stars": 97,
+   "license": "LGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "453ab2fda54ad4fd950ff1f5315cb74288d3cf46",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "karen07/antiblock",
+   "hash": "0538988e01228a2fbc81a534100802c1527e33f05ebb837ff937bc43a18fcd0b",
+   "stars": 61,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d2c7553959c4857254d41aeab0d9215621954e5a",
+   "quick_gcc_O0": "149",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "951261/X-Store",
+   "hash": "0550dd483f8cb74a6c4c27f6f74fc3d4f42c8f25b91a987142686d57cffbc814",
+   "stars": 145,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8607bb9e47911eb6906156012cee0d80ecc01b9e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "espressif/esp-vision",
+   "hash": "055adbfaa70d359d05b5171614e44ba58fc8719134712776ad05f9b772b1c61f",
+   "stars": 58,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8d3f5da50c9d5b61f51e5d90396f7134c2900dd7",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "aide/aide",
+   "hash": "055b3d7074260f6de2f9743754dce0ede3a4798304b2415836203b54681f8c40",
+   "stars": 767,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "db923656149ea64bee63f7e45275322a20c7dbe3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "GrapheneOS/hardened_malloc",
+   "hash": "055f896f19e0c851aed1cfd89c9765476b41f9616729862abb2d6bf28dabf17f",
+   "stars": 2075,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bf37d54560a62b50da72e8fda56abf04f23b5fd2",
+   "quick_gcc_O0": "131",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lyshark/LyScript",
+   "hash": "0568cee6befe201335b896220134d72e9d409c557011178ee02b001d15233d69",
+   "stars": 84,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f8c7602463893948b1a67cfc7994d2642652a72a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "guest-nico/nicoNewStreamRecorderKakkoKari",
+   "hash": "056bce429c131d8ef23f340d5a72c7850d4a86e28aae0dd70ec63f0b41667144",
+   "stars": 159,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "73d9b9c32b5a57b9923f4fad91be555a085c10c8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jnovy/pxz",
+   "hash": "057815a72da1420cf6db1436bba70e75d22cdd415b112474e27c77658c5af7df",
+   "stars": 133,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "824de5dd22df3ba54bfe2cdd76029a62e53201fe",
+   "quick_gcc_O0": "7",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "xms0g/breakout",
+   "hash": "058076ea257685f3d68db6d66e389e2317a31a23a0b48d9ee33df3dc524a8ffc",
+   "stars": 51,
+   "license": "MPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3b83437af439eaec59d4be73da06651de0bf9a45",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "waywallen/waywallen-display",
+   "hash": "0581a56da0e9ea9e40f227a0ac6729278a39703487377545d9004ca0c3b9392d",
+   "stars": 172,
+   "license": "MIT",
+   "result": "fails_O0_eligible",
+   "sha": "6e9d6ae770c1ef8a7d17529809bcb72ff41e19e4",
+   "quick_gcc_O0": "393",
+   "quick_clang_O0": "376"
+  },
+  {
+   "repo": "zvenson/obervave",
+   "hash": "05835749f89e95a7aef76da0fd1c27c113073afdda2ca8835cdeb0dbd5bc2b16",
+   "stars": 65,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a1f660c4439583d33f72941bd184a7e187d11835",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ytoyoyama/interface_trykernel",
+   "hash": "058ca02a1085fa0fef7c88fcc6ed706586676484bf373facda44de0f0955862f",
+   "stars": 78,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f50a27dea620ede4e0b99772eee15548d7e8d123",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Alessandro-Salerno/SalernOS-Kernel",
+   "hash": "059f918b4e93e58d0b40a38e9df9c25ba150b851a251d42bcd727837679c3f8a",
+   "stars": 56,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8dbd5eb5e934026042148291f2a476a2b34f7f5a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "johnwilander/RIPE",
+   "hash": "05a3d9a5f4299f1357f8528eae508cea4c9a343ee50dabf850ddf56f4f29740a",
+   "stars": 95,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bf72467aa22852ffbc16ecdf33cc916cf1607c0d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "samdauwe/webgpu-native-examples",
+   "hash": "05b98bbeb3bd80dcea542a9ade99d53eadf0e7344603e2fb6653782df320218a",
+   "stars": 537,
+   "license": "Apache-2.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libfirm/libfirm",
+   "hash": "05c965832ab12d36dfa5edd1908cc8def9518a96afb5b1c8ab059314105b6055",
+   "stars": 570,
+   "license": "LGPL-2.1",
+   "result": "qualifies",
+   "sha": "114012d1d93427e63ba2f2ab51318e8a1b92f06c",
+   "quick_gcc_O0": "147266",
+   "quick_clang_O0": "144991"
+  },
+  {
+   "repo": "slowlane112/Esp32-Game-and-Watch",
+   "hash": "05d30af83584188f0170fff98119ecca28b965e2d954287d00c03431b92e6623",
+   "stars": 95,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "78219911eb5fa0ff42ab098c5ac2ec841167bfe2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "sahlberg/fuse-nfs",
+   "hash": "05d8225178bbbe8acb2499f494646f62aea616c3c6e2a71e29102b04b44e187f",
+   "stars": 206,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6889a5b5a552521a0ba0b955950b635924ba3c29",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mbroemme/vdi-stream-client",
+   "hash": "05e3d7611b191cd7bdbca79f9c68f4f48bf2ec8060cb7e2252fcfaede29ba702",
+   "stars": 144,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "849b25d65636b491ec8a4e121b34e17711cdb945",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "alienatedsec/yi-hack-v5",
+   "hash": "05ea0180360f4ea8ff1c46cd68675c849503383dffdd723b5524dd622f046103",
+   "stars": 1035,
+   "license": "GPL-3.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Seifert69/DikuMUD",
+   "hash": "05f53708aa66ef66e96c5dbdacf99b15be9593c9a6e610902640fed4712ab776",
+   "stars": 110,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3cc3b64e6a4f0469028b2731f830b2a09c27a718",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "DosX-dev/TinySnake-game",
+   "hash": "05fe2eadfe3c2f67ccaaff40b4bf496f7d38fa606286ccf03e610f05bc1d324c",
+   "stars": 219,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fd4171a179a7e607bd5f9f9aaa6a3c2473ac51b8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libretro/libretro-lutro",
+   "hash": "060ad28b53b4a3c4283e4d65a4d3a6a0846723f2eb8b2cbbdea1f40fc9e406b5",
+   "stars": 200,
+   "license": "MIT",
+   "result": "qualifies",
+   "sha": "6224157a615b18507bc0b117a3398c7a324cd3e5",
+   "quick_gcc_O0": "1915",
+   "quick_clang_O0": "1910"
+  },
+  {
+   "repo": "nmht3t/RawHive",
+   "hash": "060eef49298e0beee9a1f3a3e38d57fcaa0b945c11c5a941a13a4a103f738991",
+   "stars": 114,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2a8f775f4d6ce6b2e7075476b421856302448511",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ThomasMertes/seed7",
+   "hash": "0611d4c4d1aec4cb522da92497113713fcec50fe1a76f3a899524df20dea070a",
+   "stars": 476,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7fec2bdabec3eeca5ffa248fdc143793dabf59e9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bookshelfdave/erln8",
+   "hash": "061bde52013f8c388f206c6dee1c3673fff0136816b919766b59a82f31c947e8",
+   "stars": 61,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5b86520616484fe21d70b0a1c38d7f20a172c9a8",
+   "quick_gcc_O0": "45",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "avaneev/prvhash",
+   "hash": "061e2b5f52075ffb1ed5b8b6959ade301ffbf116f4c5cbb8ff22962ff438e6d2",
+   "stars": 330,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6602157d19d0ec014c9dcc36b5a1cb463706092f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "xjsxjs197/WiiSXRX_2022",
+   "hash": "062a15342c8f8b2287f489b9ce46fbaf4b56933215342da25d1c07c64b07c8bd",
+   "stars": 182,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9ae85a569581338eb438b884af252cffab2c47c2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zpl-c/librg",
+   "hash": "0631ce70d34caca130aa121402490ebbce9e365e6a8cc7da88d18e7d18a5b812",
+   "stars": 1519,
+   "license": "BSD-3-Clause",
+   "result": "fails_O0_eligible",
+   "sha": "106c658620d800c90a13e2c23036ca4cf3f28060",
+   "quick_gcc_O0": "5346",
+   "quick_clang_O0": "5346"
+  },
+  {
+   "repo": "RoaringBitmap/croaring-rs",
+   "hash": "06324fa9566094dbf7782efe5e36eba81f8906773305a138541f918e8a7aa07a",
+   "stars": 174,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dddb07419bfebdb54c34c36a5b3238aa34e769e3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "resolume/ffgl",
+   "hash": "0634476dc7d33cf8ea5c43b900a6fc83ce5b7bb09d568d19e3f6acc2e086a1b7",
+   "stars": 137,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5b6e07840277df9ec35a228b9eb067636316350f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Cytlan/openbgi",
+   "hash": "06357a998aa48e90aeec3bed21992ce218a4a0c5dd9b577acecfadd3e9c9a7fd",
+   "stars": 88,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "74f5aef97ff900474c01d381eb29e2dfd95551e2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dukelec/cdfoc",
+   "hash": "063a825530e19b2ee3395cb7481c770a450db2d3231347eab281cb030eb3ddfb",
+   "stars": 226,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0a13eeffd6f4c5cbcf1b19936c189e6f7d6c3370",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "SonicloudTech/mouse-sdk",
+   "hash": "063e5ac5c9badd25905060e4f2bece0d45055a1613ba04b46537685a49578982",
+   "stars": 891,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7877a8ae506b8182e84af612063c3d7bf43f1b5d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "tuxera/ntfs-3g",
+   "hash": "064ed2bf45bfc8c483e65e19510f0ba87cb4ff9dc5e436708f76fb36ec299aa7",
+   "stars": 1546,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7f0f841fc52cf719106c5c93bafe465004e36816",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "googleprojectzero/winafl",
+   "hash": "065a54241fbeb0cde8a9dd240d6d7536d1e66a95f66f2a03e6f79f5b70183fa4",
+   "stars": 2629,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fd85f38548b14352f4b70ad414f364ea6dc1a769",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lastpass/lastpass-cli",
+   "hash": "065c0ed43bae02ec0d58c23f235f59d0e0260da2d1b6a044a406b1b49ce8a017",
+   "stars": 2914,
+   "license": "GPL-2.0",
+   "result": "qualifies",
+   "sha": "949bad64e9db1bed89606cba78f32f6708cef3f0",
+   "quick_gcc_O0": "1036",
+   "quick_clang_O0": "509"
+  },
+  {
+   "repo": "samstyle/Xpeccy",
+   "hash": "0674c8b79a34d62a73ae7c75afa53a2ac79d22ee03728ef49306d14b530ee868",
+   "stars": 94,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f83614314368aa33661f7e35781cda69d4068a15",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "moonlight-stream/moonlight-embedded",
+   "hash": "069493090faa8500adf08434b9329b9d0348dbb3a3848af3846dc81074b5ad84",
+   "stars": 1675,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "33142e58ebd576085a076f4ce24881d20b3c4ef5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "NavBotHub/D1",
+   "hash": "069ed8eff067768b61a9cd0205afc26a3dc1450659c94047c47749d6193f6d9a",
+   "stars": 70,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "696df6990b7815e605fadb2a4e72fa1080c5def9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "gophernicus/gophernicus",
+   "hash": "06a3ecfca7544e74600f2cb4df5d732442cf1151d8d3f6a63c87553168da61f5",
+   "stars": 326,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a84026b5940ed1b3d012d6287630d9cb8daa59a7",
+   "quick_gcc_O0": "55",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "PKRoma/ProcessHacker",
+   "hash": "06b3d9b91764d8f1263e2d6a7c669ada6dcca522ca0582707fdf1bf9ac5a2aca",
+   "stars": 1213,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5273b5d6708dff745ad8b76a67741ca4a1f45b96",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "linuxmint/cinnamon-settings-daemon",
+   "hash": "06b561db25a80747dcd3e67af147d007e1be9add1b142ef0cce14f2320a56174",
+   "stars": 70,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4586361a08bc42caf7de79f2fe6ac25b99e7bf07",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "grayhatkiller/wambam-bof",
+   "hash": "06bfecf007a234e13151c0202cb0fa357ecae6e08c4a5b5e2873b0dab98824e2",
+   "stars": 52,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7aed155759cfb24444468984e6e2d3e41b7aa843",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "leodido/traffico",
+   "hash": "06c949c29b036ce39d511ee967ace9aef3fd16fad9116408947796aa548d741d",
+   "stars": 114,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0d3e93581bc283eb7524b97a1549be00602d7838",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "liaozhelin/yds-charger",
+   "hash": "06d2cd2127d2619dd9dbe2928d137ef4b5143b09fbef6f1112e197d399391f1d",
+   "stars": 632,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bb5ef62b3e704854f56fa8eb6b2f458f5b733813",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dagowda/notRDP",
+   "hash": "06d600fd6c15aa6382c91b54a9718f038fccdc316d25e90a1ac34ce4564e5949",
+   "stars": 269,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4516452789e42e2109a87f35581f06d9cccff64b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "portfoliocourses/c-example-code",
+   "hash": "06e281751029d74404c177dd74ee2bc77d60eebc6df42246e5a8ac29e701ff71",
+   "stars": 428,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "51cfc156d1406a55fa1638569ee6885d9ac5782d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "beagleboard/librobotcontrol",
+   "hash": "06e8901b3f876a1580b2006b1c699f3f7105550bc9ff139877a9810cdea345be",
+   "stars": 211,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a399c2603968263581ab5bace8c4c77025db1328",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Fyyre/UPGDSED",
+   "hash": "06e937ca60888eed120bf37b36c66090b7dd2daa79a722faf043a87298b784cf",
+   "stars": 894,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9d1ae83dca1fbffc87549c921fcf1eccb2bd21d1",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "litemars/hARMless",
+   "hash": "06efc86a0324cc29175fdd977b58e0b211cbaf211fc735c85209d0812db1741a",
+   "stars": 59,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b055f8ff0e9b76cf3c12a6fac3baba082fa2ec51",
+   "quick_gcc_O0": "54",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lxde/lxappearance",
+   "hash": "06fb2223b7b3ef9d6bf4db2f16ed7e00d063059109b3a390615aecd70a922813",
+   "stars": 152,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9472f8236f30d363af89e290aacc9d03b1df36dd",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "LucasPicoli/god-hand-decomp",
+   "hash": "06fc89b7815e6a34bd24495e0254d23c37690076b7fad008a1ff7e5f77959f5c",
+   "stars": 103,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "75cb123af58982e70088c9c3ff03db9c258f7b77",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libvips/vipsdisp",
+   "hash": "0705ac8bb9dafa15fad899172d38d4861fc680122b3db3bf34475ca888e099cb",
+   "stars": 240,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "11a85aeae53d2c9359ac0f73d60f250c938e4840",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lmdu/pyfastx",
+   "hash": "07116fa03fa47077f6a4db74bf30db1c5c26b21b5d00734dc5af8a8ec2831a57",
+   "stars": 297,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7d82c66b1f5d079d6b7d46f878d156cbaa6c01aa",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "sprlightning/RF-Master",
+   "hash": "071e2dc21dee31c3a6553d5f5efd381d25d69c82e944cfea37d44924fcf89442",
+   "stars": 81,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "38c288ab43a05ce5f8c9a04263e4fb5fe2164f4e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "rostedt/libccli",
+   "hash": "0731add7dd7656ad9349962aedc94dce0b46a3e029101ba77b8a815d90475c97",
+   "stars": 55,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ce500e6d27a38f2dd64c2a32dfd289d8fca88085",
+   "quick_gcc_O0": "158",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zhenrong-wang/hpc-now",
+   "hash": "073697ce4080cc49962bfe584ce009ae713d169b62e710e9157a6a175fc7278b",
+   "stars": 272,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "87347a0a557e2700774b054cdb91de97aba57a7b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JoshMarler/react-juce",
+   "hash": "073e06589a4b554e6d01a4ffb33a4fcacf2a01d7d8f914b925d6fab8a3277e75",
+   "stars": 834,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0693801a8646f9327d300f931728d1f4f3c58ae8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ZoiteChat/zoitechat",
+   "hash": "0748ccbf6a97be2fa68513d46ca6f31d0e08b5e2e369ffe066327fb24ea81d38",
+   "stars": 62,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5952d8f5e2295928fb1ac8c3d5996abf1f23169b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libdriver/at24cxx",
+   "hash": "075377e6fe7788ea847975ff7ce623228e5ce7b8a87539242eceebe72ca24953",
+   "stars": 91,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "aa2a2a39375b7e936bc7081526df00bbd66da28e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "NLnetLabs/simdzone",
+   "hash": "0758060ffb03675b168bf81acd165184adece346b7d7836ca3c7d2d516c8c9aa",
+   "stars": 140,
+   "license": "BSD-3-Clause",
+   "result": "fails_O0_eligible",
+   "sha": "c593a299b6d37450f0640fafdf336825e42ffc61",
+   "quick_gcc_O0": "945",
+   "quick_clang_O0": "915"
+  },
+  {
+   "repo": "0intro/9legacy",
+   "hash": "075f1758a80d22a1c2985ad0b5abf054e74cbcc9fbb2f13ce310cf62c347d834",
+   "stars": 114,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2d5f3e142ab5d86ef7a353050af6bd9a7e9f0a88",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mariusor/mpris-scrobbler",
+   "hash": "07663df145277d44e0f65778065ff6c121d29a6884719d9749957525a29d75e5",
+   "stars": 210,
+   "license": "MIT",
+   "result": "fails_O0_eligible",
+   "sha": "0c6dc812f3d127d099d4c8c417fdfa594c48f3c4",
+   "quick_gcc_O0": "576",
+   "quick_clang_O0": "394"
+  },
+  {
+   "repo": "libyal/libfsapfs",
+   "hash": "0766f9cd213476fcf5d5095d77503bb3c4d05af4f04c92c32569dd3321840242",
+   "stars": 435,
+   "license": "LGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4456366ccaf586a7ff54c8cbf6a42f38a9ac8f4b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "c2lang/c2compiler",
+   "hash": "0769c6807f9aa9edeb59725fb032245b0795c682d651efd6b0e397f9a330aa58",
+   "stars": 841,
+   "license": "Apache-2.0",
+   "result": "qualifies",
+   "sha": "1be5152164048442c6e6962698a1bac54f3afcaf",
+   "quick_gcc_O0": "2350",
+   "quick_clang_O0": "2350"
+  },
+  {
+   "repo": "NiLuJe/FBInk",
+   "hash": "077d86890193ac7bbbaf071d296842971fa8e5fa98984fbfcd7eaaac7b72bded",
+   "stars": 557,
+   "license": "GPL-3.0",
+   "result": "fails_O0_eligible",
+   "sha": "ded92fa510c957e0157c92ae83bd5c51af710c05",
+   "quick_gcc_O0": "672",
+   "quick_clang_O0": "562"
+  },
+  {
+   "repo": "lh3/minipileup",
+   "hash": "0780bec1ab0a953cb18ae9e6e1ce690256275f9fe10035bd9c6f0ef87ba0107f",
+   "stars": 96,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c47dc0d989369bbc01919241c6bdbf12b4ddf32b",
+   "quick_gcc_O0": "235",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "wdomski/SX1278",
+   "hash": "078201acb4b075c99263d541a77c4d806edeba467ef634269a5c5ddea8d5ca88",
+   "stars": 162,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "235dc9352befbb4ba3ef64bbdc92f05ccddbf9d8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "MSNightmare/SignDrop",
+   "hash": "07880ce23429355fc26f8fd3cdda7385fd0b5c3c9413d7c986e365ffa8f86075",
+   "stars": 490,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "87a33cd4abc90b158e13220741eca2a54b44eb74",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RTimothyEdwards/qrouter",
+   "hash": "078bade967724e0864d44a3423eb0cc965cf81a7735545f06eb8ae9fa3f0b09a",
+   "stars": 60,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c8f1111439a9ffbb1e13c973b95c251bbdcdbd40",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "smallbasic/SmallBASIC",
+   "hash": "078ec2a2ddd195eedc6e6f6d6f3b7179856247bf599835f65021e787761f49db",
+   "stars": 254,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f797c1aee9c699e6f1c189ef3d012aa1e17d8eca",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libhangul/libhangul",
+   "hash": "0798a4150643fa1ea9c3dca55e896ef9bfcd62ce82da5b48d13c3643166386f9",
+   "stars": 229,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "23d2cd9d10d516d523d60c562dbcc7ea08139a09",
+   "quick_gcc_O0": "147",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "quiet/libcorrect",
+   "hash": "07a8773e409bcbed9d53f2d378c58ee8869055b36a117c4e9925558e57793cd9",
+   "stars": 441,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ee82e6673a806dfdf0a969b975ab36596ecc5401",
+   "quick_gcc_O0": "91",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "AEndrix03/Graft",
+   "hash": "07a9d7c601bfe78ea6c12d7cc30b6610124862b308aa980d0ac619d9ffa37715",
+   "stars": 73,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f9913b045ef927f5b9afad37f3e6544111f05736",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "tarantino07/minecraft.c",
+   "hash": "07acedc0aa0cb5a7bf840d2b1345beff1215efb7a145f9958caea3a2c283c279",
+   "stars": 138,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a8cdeed08303d12f227954a458e585ae9d1f98de",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "EFeru/hoverboard-sideboard-hack-GD",
+   "hash": "07affd3cf4d6661de5c2a7574c2990105bf9604b076b01bc185a816ffb524486",
+   "stars": 150,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c063fdf2e1b0e11f2db70040c5e6d32e5b79019f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "cgg-bern/quadwild-bimdf",
+   "hash": "07b1062aa7cb92a03d23089d4811b2f5dfa14f1e1b5a6cd1210a5bc8a380670c",
+   "stars": 147,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e722c7e961982cf61db7c10812329dd0fc7d60df",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "OpenRC/openrc",
+   "hash": "07b9011fa20adf361dba35c3b52dad923a5b17252472d6ce67c5cd4aff3f8eac",
+   "stars": 1967,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "14e11b7f5b09072aa1433e790bbf832800858fec",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "silentwarble/PIC-Library",
+   "hash": "07bb4121f92cc7bd32521cd1ae5077787e3178066624925dfcb28e267b1bd657",
+   "stars": 129,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e28491115f250a77fdfed3023256a3770aa07174",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kocsis1david/font-demo",
+   "hash": "07bfb31b1fe4c7eaf8e2998fe929341161d4fa64999c25a13c1db55056f844f7",
+   "stars": 253,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "33b5358d2336e61d9db02b6073db7d6319863834",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "memononen/nanosvg",
+   "hash": "07d4ef22232aa9c8d2d7f88be418f9f0c29633f17701fd26a042fbbfd628392a",
+   "stars": 2040,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "239e102ec2c691f2902e20ace2ed36ee4a35cfe6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "joedf/base64.c",
+   "hash": "07db43e20783ea9f20399aadce6ab6e137721fe96ea82ee05b392969d9b2f5c5",
+   "stars": 78,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a34c176492f6e0395393d0a5cd264bf9df74dc77",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ekomsSavior/Centipede",
+   "hash": "07dda5aaa1071dc1825bc57025c546f65775f81e22c25c6edfed8ece39740020",
+   "stars": 58,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "83cde3b5665468d0ae5ae9ba8eb94941445ee12d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "r-c-f/waynergy",
+   "hash": "07e0ad2e6b80c240e4c21e7d95a0f8c9ee5dd58c7ed0b58ba0ab1944d4ed1277",
+   "stars": 459,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ad49be7fe8f0347e790aef6c76858dc29ebed3d4",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "BojanJurca/Multitasking-Esp32-HTTP-FTP-Telnet-servers-for-Arduino",
+   "hash": "07f3dbe04824bd88ca7b9923404d31ce290b98667b86adb49e20912ec159c0bb",
+   "stars": 141,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "84bd0c8a5fd95dc9bdd05c6c9aeadf8e5d2904ea",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "RoboDurden/Hoverboard-Firmware-Hack-Gen2.x-GD32",
+   "hash": "080b4b7f7161488f6cfed568b8466a7cde7762ee330bd096f8f73eca7257444a",
+   "stars": 54,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a9e22602b0d85b42a1a931b7e046cd9e31274587",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "petabyt/libfuji",
+   "hash": "0832578e1662ba0fb2439d8ba00e02a5c3705b6e174864d3613598fc460b6c69",
+   "stars": 74,
+   "license": "MIT",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "michalsc/Emu68-tools-old",
+   "hash": "0838c9a689e74a7e35f798e6dbc97b79597584cc2a95e1ef7a1c0783e5ad1355",
+   "stars": 73,
+   "license": "MPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0f86e197ac8a2b45ee44c0e48ed329e4a096c190",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "soedinglab/MMseqs2",
+   "hash": "085937b5f8cc22f140182ea79b84e6b65a8e48098d9ddfb0e1cbfab6c3964def",
+   "stars": 2172,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ab57c0b9cd8893f1063e391c94cc845a3179bab1",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "xelerance/xl2tpd",
+   "hash": "0859e4b6069f9283720d4e7f9709fc8ca497e37de7ed197741148079fda6b33c",
+   "stars": 574,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d39129278df525db440f0342d303893703064c3d",
+   "quick_gcc_O0": "247",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JustVugg/lumabri",
+   "hash": "08627847d996f948afe92da2b05a795003e77885b07544077d388aab01a7c387",
+   "stars": 235,
+   "license": "Apache-2.0",
+   "result": "qualifies",
+   "sha": "dc660b6637285d120bc0277a2d5cc2b0b5dbf41d",
+   "quick_gcc_O0": "3317",
+   "quick_clang_O0": "2837"
+  },
+  {
+   "repo": "shatyuka/adbex",
+   "hash": "086d82a37f71e662da5156382591822703a7d9f4851cd65608e55c8c20ac8c79",
+   "stars": 59,
+   "license": "GPL-3.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ayuzur/cpond",
+   "hash": "0878f9310f4c6f3b78846d0ff4a8685efa6fbe530c1c239fc5c38cd062ff9b19",
+   "stars": 84,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b6d2827c73080b144ff07a70ec61757baff6a73b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "obijuankenobiii/inx-pro",
+   "hash": "0880ee67e25c30ea05d6faa17e489f19a74f492ffd0910c7a9a9a46cd56e1954",
+   "stars": 70,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6ea0addf0ecd82e2c025f39482ff1da6dc76b418",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jpage8580/GTUltra",
+   "hash": "088dcd99edf0570e06e89ac0b99a0aa26d226ecdbaa86056fa7f5ae056ea28ed",
+   "stars": 118,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0bf235173cb5705a11721f459a14759c9da6671c",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ef1500/libbbf",
+   "hash": "08c1ee7249065d486d57e5508c37e3a95c278a581e1ff1fb8befeff2ac9c16cf",
+   "stars": 416,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7fe8970aa093f288f26e0b5a4a0744d6ea778d1e",
+   "quick_gcc_O0": "260",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "PerformanC/Treat-Wheel-Zygisk",
+   "hash": "08c2a7ec6dd6b5950e765d72a54855a3d9d0845d0d887385aa270b01b3e4c8ff",
+   "stars": 360,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bed0c0a973503b1aef5f9324ec13dceabc0a8262",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JHRobotics/nocrt",
+   "hash": "08c8befec08d9e1a6b37ea6021880c5d287bb1789269270d28a3e3cc26d477aa",
+   "stars": 92,
+   "license": "MIT-0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "55b214ca8d0de983da995ec88ce71ade5f44b389",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "signalapp/ContactDiscoveryService-Icelake",
+   "hash": "08cc6acca965d7b51a6c4f5562a42f5ef2a685f3d1d0bd6baa2b2fef08f92bbb",
+   "stars": 54,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "145c988935e9e1943eb52a42da4646b98b2827d8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "igraph/igraph",
+   "hash": "08d1cfed9bcbe460101c32af25150cdae0a31829c876f9c1dd8089081779910e",
+   "stars": 2024,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "22437081d9994265ec1380ad236fe2f2c401b1e0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "vindar/SARCASM",
+   "hash": "08d871da65850ba1167642ea855583d396880c5be5d839d13890e7d71cd42baf",
+   "stars": 175,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e8a3a88cea45d358c7af0b89a86ae2b18371d94d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "LNH-team/dspico-bootloader",
+   "hash": "08d99c6491106ae9c1f026f84bf1a6d15f43e1f6b8b48a9cb25e98a8bb590344",
+   "stars": 76,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "29671d041fe2e497f8c39bae562e98d955afdbc5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Keruspe/Germinal",
+   "hash": "08e5e263e9cd84b3a1f74a328fa4de86f2f7b051a943b7710246285347856d99",
+   "stars": 67,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a4ede452ee82f9ea012df2230998998eebdc9434",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "owntone/owntone-server",
+   "hash": "08f0d64ecf092ecb5eb521953c8f571dd8285d74bd6b2926118fdec2686d59f2",
+   "stars": 2594,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8ed84f2b3cba25d3de65e05660d59ce034b5adab",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "pangodream/ESP2SOTA",
+   "hash": "08f165816bf174d2d1ed60d411ad2e4439fe6067af79e18d3d9749246edce9d4",
+   "stars": 51,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c8794161b4ebb3e7206499ef79f3c74965b0751d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "0xdea/exploits",
+   "hash": "08f32a13117b20070dc9074907643d5d97a4b7a6bd76777b48bc4948f8a3bb2a",
+   "stars": 677,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "5b212c53867d5a8e2cd59a78de8da4aa526a56cb",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mbuesch/razer",
+   "hash": "09180a160683e66eeef534d363106bf33193db48b1ad76fcbef0f7af882a8bea",
+   "stars": 256,
+   "license": "GPL-2.0",
+   "result": "qualifies",
+   "sha": "877482f8ba2be341c219f0f3f04998913b3cf673",
+   "quick_gcc_O0": "572",
+   "quick_clang_O0": "571"
+  },
+  {
+   "repo": "Yasome/FinalRom",
+   "hash": "09185994459991cca4d91392349e256af2e6a1900a655e453410414b6ee41942",
+   "stars": 152,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8db9a7eda0c32bb9ae04f2caac85225b8bbbd961",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "boku7/StringReaper",
+   "hash": "091dd3709139ec7611034ab7e2dded724b0dd4c8611adb8e758d9b599d550474",
+   "stars": 289,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c47df94c5251c5ed549d9f51c54bf9bf91e9128b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "eriskhan/monitorOS",
+   "hash": "0924157d2fd35afa55f4cb8ede0a17ea260ba377e1e0c7b3b524c1f34bd35891",
+   "stars": 54,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bea977542a9ec72656b87ce111d046c3055cfcdb",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "MinorGlitch/zerofido",
+   "hash": "09251f21ec136e3d2b263392318271ee11dd3b7a65f5b88701098ba7e18c6e0a",
+   "stars": 105,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "358ef94d1047bc98e189c68f350c1e45010598f9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "VirtualAlllocEx/HWBP-DEP-Bypass",
+   "hash": "092679b66f5fbe141e73cc11f6580a4c95d0c91ee4838b0b5d7ffaa7d7eac261",
+   "stars": 102,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c7753bd191dbe92073f08a83645a6cc609d76e0c",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dictu-lang/Dictu",
+   "hash": "09334cf16ef040b9b22fc282d1dcd1a5ba5d91636cc827c65e12ddef4b6ce5f3",
+   "stars": 279,
+   "license": "MIT",
+   "result": "qualifies",
+   "sha": "3a34a90dc57bbe0caf814d1320b4b505bc427fa1",
+   "quick_gcc_O0": "9652",
+   "quick_clang_O0": "6750"
+  },
+  {
+   "repo": "KurtE/ILI9341_t3n",
+   "hash": "093f48e8ad4d25f509429a694e7036ded3af602bdc98f29a774eac8a06774d8f",
+   "stars": 61,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3e7ed8c88d75a9fa7d376ae9340ee49decf53fb8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jidicula/clang-format-action",
+   "hash": "093f702b261d56bb4eab5cd71d0f0c6c4ad7866ed0282c3d52d4d6415c67684b",
+   "stars": 141,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e2055744a0f9a4257e2ea6d7fa9d2fbe5d25ae38",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JacksonAllan/CC",
+   "hash": "0945320139f4e83f5f9c9400998390b60230e8d5a97e804170b34c4cf678067f",
+   "stars": 509,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2d62942eb2369b5387e0c4f2aa06f052004d16e0",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "foss-for-mips-arc-processors/embarc_osp",
+   "hash": "09484ba6492485b8beaab4b144dbb46f42e85be0996ad3c2740f222888b694bb",
+   "stars": 81,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "67ea926c6a62aa6e19efdc3b11cba3ea0b467e29",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "NodePassProject/Anywhere-Android",
+   "hash": "0949830c4a7c1caba2733ec8954b81b848b720c52bb6963340c470436cb8603c",
+   "stars": 75,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e9a92747a59e8a6f0e27ea197c3b73d568fc9ca9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Nelarius/rayfinder",
+   "hash": "095cce76ba210401e2a5e500166a0b9a2b133d23f71d46de3689849c9c35e79a",
+   "stars": 50,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "634128c829a23985d5b44ff1a1abbf406380aae9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libexif/libexif",
+   "hash": "096449e6b19c42945cfdf636ed4915da5ed2fb61c947098996116465774bc2ab",
+   "stars": 379,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "11fe112094c9ca53fb85865e6b65002b266a86cb",
+   "quick_gcc_O0": "243",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "trebisky/stm32f103",
+   "hash": "0964e2f5fee40712aeb2565113dbfb7846f8881516d5698f61ed7ffd050b681b",
+   "stars": 122,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "341f9de04a4028f18aeb6768440a7dee77c51ba4",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kendryte/k230_linux_sdk",
+   "hash": "096d4163eb62f5a4b35c3089928a94b0517da723cb44c648347b6c3b2b28912c",
+   "stars": 68,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "83d829db083f6432515b663aa363c1e5d005cf71",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mcgrew/dwrandomizer",
+   "hash": "0978c62ebf18d75d1709184e3d639d57b52d208fe46865971c7a971e51c74d37",
+   "stars": 105,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "de1ef139434684d87669d472844a9937d06d6526",
+   "quick_gcc_O0": "267",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "CidVonHighwind/xteink-x4-sample",
+   "hash": "099843d92da1f5125f87bc622fb786170304eec985bb0cbd4f923045ce162fce",
+   "stars": 84,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d14e88d74fd388f2f652a50e886f911c575363ce",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "floooh/sokol-odin",
+   "hash": "099c16de5dca3f68b3c23d08a6f58e15b7d62a6ea8fae2484abc8224b48cf45d",
+   "stars": 290,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4669f2bc079d1e3c07870ae5443edd2d5ebbd6c6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "joleksia/Silk",
+   "hash": "099db3e27221b0064ad470536a0718506628ffea1e206d921e97f7ceca0dd05c",
+   "stars": 82,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c668fc73e3ab1f726de870fd2a6783788d232929",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "elehobica/pico_spdif_rx",
+   "hash": "09a0acc7497f59a085040d3f1a8b27efaab8fcb37100b4eee2fd1a6d7fea6ad2",
+   "stars": 121,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "58653d41e8f009c0f6da91f57df50c86237bd72a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "sostenesfreitas/ocarina-recomp",
+   "hash": "09a22652c509f897fad9c2b99c8db490b208be139e9d058d529ef3887901779d",
+   "stars": 1242,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "406b3ae0321eff8dd083a607a8186aa56b52b873",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "archiecobbs/mod-authn-otp",
+   "hash": "09a2ef73e4f48748d71270bee05fb11dc09ff46ecacd099073b1e202e5410037",
+   "stars": 70,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "01e81da8c5a2ac4f64965bd1165e3bef0c174db7",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "p0358/usb_oc-dkms",
+   "hash": "09ab3561a0d715350d197482fc58567bb21cdb0a1b3a9765c0552993c47af5e2",
+   "stars": 61,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8f0bc17820387aa81567595d426f9bfeae891bde",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "manodeep/Corrfunc",
+   "hash": "09ad81101e8aa1db0eaaa3eb6c335fc50c4834f4a9c8918c6c72b7d7331ffc5b",
+   "stars": 206,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "fbf4d08a6582530418b64eeefacc4beccdfb5c14",
+   "quick_gcc_O0": "37",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "jedisct1/charm",
+   "hash": "09b16c20d5bf3c5b05d518d9a12b3fe04e80e7f1b19c764ed42d026b2e5ff351",
+   "stars": 167,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7e70e4c54b204f76843ba558dde54a1528736d7a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "NVIDIA/egl-wayland",
+   "hash": "09b21f48e0dbcf35668708bd63e14e8300194e84733799bd14594057cb440129",
+   "stars": 331,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f6ea5d33eddb37812d3d2b0b246c32946b1a88de",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Ors1mer/QuadcastRGB",
+   "hash": "09c06501fb1addcdad3fea9b9995fd99ae2b9b2a2001eab38fcae53ed5551a64",
+   "stars": 108,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e15a81c98221a4ff3fbc86e24597ab2f47c1a388",
+   "quick_gcc_O0": "60",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zevenet/nftlb",
+   "hash": "09c189406868691e06704f2884ac93c2553960ce76af99c190d092265291054c",
+   "stars": 231,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b2c3694f03b1fc9bd2b9725582b6ea9719a2d3fc",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "iotsystem/xiaozhi-esp32",
+   "hash": "09cf651c289a0822c2beb2bc25f5b7059fbc31b56d2214602d98be79382aaf57",
+   "stars": 72,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "001c10f04a2f30f98e881781e83f3313a78d13d6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "in4lio/ev3dev-c",
+   "hash": "09d0c04a888707dd54b0596382bce2ae81cc196f219d4a5277ba0343eeee1701",
+   "stars": 78,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0c997a65a623baa2daaca94284f533a884aa0f54",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "floooh/chips",
+   "hash": "09d7ff6ca379bca73aec375ddab3d95694e6eadd2c8f925474fb9e42fd78eb79",
+   "stars": 1303,
+   "license": "Zlib",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7ef8776f637a6424ac615da64de6b968b06de791",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JasonBrave/PanicOS",
+   "hash": "09d82add739fc6930fc132a3c061115ca98d36b4eb8a52928d3a976f5761e466",
+   "stars": 68,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "cf569ec774ca7af52311d02cfdb59b2104497849",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Petit-Prince-dev/PokeMMO-NX",
+   "hash": "09e235474855b186a383407da349de967259b40fe2a2c2b038b51cc24f1f1238",
+   "stars": 83,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "614406bbdc3ef04db8dff29e570f34826fb4153a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "vpp-dev/vpp",
+   "hash": "09e32c489e0ec93449b08219d95b1d7e2b13dac6febd68a709cef9a979b83ade",
+   "stars": 53,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c0513c19dce4948066dfa9f4e2d2a27747767586",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "eerimoq/dbg-macro",
+   "hash": "09e7c198d3f442e11aa6bff1585abe24beb9f1b935ec5c8bb5bc7a4aa0fea9d6",
+   "stars": 100,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6e0bc334f941f5f552f85b0073074c8445d893c2",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "yaul-org/libyaul",
+   "hash": "09e9ed6a4f154cae81772d65c8903064ca88d5214d9b2060cdfa3af25baa83d3",
+   "stars": 187,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8d1e54018d9beec60bf4853d068a215e17b31fe7",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "FiniteSingularity/obs-stroke-glow-shadow",
+   "hash": "09eaf2252c170980a39fe6cbcc598676f1c5c02459c2e2b6d1b7b70e09a1f081",
+   "stars": 220,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6742704be21538a66fe15142162e59dac6eee76e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "WojciechMula/pyahocorasick",
+   "hash": "09ec6dbd28a3b7080811ed653f364c2177f7dc32fad235b8904633f529b10cf6",
+   "stars": 1137,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4e28d29898f1019d9706485b2a06026466814d9d",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "blynn/pbc",
+   "hash": "09ee8bece8be6ac69a0cbec603a445dfcbaeb911fab24bd33628a65848af4498",
+   "stars": 264,
+   "license": "LGPL-3.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libretro/virtualjaguar-libretro",
+   "hash": "09ef5f52bed470de472c08c40c659f6fcc0bfca33773a64d08248ddcf47f47b9",
+   "stars": 64,
+   "license": "GPL-3.0",
+   "result": "qualifies",
+   "sha": "4e27ea44da58978d7f02a68a4d6bf36553cc25a2",
+   "quick_gcc_O0": "5536",
+   "quick_clang_O0": "5510"
+  },
+  {
+   "repo": "InvoxiPlayGames/condenstation",
+   "hash": "09f8117587372b3efb5d799d380eae27df19bdfa1872bdfd0a8f8b0740ca4009",
+   "stars": 99,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "6592b25b2ce56bc48e4c18388ada5b9b412fb95a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "eclipse-threadx/netxduo",
+   "hash": "09f9b415fbd5cd1025528b7546b88c7cce747a1f78223ea2426ca5e29140e48b",
+   "stars": 326,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c690f59f9a5195c465153e90ef56b865337a8a62",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kennylevinsen/seatd",
+   "hash": "09fd871ad705fbd62041e0ba6fc1bdece6cd23a98261b325d9bf728e462c3480",
+   "stars": 90,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "92b1617c50f710699b3a6db6b0cd8197bf3f62ca",
+   "quick_gcc_O0": "291",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "hfiref0x/KDU",
+   "hash": "0a1a6c5b77a3ff42dae46e36cebbf621e8aa9709b6b95825993b9e8907ad4701",
+   "stars": 2820,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c43399ebf3b0b9bba87713eb24745b062f3f2543",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "g0hl1n/xprintidle",
+   "hash": "0a22fab8e3ba549b45456232a4ddd28e63b6a83037fec17528fc4136cd11c1df",
+   "stars": 71,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "effdef8cac6858ae2f35cfbd2d55e6813fdc7562",
+   "quick_gcc_O0": "6",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "wesbos/roomba",
+   "hash": "0a24518108330f2d3e136b0124868725a151ee4d2f067166b7f9a88cac295704",
+   "stars": 62,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2de1f3dd41a8197589f96f95584ccf1916ed0b4e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libretro/libretro-fceumm",
+   "hash": "0a252c570cdff5a6929aeccc69cae2034a6ba6773405d6184a24ebd59ad2a0e1",
+   "stars": 159,
+   "license": "GPL-2.0",
+   "result": "qualifies",
+   "sha": "77468e568d9fe9c48d684ca911f1a3fe7259fdf7",
+   "quick_gcc_O0": "5032",
+   "quick_clang_O0": "5007"
+  },
+  {
+   "repo": "libmpack/libmpack",
+   "hash": "0a379cd7a8c48c90410805a9606e384a6de3aa4074087b66f8bab7b63469017c",
+   "stars": 159,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "91434b489bc03ffd90647e129298577ff7d68319",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "WillyJL/MemSed",
+   "hash": "0a4587188201564c2dc47609c0671fc9549ebf87f51b95516ce35ec3c0a5e9a5",
+   "stars": 204,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "600f57b135c6472a2db26c71fa4187a1306395d5",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "mnurzia/rv",
+   "hash": "0a513b11206bd3a654f27deccb17b51d69fa039498c8ced6d89b8d9495f5e9c4",
+   "stars": 631,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2b38bc46f7c235bb011e4829a66c6edd86c2d312",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "kem-a/appimage-thumbnailer",
+   "hash": "0a5ad45461072e2c8b3ea9435e7b6c0af8422eafc126ae03e0b050da9cae6257",
+   "stars": 59,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c1224d5d238c11f8dc39422e979b8a89fe6dd030",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "luphi/raytmx",
+   "hash": "0a61f9c7cf04d1754420827bacf5eed9a7ca1f3e24adf473bf7858e56f077fe6",
+   "stars": 68,
+   "license": "0BSD",
+   "result": "fails_quick_gcc-O0",
+   "sha": "3333b6f4cc122fe0ca9c1861548a5b1fd670d2b9",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "itsPLK/ps5-pkg-manager",
+   "hash": "0a66915346b5673027a51535c221a0596b2c8306ba6bc8ab24e16f73b95f30e6",
+   "stars": 266,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "914311f945d14a555e1c09635346bb069c3368e8",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "aheit/cantools",
+   "hash": "0a75c07bb3412386741d08ae4cb19cae77adde2807da0f4d551efaca589acc64",
+   "stars": 68,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f4f09237be8ab75c839c48d0c9386ede218f01d6",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dongyx/ptxt",
+   "hash": "0a76d325afe214a8013d19f59ca13657e27b97f1d11b7a7fd68a134046d55617",
+   "stars": 55,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ebdc4827035f717b5dac4a94bbb5f7f9275d50c5",
+   "quick_gcc_O0": "12",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "groupgets/GetThermal",
+   "hash": "0a7e190c3134daa80c7e8f6307991512b69b3359426a3d31c2c471e25d18a27e",
+   "stars": 251,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2a744e4f5342150d2b368ed2f5106fb3a9881484",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "OpenLightingProject/libartnet",
+   "hash": "0a82b2ffebf67f6e379da5473838ca540a84a8472cf18965b4ea9ed0142e9b18",
+   "stars": 151,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "7fccb5a93baa9980929f5b8e7990b028544bafcc",
+   "quick_gcc_O0": "100",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "zephyrproject-rtos/hal_espressif",
+   "hash": "0a980ec4057546bb3e61254052fa99b3858b50c46c8dbd810abeac5a1d792573",
+   "stars": 69,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f6c54c86328914e09b5ff830606a9a231338a223",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "awslabs/aws-checksums",
+   "hash": "0a9bbb2e1de96950b209046b4a45e83b752248da7db446514244454900646819",
+   "stars": 73,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bbdc308d5488e8fb09c04c0d17ac6268e6b725d3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "marjohn56/udpbroadcastrelay",
+   "hash": "0aa234dcf888cd51c83712443469b317987de622ace1e43166497516617c7f24",
+   "stars": 193,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "8ebaa9b2690eb61a236184f6f6bf7eb773da4fd9",
+   "quick_gcc_O0": "26",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dis0rder0x00/DbgNexum",
+   "hash": "0ab226247f3f36e703fc312d4f5b5e7c0dfc77892b5735e536f3b960a8dcf7d6",
+   "stars": 186,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9f2f4a46e20f141a09769939773ee355d9378451",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "henrypp/timevertor",
+   "hash": "0ab9b42e39b2e7771953d8012ec0bef57d7cd3eb3f4903413ae5921ea6b2e8a6",
+   "stars": 57,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d40e6e408d69ff67d063ea39dc5a8b0b9b5e9bb3",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "lambdapioneer/argon2kt",
+   "hash": "0abcd65a248b27ed5de11c4c85692b59b811de8e6c756d544a4f9ef50ec8416f",
+   "stars": 116,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f8fa8c99e1775a91d2ee8e1868e2e1d9676ca04c",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "vigna/ne",
+   "hash": "0abd6c6512cb113513cb96b131a47943dbbdd8534891b6699e45fdeede3da0cd",
+   "stars": 588,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "71e457a408e9e56dc9e5890b5bbbc2984ae6ae4f",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "maverick1982/esp32-nut",
+   "hash": "0ac4ac47c58267cf56585ed5e97fdbe7b2b4977205d0bfbfea0a965e1c4a145d",
+   "stars": 162,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "da5310a28c4a1032f03ec948b25e5378a02d6727",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "alex-free/libcrypt-patcher",
+   "hash": "0ac7686ace430ff9da5e16c733008a617fd00705579f3422fdabec9809df05f4",
+   "stars": 92,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "dd9836814f74cde35ea6c8b23b0a7d0e39f31cab",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "justinfrankel/ninjam",
+   "hash": "0ad2bd8a09bb71eec231e1f32fc326dd4efc035673048d0eeda676aa10a8c80e",
+   "stars": 369,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "f4c0eff3a1d8d5f3ead470d0c7405c3ee37da24e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "korginc/logue-sdk",
+   "hash": "0aea71c086a5f8255120387c19c2d9e0546d3f2f64def91a825080b8334eb78b",
+   "stars": 1059,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "e78b16c6068b1c30fc072f2aebb8da5eef6c005c",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "LBALab/twin-e",
+   "hash": "0af0bd4729d7a5dece5bc69b1b236fe5318c6cf440cc06b0affd720f158b3854",
+   "stars": 93,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "2e2de9be9f2bf477e426f5e88175847da4c43e6e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "EFeru/hoverboard-firmware-hack-FOC",
+   "hash": "0af57b3ccc03514eb0e85f961388a15a77bbad720779b1ff033752e6ca3a6c29",
+   "stars": 1852,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "4f141cbc97b297e194fd58e56444bd0322f902ac",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "unikernelLinux/ukl",
+   "hash": "0af8f04a972cd31b60dd5ad049a97a7533fa56dfa0e45186bfd826b770d0f0ed",
+   "stars": 241,
+   "license": "LGPL-2.1",
+   "result": "fails_O0_eligible",
+   "sha": "f66efb6c11a8b47f1c3a8ad9c5ef5a794fc184f0",
+   "quick_gcc_O0": "7134",
+   "quick_clang_O0": "7150"
+  },
+  {
+   "repo": "cnlohr/mini-rv32ima",
+   "hash": "0af9596b5b7dd9907fb5853edd367c07b2ec4a07aa74c866ba3f2e7168a103c0",
+   "stars": 2204,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "84858f58cb41899705e2ff2d6ee3b2d5c0795bfe",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ka9q/ka9q-radio",
+   "hash": "0b08f0557712fc075b45ae5e82c77d896e3e363639746c165537df511d74aba5",
+   "stars": 360,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "095ab864c4c76a53dd15620452ed919ebfc45fad",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "dyne/hasciicam",
+   "hash": "0b1045458839ca0b9c2dfcef24124750e9fe078cafa3a1915c73cceb7c1f4c8a",
+   "stars": 103,
+   "license": "GPL-2.0",
+   "result": "fails_O0_eligible",
+   "sha": "a5f46d594f18f2a07d18f6fdc6ed5ba99ae85197",
+   "quick_gcc_O0": "2606",
+   "quick_clang_O0": "2584"
+  },
+  {
+   "repo": "bitdefender/bddisasm",
+   "hash": "0b1a200071c119c915fef73d8ec2d062380e890b476e886306ab676794f521ca",
+   "stars": 1093,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "709fd970328e3abc1bcb2372ba6ce3f30deee92f",
+   "quick_gcc_O0": "152",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JFreegman/toxic",
+   "hash": "0b29405cd1927655efb72bd953797e52ac10cdd7da26608eb4389a1d4cf676f2",
+   "stars": 1303,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "bd8ddbdda869d8b567efb36193d9bd65890a530e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bbonev/eoip",
+   "hash": "0b3f166737d2c903eff4611651bbc451861120f6f14e8e978da6b711a50976c0",
+   "stars": 164,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "cf238dbd5833f810b6a070a24e92c29fc8747e62",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "libdriver/ir_remote",
+   "hash": "0b5b9aec92908d8221c7a4f13527ff45ec739b8b03cd81f5d0ec0f7d642ed6c1",
+   "stars": 81,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c77813aecce2ac052a865ffe8a31006baff42730",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "bbcb/bbcp",
+   "hash": "0b604fa39e9ef653b51ada3a8659c651a8e0ecfa1391544643ae6f2919c50468",
+   "stars": 95,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "39020c3201d02936ae45f9f9e558d1ca7de714be",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "openargus/argus",
+   "hash": "0b61d7cea20e8376b87453e7c44885f5b75190eaa59025a9172a06b9a384b5ac",
+   "stars": 81,
+   "license": "GPL-3.0",
+   "result": "qualifies",
+   "sha": "a5e3034e1130c60bdf9d81983eb27e05f81ec041",
+   "quick_gcc_O0": "803",
+   "quick_clang_O0": "803"
+  },
+  {
+   "repo": "cloudflare/rakelimit",
+   "hash": "0b6362d6f05b0ddba7e064ad730e9e06660e04c1eebdc52579b21dc65f71acff",
+   "stars": 212,
+   "license": "BSD-3-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "d78c15e774e09344276767acd0d1d34de756827e",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ilyakurdyukov/mediatek_flash",
+   "hash": "0b665d07c0d4c487ca06fdd4561bd212f8861401171c40e23605ed39965e41d4",
+   "stars": 62,
+   "license": "Unlicense",
+   "result": "fails_quick_gcc-O0",
+   "sha": "ecbd68ccff7a53b12b3b14d10ae28c6f4ed999f3",
+   "quick_gcc_O0": "44",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "ravindu644/VirtualAP",
+   "hash": "0b6a110640d0d45d48b7b6be55dc22e280a4459e87eb5c52000d753abada5d6d",
+   "stars": 151,
+   "license": "GPL-3.0",
+   "result": "clone_failed",
+   "sha": null,
+   "quick_gcc_O0": null,
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "steve-m/ms2130_patcher",
+   "hash": "0b76b4557d31c785656fd088341539d6282d54f5d887fb0257fa8dcf55f44e85",
+   "stars": 63,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "9cf32e9a86f687e4a6795e5d3697af725cade3b5",
+   "quick_gcc_O0": "4",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Maldev-Academy/DumpBrowserSecrets",
+   "hash": "0b7b1670346ce107883ed4832a192a8942c68d56b5e6e96ce4202da2e4f40cdb",
+   "stars": 844,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "435d5a12799ea9943fe9d459036bf13cae864504",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "JulianBohne/german.c",
+   "hash": "0b808dc0fcbe7ff5b317c386ea9295ee887bb9c75fe593ad1bfbfbff204a3a64",
+   "stars": 62,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b67e0e1eee3792699c9fb535670188a323d02763",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "impeeza/Lockpick_RCMDecScots",
+   "hash": "0b83ed94a3c6f6ee173c0861db0dfcc42be70dee613a8b4103442e27b0de0437",
+   "stars": 72,
+   "license": "GPL-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "37f96573d93b7c431e449cf1c208990c40dd1d07",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "clockworkpi/DevTerm",
+   "hash": "0b8adc3752d8d159332d59313154af67c1f12f70ef495dba8dd1188e83048b76",
+   "stars": 480,
+   "license": "LGPL-2.1",
+   "result": "fails_quick_gcc-O0",
+   "sha": "32558daddd09fd019c2d4f69159991f9c4f7e549",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "yonas-shbabaw/ubuntu-18",
+   "hash": "0b8ddc3aeab8de3ae8416cc1e1d9c2eefb1a9ca78d662b840052a4d9d8df2b9b",
+   "stars": 68,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "20322aafb800c1619c96be5c77f9a841fce3516b",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "AudioKit/SoundpipeAudioKit",
+   "hash": "0b92954b94f35f6050ef576ee88549a17e6e3b2342669e879bd88d3fd10de372",
+   "stars": 157,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "68c59e21c554b0047bc545ff511ed4e79afb5bcd",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "openwch/ch592",
+   "hash": "0b93f232e3905754d9f72940c7edb7f5006f69d5bbeda16306e28db459bfc59d",
+   "stars": 83,
+   "license": "Apache-2.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "a46e0086f1ffb5e5502703970bff94888e67f4cb",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "leonardoms/DiyOS",
+   "hash": "0ba017c56052769497daba34b95bf8b9c99823f3d92e83db6993a213a93ce152",
+   "stars": 145,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "931b7fc4253eb6764d565d6d5b39d34673ae1f55",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "fcambus/logswan",
+   "hash": "0ba16022a7c0ec23bb52506bf73cd9d8064e337e8d97d8d6b613cf82f28f80e6",
+   "stars": 390,
+   "license": "BSD-2-Clause",
+   "result": "fails_quick_gcc-O0",
+   "sha": "0bb58238f620f2dc96cb65abe37f32e61f03ac96",
+   "quick_gcc_O0": "19",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "radpointhq/orthanc-s3-storage",
+   "hash": "0ba53a6eaffe3016fb9fb76c8a224fd2123fb323bde9f297d0108043c48f0f7d",
+   "stars": 55,
+   "license": "AGPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "b097e76add65ff78bcbfccaeb4097c3bb607d397",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Forairaaaaa/Monica",
+   "hash": "0ba67cea04f5c8c6a7f0ba329da4b7d6240533b3a945ea77e841704eec0dbb32",
+   "stars": 983,
+   "license": "GPL-3.0",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c4821e68b4b6c4ee79e1f4263bf0791ee2b9b50a",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Grunttanamo/KarPur",
+   "hash": "0ba8644817640d2804396c46130b381bf559f23fb7c9ef41efbf8c8849ea0560",
+   "stars": 106,
+   "license": "MIT",
+   "result": "fails_quick_gcc-O0",
+   "sha": "c2b2c0d738f2c769c24e2ceddb60592aba6e7778",
+   "quick_gcc_O0": "0",
+   "quick_clang_O0": null
+  },
+  {
+   "repo": "Matroska-Org/foundation-source",
+   "hash": "0bb4a4f547bb3df8981c1f6447048be388ae06cea2af5478cffc5031cf64f90f",
+   "stars": 68,
+   "license": "BSD-3-Clause",
+   "result": "qualifies",
+   "sha": "d69761114b79c1dfcb2226ceca84452835e745c3",
+   "quick_gcc_O0": "4438",
+   "quick_clang_O0": "4424"
+  }
+ ]
+}

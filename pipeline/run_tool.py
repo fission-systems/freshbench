@@ -24,6 +24,7 @@ import importlib.util
 import json
 import os
 import resource
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -41,6 +42,9 @@ sys.argv_saved = sys.argv
 sys.argv = [str(decbench_root / "scripts" / "run_benchmark.py")]
 spec.loader.exec_module(rb)
 sys.argv = sys.argv_saved
+
+import pickle  # noqa: E402
+import subprocess  # noqa: E402
 
 import decbench.decompilers  # noqa: E402,F401
 from decbench.decompilers.provenance import sanitize_native_provenance  # noqa: E402
@@ -60,8 +64,12 @@ except Exception as e:  # noqa: BLE001
 
 rows, run = [], {"tool": tool, "version": version, "project": manifest["project"],
                  "compiler": manifest["compiler"], "config": manifest["config"], "binaries": {}}
-recs = gzip.open(out / "records.jsonl.gz", "wt")
 perfect = {m: MetricRegistry.get(m).perfect_value for m in METRICS}
+pk = out / "pkl"
+pk.mkdir(exist_ok=True)
+SCORER = Path(__file__).with_name("score_child.py")
+
+# 1) decompile every binary (child CPU/RSS measured here, before any scoring child runs)
 for binf, info in manifest["binaries"].items():
     orig = prep / "binaries" / binf
     stripped = prep / "stripped" / binf
@@ -82,20 +90,74 @@ for binf, info in manifest["binaries"].items():
     ru1 = resource.getrusage(resource.RUSAGE_CHILDREN)
     rb._relabel_to_dwarf(res, amap, orig)
     sanitize_native_provenance(res, orig)
-    src = json.loads((prep / "source_cfgs" / f"{binf}.json").read_text())["functions"]
-    source_cfgs = {n: rebuild_cfg(c) for n, c in src.items()}
-    t1 = time.time()
-    metrics = evaluate_decompilation(res, source_cfgs, METRICS)
-    score_secs = time.time() - t1
+    (pk / f"{binf}.pkl").write_bytes(pickle.dumps(res))
     extra = res.decompiler.extra or {}
     run["binaries"][binf] = {
         "functions": len(amap), "decompiled": len(res.functions), "wall_s": round(wall, 2),
         "cpu_s": round((ru1.ru_utime + ru1.ru_stime) - (ru0.ru_utime + ru0.ru_stime), 2),
-        "children_maxrss_kb": ru1.ru_maxrss, "score_s": round(score_secs, 2),
+        "children_maxrss_kb": ru1.ru_maxrss,
         "failure": extra.get("failure", ""), "timed_out": bool(res.decompiler.timeout_occurred),
         "failed_functions": list(res.decompiler.failed_functions or [])[:50],
-        "metric_errors": {m: r.errors[:5] for m, r in metrics.items() if r.errors},
     }
+run["maxrss_children_kb"] = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+
+
+def score(binf, metrics, names=None):
+    """Run score_child.py; None if the child died (e.g. a native crash)."""
+    o = out / "score.json"
+    o.unlink(missing_ok=True)
+    cmd = [sys.executable, "-I", str(SCORER), str(pk / f"{binf}.pkl"),
+           str(prep / "source_cfgs" / f"{binf}.json"), str(o), ",".join(metrics)]
+    if names is not None:
+        nf = out / "names.json"
+        nf.write_text(json.dumps(sorted(names)))
+        cmd.append(str(nf))
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0 or not o.exists():
+        return None
+    return json.loads(o.read_text())
+
+
+def ged_bisect(binf, names, crashed, chunks):
+    """GED for `names`, halving the set while the scorer process dies.
+
+    DecBench parses ALL of a binary's decompiled functions as one C file;
+    rust-joern can overflow a fixed-size thread stack on a large file and kill
+    the process (seen once: OpenDUNE gcc-O0, Kuna). Halves parse fine, so the
+    binary is scored in chunks (recorded); a function that crashes alone gets
+    no GED and is listed in scorer_crashed_functions."""
+    r = score(binf, ["ged"], names)
+    if r is not None:
+        chunks.append(len(names))
+        return r["ged"]["values"], r["ged"]["meta"]
+    if len(names) == 1:
+        crashed.extend(names)
+        return {}, {}
+    names = sorted(names)
+    a, am = ged_bisect(binf, names[: len(names) // 2], crashed, chunks)
+    b, bm = ged_bisect(binf, names[len(names) // 2:], crashed, chunks)
+    return {**a, **b}, {**am, **bm}
+
+
+# 2) score every binary in a child process
+recs = gzip.open(out / "records.jsonl.gz", "wt")
+for binf, info in manifest["binaries"].items():
+    res = pickle.loads((pk / f"{binf}.pkl").read_bytes())
+    t1 = time.time()
+    r = score(binf, METRICS)
+    crashed: list[str] = []
+    chunks: list[int] = []
+    if r is None:
+        # type_match calibrates a per-binary stack shift, so it stays whole-binary;
+        # only GED (rust-joern parse of the decompiled C) is narrowed per function.
+        t = score(binf, ["type_match"])
+        g, gm = ged_bisect(binf, list(res.functions), crashed, chunks)
+        r = {"ged": {"values": g, "meta": gm, "errors": []},
+             "type_match": t["type_match"] if t else {"values": {}, "meta": {}, "errors": ["scorer crash"]}}
+    run["binaries"][binf]["score_s"] = round(time.time() - t1, 2)
+    run["binaries"][binf]["scorer_crashed_functions"] = crashed
+    run["binaries"][binf]["ged_scored_in_chunks"] = chunks
+    run["binaries"][binf]["metric_errors"] = {m: r[m]["errors"] for m in METRICS if r.get(m, {}).get("errors")}
     for f in info["functions"]:
         name = f["name"]
         fd = res.functions.get(name)
@@ -105,14 +167,15 @@ for binf, info in manifest["binaries"].items():
                "address": f["address"], "source": f["source"], "tool": tool,
                "decompiled": bool(code),
                "code_sha256": hashlib.sha256(code.encode()).hexdigest() if code else None}
+        if name in crashed:
+            row["scorer_crash"] = "ged"
         for m in METRICS:
-            r = metrics.get(m)
-            v = r.function_results.get(name) if r is not None else None
-            row[m] = None if v is None else v.value
-            row[f"{m}_perfect"] = None if v is None else (v.value == perfect[m])
-            if v is not None and v.metadata:
-                row[f"{m}_meta"] = {k: v.metadata[k] for k in list(v.metadata)[:8]
-                                    if isinstance(v.metadata[k], (int, float, str, bool, type(None)))}
+            v = r.get(m, {}).get("values", {}).get(name)
+            row[m] = v
+            row[f"{m}_perfect"] = None if v is None else (v == perfect[m])
+            meta = r.get(m, {}).get("meta", {}).get(name)
+            if meta:
+                row[f"{m}_meta"] = meta
         rows.append(row)
         if code:
             recs.write(json.dumps({"binary": binf, "function": name, "code": code}) + "\n")
@@ -120,7 +183,7 @@ recs.close()
 with open(out / "rows.jsonl", "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")
-run["maxrss_children_kb"] = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+shutil.rmtree(pk, ignore_errors=True)
 (out / "run.json").write_text(json.dumps(run, indent=1))
 n = len(rows)
 print(json.dumps({"tool": tool, "rows": n, "decompiled": sum(r["decompiled"] for r in rows),
