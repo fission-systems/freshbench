@@ -8,20 +8,31 @@ on:
       compilers: { description: "JSON list", default: '["gcc","clang"]' }
       configs: { description: "space-separated", default: "O0 O1 O2 O3 Os O2-noinline" }
       binary_memory_gib: { description: "DECBENCH_BINARY_MEMORY_LIMIT_GIB", default: "12" }
+      runs: { description: 'JSON {slug: qualify_run_id}; overrides qualify_run per project', default: "" }
+      fission_ref: { description: "git ref of Fission to build instead of the pinned FISSION_SHA", default: "" }
+      fission_repo: { description: "Fission repository URL (with fission_ref)", default: "" }
 permissions: { contents: read, actions: read }
 jobs:
   fission-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    outputs: { sha: "${{ steps.ref.outputs.sha }}", repo: "${{ steps.ref.outputs.repo }}" }
     steps:
       - uses: actions/checkout@v4
-      - run: source ci/pins.env && echo "FISSION_SHA=$FISSION_SHA" >> "$GITHUB_ENV" && echo "FISSION_REPO=$FISSION_REPO" >> "$GITHUB_ENV"
+      - id: ref
+        run: |
+          source ci/pins.env
+          repo="${{ inputs.fission_repo }}"; [ -n "$repo" ] || repo="$FISSION_REPO"
+          ref="${{ inputs.fission_ref }}"
+          if [ -n "$ref" ]; then sha=$(git ls-remote "$repo" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; else sha="$FISSION_SHA"; fi
+          echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"; echo "FISSION_REPO=$repo" >> "$GITHUB_ENV"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"; echo "repo=$repo" >> "$GITHUB_OUTPUT"; echo "fission $repo @ $sha"
       - uses: actions/cache@v4
         id: c
         with: { path: fission-bin, key: "fission-cli-${{ env.FISSION_SHA }}" }
       - if: steps.c.outputs.cache-hit != 'true'
         run: |
-          git clone -q "$FISSION_REPO" fsrc && git -C fsrc checkout -q "$FISSION_SHA"
+          git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
           (cd fsrc && cargo build -p fission-cli --release --locked)
           mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/
       - uses: actions/upload-artifact@v4
@@ -50,15 +61,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: rust-joern-wheel, path: "${{ runner.temp }}/wheels", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
       - uses: actions/download-artifact@v4
-        with: { name: "qual-${{ matrix.project }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+        with: { name: "qual-${{ matrix.project }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.runs != '' && fromJSON(inputs.runs)[matrix.project] || inputs.qualify_run }}", github-token: "${{ github.token }}" }
       - if: matrix.tool == 'fission'
         uses: actions/download-artifact@v4
         with: { name: fission-cli, path: "${{ runner.temp }}/fission/target/release" }
       - if: matrix.tool == 'fission'
+        env: { FISSION_SHA: "${{ needs.fission-build.outputs.sha }}", FISSION_REPO: "${{ needs.fission-build.outputs.repo }}" }
         run: |
-          source ci/pins.env
-          git clone -q --filter=blob:none --no-checkout "$FISSION_REPO" "$RUNNER_TEMP/fsrc"
-          git -C "$RUNNER_TEMP/fsrc" checkout -q "$FISSION_SHA" -- utils
+          git init -q "$RUNNER_TEMP/fsrc"
+          git -C "$RUNNER_TEMP/fsrc" fetch -q --depth 1 --filter=blob:none "$FISSION_REPO" "$FISSION_SHA"
+          git -C "$RUNNER_TEMP/fsrc" checkout -q FETCH_HEAD -- utils
+          echo "$FISSION_SHA" > "$RUNNER_TEMP/fission/SHA"
           mv "$RUNNER_TEMP/fsrc/utils" "$RUNNER_TEMP/fission/utils"
           chmod +x "$RUNNER_TEMP/fission/target/release/fission_cli"
       - run: ci/setup_scorer.sh
