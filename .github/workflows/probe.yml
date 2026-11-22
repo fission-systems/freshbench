@@ -1,0 +1,49 @@
+name: probe
+# Decompile one function on Linux x86-64 and Linux arm64 with stage traces, to
+# compare against a local (macOS) run of the same Fission commit.
+on:
+  workflow_dispatch:
+    inputs:
+      qualify_run: { required: true }
+      project: { required: true, description: "slug" }
+      build: { required: true, description: "e.g. clang-Os" }
+      binary: { required: true }
+      addr: { required: true }
+      fission_ref: { default: "" }
+permissions: { contents: read, actions: read }
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-24.04, ubuntu-24.04-arm] }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - id: ref
+        run: |
+          source ci/pins.env
+          ref="${{ inputs.fission_ref }}"; sha="$FISSION_SHA"
+          if [ -n "$ref" ]; then sha=$(git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; fi
+          echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"; echo "FISSION_REPO=$FISSION_REPO" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: c
+        with: { path: fsrc/target/release/fission_cli, key: "probe-fission-${{ matrix.os }}-${{ env.FISSION_SHA }}" }
+      - run: |
+          git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
+      - if: steps.c.outputs.cache-hit != 'true'
+        run: cd fsrc && cargo build -p fission-cli --release --locked
+      - uses: actions/download-artifact@v4
+        with: { name: "qual-${{ inputs.project }}", path: q, run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+      - name: probe
+        run: |
+          mkdir -p out && tar -xf q/prep.tar -C q
+          B="$PWD/q/prep/${{ inputs.build }}/stripped/${{ inputs.binary }}"
+          uname -a > out/uname.txt; sha256sum "$B" >> out/uname.txt
+          cd fsrc
+          FISSION_BENCHMARK_NO_CACHE=1 FISSION_NORM_TRACE=1 ./target/release/fission_cli --no-db decomp "$B" \
+            --addr ${{ inputs.addr }} --json --no-header --no-warnings --prehir --timeout-ms 600000 \
+            > ../out/out.json 2> ../out/trace.txt || echo "exit $?" >> ../out/uname.txt
+          ls -la ../out
+      - uses: actions/upload-artifact@v4
+        with: { name: "probe-${{ matrix.os }}", path: out }
