@@ -167,6 +167,8 @@ for binf, info in manifest["binaries"].items():
             "/opt/venv/bin:/usr/local/bin:/opt/llvm/bin:/usr/bin:/bin"
         p = subprocess.run(
             ["docker", "run", "--rm", "--network", "none", "-e", f"PATH={path}",
+             *(["-e", "FB_DIAG_CC=/usr/local/bin/gcc", "-e", "FB_FINAL_CC=/opt/llvm/bin/clang"]
+               if manifest["compiler"] == "clang" else []),
              "-v", f"{pk}:/pkl:ro", "-v", f"{prep / 'binaries'}:/orig:ro", "-v", f"{bmdir}:/bm",
              "-v", f"{Path(__file__).parent}:/p:ro", score_image,
              "python", "/p/score_bytematch.py", f"/pkl/{binf}.pkl", f"/orig/{binf}", f"/bm/{binf}.json"],
