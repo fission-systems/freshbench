@@ -11,7 +11,7 @@ on:
       runs: { description: 'JSON {slug: qualify_run_id}; overrides qualify_run per project', default: "" }
       fission_ref: { description: "git ref of Fission to build instead of the pinned FISSION_SHA", default: "" }
       fission_repo: { description: "Fission repository URL (with fission_ref)", default: "" }
-permissions: { contents: read, actions: read }
+permissions: { contents: read, actions: read, packages: read }
 jobs:
   fission-build:
     runs-on: ubuntu-24.04
@@ -77,6 +77,11 @@ jobs:
       - run: ci/setup_scorer.sh
       - run: ci/setup_tool.sh ${{ matrix.tool }}
       - run: ci/setup_systemd_user.sh
+      - name: score image (byte_match)
+        run: |
+          source ci/pins.env
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull -q "$SCORE_IMAGE" && echo "SCORE_IMAGE=$SCORE_IMAGE" >> "$GITHUB_ENV"
       - name: decompile and score
         run: |
           mkdir -p "$RUNNER_TEMP/prep" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/prep"

@@ -155,6 +155,31 @@ for binf, info in manifest["binaries"].items():
         r = {"ged": {"values": g, "meta": gm, "errors": []},
              "type_match": t["type_match"] if t else {"values": {}, "meta": {}, "errors": ["scorer crash"]}}
     run["binaries"][binf]["score_s"] = round(time.time() - t1, 2)
+    # byte_match: DecBench's ByteMatchMetric inside the score image, which holds
+    # the exact compilers that built this binary (see build/Dockerfile.score).
+    bm = {}
+    score_image = os.environ.get("SCORE_IMAGE")
+    if score_image and shutil.which("docker"):
+        t2 = time.time()
+        bmdir = out / "bm"
+        bmdir.mkdir(exist_ok=True)
+        path = ("/opt/clang-as-gcc:" if manifest["compiler"] == "clang" else "") + \
+            "/opt/venv/bin:/usr/local/bin:/opt/llvm/bin:/usr/bin:/bin"
+        p = subprocess.run(
+            ["docker", "run", "--rm", "--network", "none", "-e", f"PATH={path}",
+             "-v", f"{pk}:/pkl:ro", "-v", f"{prep / 'binaries'}:/orig:ro", "-v", f"{bmdir}:/bm",
+             "-v", f"{Path(__file__).parent}:/p:ro", score_image,
+             "python", "/p/score_bytematch.py", f"/pkl/{binf}.pkl", f"/orig/{binf}", f"/bm/{binf}.json"],
+            capture_output=True, text=True)
+        bmfile = bmdir / f"{binf}.json"
+        if p.returncode == 0 and bmfile.exists():
+            bmr = json.loads(bmfile.read_text())
+            bm = bmr["values"]
+            run["binaries"][binf]["byte_match"] = {"compiler": bmr["compiler"], "errors": bmr["errors"],
+                                                   "seconds": round(time.time() - t2, 2)}
+        else:
+            run["binaries"][binf]["byte_match"] = {"error": (p.stderr or "")[-1500:],
+                                                   "seconds": round(time.time() - t2, 2)}
     run["binaries"][binf]["scorer_crashed_functions"] = crashed
     run["binaries"][binf]["ged_scored_in_chunks"] = chunks
     run["binaries"][binf]["metric_errors"] = {m: r[m]["errors"] for m in METRICS if r.get(m, {}).get("errors")}
@@ -169,6 +194,11 @@ for binf, info in manifest["binaries"].items():
                "code_sha256": hashlib.sha256(code.encode()).hexdigest() if code else None}
         if name in crashed:
             row["scorer_crash"] = "ged"
+        b = bm.get(name)
+        row["byte_match"] = None if b is None or b.get("skipped") else b["value"]
+        row["byte_match_perfect"] = None if row["byte_match"] is None else bool(b["perfect"])
+        if b is not None:
+            row["byte_match_meta"] = {k: v for k, v in b.items() if k not in ("value", "perfect")}
         for m in METRICS:
             v = r.get(m, {}).get("values", {}).get(name)
             row[m] = v
@@ -184,6 +214,7 @@ with open(out / "rows.jsonl", "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")
 shutil.rmtree(pk, ignore_errors=True)
+shutil.rmtree(out / "bm", ignore_errors=True)
 (out / "run.json").write_text(json.dumps(run, indent=1))
 n = len(rows)
 print(json.dumps({"tool": tool, "rows": n, "decompiled": sum(r["decompiled"] for r in rows),

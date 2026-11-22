@@ -1,0 +1,18 @@
+# FreshBench byte_match scorer: the build image's exact compilers (GCC 16.2.0,
+# Clang/LLVM 23.1.6) plus DecBench at the pinned commit, so DecBench's
+# ByteMatchMetric recompiles every function with the toolchain that built it.
+ARG BUILD_IMAGE
+FROM ${BUILD_IMAGE}
+ARG DECBENCH_REPO=https://github.com/Noelo-Lab/decbench
+ARG DECBENCH_SHA
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      python3-venv python3-dev && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /opt/venv && git init -q /opt/decbench \
+    && git -C /opt/decbench fetch -q --depth 1 "$DECBENCH_REPO" "$DECBENCH_SHA" \
+    && git -C /opt/decbench checkout -q FETCH_HEAD \
+    && /opt/venv/bin/pip install -q --upgrade pip && /opt/venv/bin/pip install -q /opt/decbench \
+    && /opt/venv/bin/python -c "import decbench.metrics.byte_match, capstone; print('ok')"
+# DecBench recompiles host-native ELF with the bare name `gcc`; for clang builds
+# the job puts this directory first on PATH so `gcc` is clang 23.1.6.
+RUN mkdir -p /opt/clang-as-gcc && ln -s /opt/llvm/bin/clang /opt/clang-as-gcc/gcc
+ENV PATH=/opt/venv/bin:$PATH

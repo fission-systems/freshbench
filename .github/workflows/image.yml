@@ -1,14 +1,28 @@
 name: build-image
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      rebuild_build_image: { description: "also rebuild BUILD_IMAGE (changes the corpus toolchain image!)", default: "false" }
 permissions: { contents: read, packages: write }
 jobs:
   image:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: source ci/pins.env && echo "BUILD_IMAGE=$BUILD_IMAGE" >> "$GITHUB_ENV"
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - run: docker build -t "$BUILD_IMAGE" build/ && docker push "$BUILD_IMAGE"
-      - run: docker run --rm "$BUILD_IMAGE" sh -c 'gcc --version | head -1; /opt/llvm/bin/clang --version | head -1; ld --version | head -1' | tee versions.txt
+      - name: build image
+        if: inputs.rebuild_build_image == 'true'
+        run: |
+          source ci/pins.env
+          docker build -t "$BUILD_IMAGE" build/ && docker push "$BUILD_IMAGE"
+      - name: score image (DecBench + the build image's compilers)
+        run: |
+          source ci/pins.env
+          docker pull -q "$BUILD_IMAGE"
+          docker build -f build/Dockerfile.score --build-arg BUILD_IMAGE="$BUILD_IMAGE" \
+            --build-arg DECBENCH_SHA="$DECBENCH_SHA" -t "$SCORE_IMAGE" build/
+          docker push "$SCORE_IMAGE"
+          docker run --rm "$SCORE_IMAGE" gcc --version | head -1 | tee versions.txt
+          docker run --rm -e PATH=/opt/clang-as-gcc:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin "$SCORE_IMAGE" gcc --version | head -1 | tee -a versions.txt
       - uses: actions/upload-artifact@v4
         with: { name: image-versions, path: versions.txt }
