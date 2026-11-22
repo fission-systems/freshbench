@@ -10,6 +10,7 @@ on:
       binary: { required: true }
       addr: { required: true }
       fission_ref: { default: "" }
+      diag: { default: "0", description: "1 = FISSION_PREVIEW_DIAG for this address" }
 permissions: { contents: read, actions: read }
 jobs:
   probe:
@@ -41,9 +42,10 @@ jobs:
           B="$PWD/q/prep/${{ inputs.build }}/stripped/${{ inputs.binary }}"
           uname -a > out/uname.txt; sha256sum "$B" >> out/uname.txt
           cd fsrc
+          if [ "${{ inputs.diag }}" = 1 ]; then export FISSION_PREVIEW_DIAG=1 FISSION_PREVIEW_DIAG_ADDR=${{ inputs.addr }}; fi
           FISSION_BENCHMARK_NO_CACHE=1 FISSION_NORM_TRACE=1 ./target/release/fission_cli --no-db decomp "$B" \
             --addr ${{ inputs.addr }} --json --no-header --no-warnings --prehir --timeout-ms 600000 \
             > ../out/out.json 2> ../out/trace.txt || echo "exit $?" >> ../out/uname.txt
-          ls -la ../out
+          gzip -f ../out/trace.txt; ls -la ../out
       - uses: actions/upload-artifact@v4
         with: { name: "probe-${{ matrix.os }}", path: out }
