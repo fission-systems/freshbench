@@ -32,8 +32,8 @@ from decbench.rendering.aggregate import build_aggregates, build_dataset_page
 
 root, outd = Path(sys.argv[1]), Path(sys.argv[2])
 outd.mkdir(parents=True, exist_ok=True)
-TOOLS = ["kuna", "angr", "fission", "ghidra"]
-VERSIONS = {"kuna": "1.1003", "angr": "10.0.7", "fission": "18f9e3d", "ghidra": "12.2"}
+ALL_TOOLS = ["kuna", "angr", "fission", "ghidra", "borer"]
+VERSIONS = {"kuna": "1.1003", "angr": "10.0.7", "fission": "18f9e3d", "ghidra": "12.2", "borer": "0.3.1"}
 OPTS = ["O0", "O1", "O2", "O3", "Os", "O2-noinline"]
 METRICS = ["ged", "type_match", "byte_match"]
 PERFECT = {"ged": 0.0, "type_match": 1.0, "byte_match": 1.0}
@@ -81,6 +81,7 @@ for rows_path in sorted(root.glob("*/*/*/rows.jsonl")):
             rec.distances[tool] = dist
 
 metrics = METRICS if have_bm else METRICS[:2]
+TOOLS = [t for t in ALL_TOOLS if t in cost or any(t in r.decompiled for g in groups.values() for r in g.values())]
 presets = [DatasetPreset(name="full", label="full", description="every build")]
 presets += [DatasetPreset(name=c, label=c, description=f"{c} builds") for c in ("gcc", "clang")]
 presets += [DatasetPreset(name=o, label=o, description=f"-{o} (GCC and Clang)") for o in OPTS]
