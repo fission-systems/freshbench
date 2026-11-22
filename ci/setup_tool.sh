@@ -25,5 +25,17 @@ case "$tool" in
     echo "FISSION_WORKING_DIR=$RUNNER_TEMP/fission" >> "$GITHUB_ENV"
     echo "FISSION_BENCHMARK_NO_CACHE=1" >> "$GITHUB_ENV"
     "$RUNNER_TEMP/fission/target/release/fission_cli" --version || true;;
+  borer)
+    # FreshBench-side DecBench backend (pipeline/borer_raw.py), registered into the pinned checkout.
+    curl -fsSL -o "$T/borer.tgz" "$BORER_URL"
+    echo "$BORER_SHA256  $T/borer.tgz" | sha256sum -c -
+    mkdir -p "$T/borer"; tar -xzf "$T/borer.tgz" -C "$T/borer"
+    b=$(find "$T/borer" -type f -name borer -perm -u+x | head -1)
+    BORER_NO_UPDATE_CHECK=1 "$b" --version
+    echo "BORER_BIN=$b" >> "$GITHUB_ENV"; echo "BORER_NO_UPDATE_CHECK=1" >> "$GITHUB_ENV"
+    cp "$(dirname "$0")/../pipeline/borer_raw.py" "$DECBENCH_ROOT/decbench/decompilers/raw/borer_raw.py"
+    echo "from decbench.decompilers.raw import borer_raw  # noqa: E402,F401  (FreshBench)" \
+      >> "$DECBENCH_ROOT/decbench/decompilers/raw/__init__.py"
+    python -c "from decbench.decompilers.registry import DecompilerRegistry as R; import decbench.decompilers; d=R.get('borer'); print('borer backend', d.is_available(), d.get_version())";;
   *) echo "unknown tool $tool"; exit 1;;
 esac
