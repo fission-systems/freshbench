@@ -2,8 +2,8 @@
 """Ranking uncertainty and per-project spread (reads report.py's inputs).
 
 usage: analysis.py <results_root> <out.json>
-  * per-project Union(GED,type) % per tool
-  * project bootstrap (10,000 resamples of the 20 projects, seed 0): 95% interval
+  * per-project Union % per tool (GED, type_match and, when scored, byte_match)
+  * project bootstrap (10,000 resamples of the projects, seed 0): 95% interval
     of each tool's Union %, and of the Union difference for every tool pair, plus
     the share of resamples in which each ranking position holds
 """
@@ -27,7 +27,7 @@ for k, per in rows.items():
     for t, r in per.items():
         a = by[k[0]][t]
         a[0] += 1
-        a[1] += bool(r["ged_perfect"]) or bool(r["type_match_perfect"])
+        a[1] += bool(r["ged_perfect"]) or bool(r["type_match_perfect"]) or bool(r.get("byte_match_perfect"))
         a[2] += bool(r["ged_perfect"])
 projects = sorted(by)
 per_project = {p: {t: round(100 * by[p][t][1] / by[p][t][0], 2) for t in tools} for p in projects}
