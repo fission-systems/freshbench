@@ -16,10 +16,14 @@ jobs:
       - name: free disk
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - uses: docker/setup-buildx-action@v3
+      - uses: crazy-max/ghaction-github-runtime@v3  # exposes the cache API to buildx (type=gha)
       - name: build
         run: |
           img="ghcr.io/fission-systems/freshbench-build-cross:${{ inputs.tag }}"
-          rc=0; DOCKER_BUILDKIT=1 docker build --progress=plain -f build/Dockerfile.cross -t "$img" build/ > build.log 2>&1 || rc=$?
+          rc=0; docker buildx build --progress=plain --load \
+            --cache-from type=gha,scope=cross --cache-to type=gha,mode=max,scope=cross \
+            -f build/Dockerfile.cross -t "$img" build/ > build.log 2>&1 || rc=$?
           grep -E 'elfclass|gcc version|clang version|^[0-9]+$' build.log | tail -40 || true
           if [ "$rc" != 0 ]; then tail -150 build.log; exit "$rc"; fi
           docker push "$img"
