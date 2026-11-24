@@ -22,14 +22,16 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tree_sitter::Node;
 
 use crate::csyntax;
 use crate::manifest::hex;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     Exact,
@@ -97,7 +99,7 @@ pub fn fingerprint(def: Node, src: &str, level: Level) -> String {
 }
 
 /// One distinct selected function and how many rows it has.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Function {
     pub project: String,
     pub source: String,
@@ -106,14 +108,14 @@ pub struct Function {
     pub tokens: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Group {
     pub tokens: usize,
     pub projects: usize,
     pub members: Vec<Function>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LevelReport {
     pub level: Level,
     /// groups of two or more distinct functions
@@ -129,7 +131,7 @@ pub struct LevelReport {
 }
 
 /// Selected functions that also occur in another corpus, per level.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Overlap {
     pub level: Level,
     pub functions: usize,
@@ -139,7 +141,7 @@ pub struct Overlap {
     pub examples: Vec<Function>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Report {
     pub rows: usize,
     pub functions: usize,
@@ -147,7 +149,7 @@ pub struct Report {
     pub unreadable: usize,
     pub levels: Vec<LevelReport>,
     /// against `--against` (every definition in its .c/.i files)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub against: Vec<Overlap>,
 }
 

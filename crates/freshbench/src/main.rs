@@ -160,6 +160,15 @@ enum Cmd {
         resamples: usize,
         #[arg(long, default_value_t = 5)]
         keep: usize,
+        /// only functions present in every build (the matched track)
+        #[arg(long)]
+        matched: bool,
+        /// a `freshbench duplicates` report (all groups: --top 1000000): keep one
+        /// function per clone group
+        #[arg(long)]
+        dedup: Option<PathBuf>,
+        #[arg(long, value_enum, default_value = "renamed")]
+        dedup_level: freshbench::clones::Level,
     },
     /// DWARF type ground truth (return, parameter and local classes) of a function.
     Signature {
@@ -528,12 +537,32 @@ fn run() -> Result<ExitCode> {
             meta,
             resamples,
             keep,
+            matched,
+            dedup,
+            dedup_level,
         } => {
-            let meta: freshbench::report::Meta = match meta {
+            let mut meta: freshbench::report::Meta = match meta {
                 Some(p) => serde_json::from_str(&read(&p)?)?,
                 None => Default::default(),
             };
-            let table = rows::load_table(&root)?;
+            let mut table = rows::load_table(&root)?;
+            let all = table.len();
+            if let Some(d) = &dedup {
+                let rep: freshbench::clones::Report = serde_json::from_str(&read(d)?)?;
+                table = freshbench::report::dedup(&table, &rep, dedup_level)?;
+                meta.notes.push(format!(
+                    "one function per {dedup_level:?} clone group: {} of {all} rows",
+                    table.len()
+                ));
+            }
+            if matched {
+                let before = table.len();
+                table = freshbench::report::matched(&table);
+                meta.notes.push(format!(
+                    "matched track: functions present in every build, {} of {before} rows",
+                    table.len()
+                ));
+            }
             std::fs::create_dir_all(&out)?;
             let files = freshbench::report::site(&table, &meta, resamples, keep);
             for (name, body) in &files {

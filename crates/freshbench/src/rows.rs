@@ -134,6 +134,23 @@ pub struct Row {
     /// `empty`, or `no_record` (the run produced nothing for this row).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// the function's source file in the project: with project and function,
+    /// the identity of a function across builds (`report --matched/--dedup`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+impl Row {
+    /// (project, source file or binary, function): the same function in every build.
+    pub fn identity(&self) -> (String, String, String) {
+        (
+            self.key.project.clone(),
+            self.source
+                .clone()
+                .unwrap_or_else(|| self.key.binary.clone()),
+            self.key.function.clone(),
+        )
+    }
 }
 
 impl Row {
@@ -236,6 +253,7 @@ impl From<V1Row> for Row {
             tags: vec![],
             scorer: "decbench-v1".into(),
             failure: None,
+            source: None,
         }
     }
 }

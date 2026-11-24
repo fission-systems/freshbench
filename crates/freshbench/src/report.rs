@@ -234,6 +234,72 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
     s
 }
 
+/// The matched track: only functions present in every build of the table,
+/// so a difference between compilers, levels or architectures is not a
+/// difference in which functions were measured.
+pub fn matched(table: &Table) -> Table {
+    use std::collections::{BTreeSet, HashMap};
+    type Build<'a> = (&'a str, &'a str, &'a str);
+    let builds: BTreeSet<Build> = table
+        .keys()
+        .map(|k| (k.arch.as_str(), k.compiler.as_str(), k.config.as_str()))
+        .collect();
+    let mut seen: HashMap<(String, String, String), BTreeSet<Build>> = HashMap::new();
+    for (k, per) in table {
+        if let Some(r) = per.values().next() {
+            seen.entry(r.identity()).or_default().insert((
+                k.arch.as_str(),
+                k.compiler.as_str(),
+                k.config.as_str(),
+            ));
+        }
+    }
+    table
+        .iter()
+        .filter(|(_, per)| {
+            per.values()
+                .next()
+                .is_some_and(|r| seen[&r.identity()].len() == builds.len())
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+/// Drop the rows of functions that `freshbench duplicates` found to be copies
+/// (every member of a clone group but the first, at `level`).
+pub fn dedup(
+    table: &Table,
+    report: &crate::clones::Report,
+    level: crate::clones::Level,
+) -> anyhow::Result<Table> {
+    let l = report
+        .levels
+        .iter()
+        .find(|l| l.level == level)
+        .ok_or_else(|| anyhow::anyhow!("no {level:?} level in the duplicates report"))?;
+    anyhow::ensure!(
+        l.top.len() == l.groups,
+        "the duplicates report lists {} of {} groups; rerun it with --top 1000000",
+        l.top.len(),
+        l.groups
+    );
+    let drop: std::collections::HashSet<(String, String, String)> = l
+        .top
+        .iter()
+        .flat_map(|g| g.members.iter().skip(1))
+        .map(|f| (f.project.clone(), f.source.clone(), f.name.clone()))
+        .collect();
+    Ok(table
+        .iter()
+        .filter(|(_, per)| {
+            per.values()
+                .next()
+                .is_none_or(|r| !drop.contains(&r.identity()))
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect())
+}
+
 pub fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -429,7 +495,7 @@ fn group_rows(
         None => keys.sort_by(|a, b| m[*b].gap.total_cmp(&m[*a].gap).then(a.cmp(b))),
     }
     let mut h = format!(
-        "<h2>{}</h2><table><tr><th></th><th>rows</th><th>perfect</th><th>reachable</th><th>GED gap</th><th>no score</th><th>worst rows (gap)</th></tr>",
+        "<h2>{}</h2><table><tr><th></th><th>rows</th><th>perfect</th><th>reachable</th><th>GED gap</th><th>proven gap</th><th>inconclusive rows</th><th>no score</th><th>worst rows (gap)</th></tr>",
         esc(title)
     );
     for k in keys {
@@ -442,12 +508,14 @@ fn group_rows(
             .collect();
         let _ = write!(
             h,
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=ex>{}</td></tr>",
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=ex>{}</td></tr>",
             esc(k),
             num(g.rows),
             num(g.perfect),
             num(g.reachable),
             num(g.gap as u64),
+            num(g.proven_gap as u64),
+            num(g.inconclusive_rows),
             num(g.uncovered),
             ex.join("<br>")
         );
@@ -461,13 +529,15 @@ pub fn render_gaps(h: &Headroom, meta: &Meta) -> String {
     let mut b = format!(
         "<p><a href=\"index.html\">All tools</a></p>\
 <p><b>{tool}</b> against {others}. <b>Reachable</b>: another decompiler printed the source's control flow exactly (GED 0) \
-from the same stripped binary and {tool} did not. <b>GED gap</b>: {tool}'s GED minus the best other tool's on that row. \
+from the same stripped binary and {tool} did not. <b>GED gap</b>: {tool}'s GED minus the best other tool's on that row; GED from a budget-limited search is an upper bound, \
+so the <b>proven gap</b> uses {tool}'s lower bound instead and rows where the bounds overlap are <b>inconclusive</b>. \
 These are similarity gaps, not correctness defects; open the output before acting on one.</p>\
 <table><tr><th></th><th>value</th></tr>\
 <tr><td>rows</td><td>{}</td></tr><tr><td>perfect</td><td>{}</td></tr><tr><td>reachable</td><td>{}</td></tr>\
 <tr><td>no score where another tool scored</td><td>{}</td></tr>\
 <tr><td>GED on rows both scored ({})</td><td>{}</td></tr><tr><td>per-row best of all tools on those rows</td><td>{}</td></tr>\
-<tr><td>gap to the best other tool</td><td>{}</td></tr></table>",
+<tr><td>gap to the best other tool</td><td>{}</td></tr><tr><td>of which proven (lower bound)</td><td>{}</td></tr>\
+<tr><td>rows with an inconclusive gap</td><td>{}</td></tr></table>",
         num(o.rows),
         num(o.perfect),
         num(o.reachable),
@@ -476,6 +546,8 @@ These are similarity gaps, not correctness defects; open the output before actin
         num(h.tool_ged_on_common as u64),
         num(h.virtual_best_ged_on_common as u64),
         num(o.gap as u64),
+        num(o.proven_gap as u64),
+        num(o.inconclusive_rows),
         tool = esc(&h.tool),
         others = esc(&others.join(", ")),
     );
@@ -556,6 +628,7 @@ mod tests {
             tags: vec!["over_noded".into()],
             scorer: String::new(),
             failure: None,
+            source: None,
         }
     }
 
@@ -661,6 +734,55 @@ mod tests {
         );
         assert_eq!(s.overall["a"].failures["timeout"], 1);
         assert_eq!(s.overall["a"].missing, 0);
+    }
+
+    #[test]
+    fn matched_and_dedup_views() {
+        let mut t = Table::new();
+        let mut put = |f: &str, src: &str, arch: &str| {
+            let mut r = row("p", arch, f, "a", Some(0.0), 3);
+            r.source = Some(src.into());
+            t.entry(r.key.clone()).or_default().insert("a".into(), r);
+        };
+        put("f", "x.c", "x86_64");
+        put("f", "x.c", "armv7");
+        put("g", "x.c", "x86_64"); // inlined away on armv7
+        put("h", "y.c", "x86_64");
+        put("h", "y.c", "armv7");
+        let m = matched(&t);
+        let names: Vec<_> = m.keys().map(|k| k.function.as_str()).collect();
+        assert_eq!(names, ["f", "h", "f", "h"]);
+        // h in y.c is a renamed copy of f in x.c
+        let f = |name: &str, source: &str| crate::clones::Function {
+            project: "p".into(),
+            source: source.into(),
+            name: name.into(),
+            rows: 2,
+            tokens: 9,
+        };
+        let rep = crate::clones::Report {
+            rows: 5,
+            functions: 3,
+            unreadable: 0,
+            levels: vec![crate::clones::LevelReport {
+                level: crate::clones::Level::Renamed,
+                groups: 1,
+                cross_project_groups: 0,
+                redundant_functions: 1,
+                redundant_rows: 2,
+                redundant_functions_50_tokens: 0,
+                top: vec![crate::clones::Group {
+                    tokens: 9,
+                    projects: 1,
+                    members: vec![f("f", "x.c"), f("h", "y.c")],
+                }],
+            }],
+            against: vec![],
+        };
+        let d = dedup(&t, &rep, crate::clones::Level::Renamed).unwrap();
+        assert_eq!(d.len(), 3);
+        assert!(d.keys().all(|k| k.function != "h"));
+        assert!(dedup(&t, &rep, crate::clones::Level::Exact).is_err());
     }
 
     #[test]

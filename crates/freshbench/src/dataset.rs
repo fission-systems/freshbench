@@ -23,6 +23,8 @@ pub struct Target {
     pub key: RowKey,
     pub address: Option<u64>,
     pub source_path: String,
+    /// the function's source file in the project (selection identity)
+    pub source: String,
     /// unstripped binary, relative to the root (type ground truth)
     pub binary_path: Option<String>,
     /// the build's optimization flags (recompilation)
@@ -87,6 +89,7 @@ pub fn targets(root: &Path) -> Result<Vec<Target>> {
                     Target {
                         key,
                         address: f.address,
+                        source: sp.clone(),
                         source_path: sp,
                         binary_path: b.binary_path.clone(),
                         flags: b.flags.clone(),
@@ -134,6 +137,7 @@ fn prepared_targets(root: &Path) -> Result<Vec<Target>> {
                         key,
                         address: Some(f.address),
                         source_path: f.source_path.clone(),
+                        source: f.source.clone(),
                         binary_path: Some(format!("{}/{bin}", u.binaries)),
                         flags: pb.flags.clone(),
                     },
@@ -448,6 +452,7 @@ fn score_tu(
             tags: vec![],
             scorer: score::SCORER.to_string(),
             failure: None,
+            source: Some(t.source.clone()),
         };
         let Some(text) = code
             .get(&t.key)
