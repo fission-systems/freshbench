@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/freshbench"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.85"
+repository = "https://github.com/fission-systems/freshbench"
+
+[profile.release]
+debug = 1
