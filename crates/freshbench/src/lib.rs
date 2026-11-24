@@ -7,6 +7,7 @@
 // Index loops over parallel per-node arrays read better than zipped iterators here.
 #![allow(clippy::needless_range_loop)]
 
+pub mod adapters;
 pub mod bands;
 pub mod callsites;
 pub mod cfg;
