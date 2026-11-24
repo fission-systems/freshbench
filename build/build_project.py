@@ -50,6 +50,16 @@ if cross:
                  "OBJDUMP": "objdump", "LD": "ld", "READELF": "readelf"}.items()})
     env["PKG_CONFIG_LIBDIR"] = f"/usr/lib/{multiarch}/pkgconfig:/usr/share/pkgconfig"
     env["PKG_CONFIG_PATH"] = ""
+    # Hand-written configure scripts look for <triplet>-gcc / -cc on PATH: give them
+    # this build's wrapper under those names (C and C++), first on PATH.
+    tdir = f"/tmp/fbwork/bin-{arch}-{fam}"
+    os.makedirs(tdir, exist_ok=True)
+    for name, target in [("gcc", f"fbcc-{fam}"), ("cc", f"fbcc-{fam}"), ("clang", f"fbcc-{fam}"),
+                         ("g++", f"fbcxx-{fam}"), ("c++", f"fbcxx-{fam}"), ("clang++", f"fbcxx-{fam}")]:
+        link = os.path.join(tdir, f"{triplet}-{name}")
+        if not os.path.lexists(link):
+            os.symlink(f"/usr/local/bin/{target}", link)
+    env["PATH"] = tdir + ":" + env.get("PATH", "")
 steps, ok, system = [], True, None
 
 
@@ -109,7 +119,14 @@ elif has("meson.build"):
     run(f"{MESON_ENV}meson setup _fbbuild --buildtype=plain -Db_lto=false{MESON_CROSS}") and run("ninja -C _fbbuild -j4")
 elif has("configure") and os.access(os.path.join(work, "configure"), os.X_OK):
     system = "configure"
-    run(f"./configure{HOST}") and run(f"make -j4 CC={CC} CXX={CXX}")
+    configured = run(f"./configure{HOST}")
+    if not configured and HOST and any(m in steps[-1]["tail"].lower() for m in
+                                       ("invalid option", "unrecognized option", "unknown option")):
+        # a hand-written configure without --host: cross through CC/CXX (env) alone
+        steps[-1]["superseded"] = True
+        ok = True
+        configured = run("./configure")
+    configured and run(f"make -j4 CC={CC} CXX={CXX}")
 elif has("configure.ac", "configure.in"):
     system = "autoreconf"
     (run("./autogen.sh") if has("autogen.sh") else run("autoreconf -fi")) and \
