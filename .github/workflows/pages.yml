@@ -32,19 +32,26 @@ jobs:
             cp "$f" "site-src/rows/$(echo "$f" | tr '/' '_')"
           done
           ls site-src/rows | wc -l
-      - name: meta
+      - name: meta (from the runs' own provenance, not the current pins)
         run: |
-          source ci/pins.env
           python3 - <<'PY'
-          import json, os, re
-          pins = {}
-          for line in open("ci/pins.env"):
-              m = re.match(r"^([A-Z_]+)=(.*)$", line.strip())
-              if m and not m.group(1).endswith("_URL"):
-                  pins[m.group(1)] = m.group(2)
-          pins["freshbench commit"] = os.environ["GITHUB_SHA"]
+          import glob, json, collections
+          prov = [json.load(open(f)) for f in sorted(glob.glob("dl/*/*/provenance.json"))]
+          assert prov, "no provenance.json in the artifacts"
+          by_tool = collections.defaultdict(set)
+          for p in prov:
+              by_tool[p["tool"]].add(p["tool_version"])
+          mixed = {t: sorted(v) for t, v in by_tool.items() if len(v) > 1}
+          assert not mixed, f"one tool measured at several versions: {mixed}"
+          qual = {p["qualify_run"] for p in prov}
+          assert len(qual) == 1, f"artifacts from several corpus builds: {sorted(qual)}"
+          pins = {t: next(iter(v)) for t, v in sorted(by_tool.items())}
+          pins["corpus build (qualify-arch run)"] = qual.pop()
+          pins["freshbench commits"] = ", ".join(sorted({p["freshbench_commit"][:12] for p in prov}))
           json.dump({"title": "FreshBench results", "corpus": "${{ inputs.corpus }}", "pins": pins,
-                     "notes": ["evaluate runs: ${{ inputs.evaluate_runs }}"]}, open("meta.json", "w"), indent=1)
+                     "notes": ["evaluate runs: ${{ inputs.evaluate_runs }}",
+                               f"{len(prov)} result artifacts; rows from different scorers or duplicated rows with different content are refused by the report"]},
+                    open("meta.json", "w"), indent=1)
           PY
       - run: target/release/freshbench report site-src --out site --meta meta.json
       - uses: actions/upload-pages-artifact@v3

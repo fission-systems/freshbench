@@ -130,6 +130,10 @@ pub struct Row {
     /// Scorer that produced the numbers ("freshbench-2.x", or "decbench-v1").
     #[serde(default)]
     pub scorer: String,
+    /// Why there is no output (`NoOutput` rows): `adapters::failure_kind`,
+    /// `empty`, or `no_record` (the run produced nothing for this row).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
 }
 
 impl Row {
@@ -231,6 +235,7 @@ impl From<V1Row> for Row {
             recompile: None,
             tags: vec![],
             scorer: "decbench-v1".into(),
+            failure: None,
         }
     }
 }
@@ -338,13 +343,35 @@ pub struct RecompileLine {
 }
 
 /// Rows grouped by key and tool, with `*.recompile.jsonl` scores attached.
+/// All rows under `root`. Refuses a table that mixes scorers (numbers from
+/// different metric definitions are not comparable) and a (row, tool) that
+/// occurs twice with different content (two runs of one tool collected
+/// together); an identical duplicate is kept once.
 pub fn load_table(root: &Path) -> Result<Table> {
     let mut t = Table::new();
+    let mut scorers = std::collections::BTreeSet::new();
+    let mut conflicts = Vec::new();
     for_each_row(root, |r| {
-        t.entry(r.key.clone())
-            .or_default()
-            .insert(r.tool.clone(), r);
+        scorers.insert(r.scorer.clone());
+        let slot = t.entry(r.key.clone()).or_default();
+        match slot.get(&r.tool) {
+            Some(old) if *old != r => conflicts.push(format!("{} {:?}", r.tool, r.key)),
+            Some(_) => {}
+            None => {
+                slot.insert(r.tool.clone(), r);
+            }
+        }
     })?;
+    if scorers.len() > 1 {
+        anyhow::bail!("rows from different scorers: {scorers:?}");
+    }
+    if !conflicts.is_empty() {
+        anyhow::bail!(
+            "{} rows occur twice with different content, e.g. {}",
+            conflicts.len(),
+            conflicts[0]
+        );
+    }
     for path in row_files(root)?
         .into_iter()
         .filter(|p| is_recompile_file(p))
@@ -413,5 +440,29 @@ mod tests {
             function: "f".into(),
         };
         assert_eq!(k.to_string(), "p/i686-gcc-O0/b/f");
+    }
+
+    #[test]
+    fn load_table_refuses_mixed_runs() {
+        let line = |tool: &str, ged: f64, scorer: &str| {
+            let mut r = parse_row(r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","decompiled":true,"ged":1.0}"#).unwrap();
+            r.tool = tool.into();
+            r.ged.as_mut().unwrap().value = ged;
+            r.scorer = scorer.into();
+            serde_json::to_string(&r).unwrap() + "\n"
+        };
+        let d = tempfile::tempdir().unwrap();
+        let rows = d.path().join("rows");
+        std::fs::create_dir_all(&rows).unwrap();
+        // the same row twice (one tool's artifact collected twice): kept once
+        std::fs::write(rows.join("a.jsonl"), line("t", 1.0, "s1")).unwrap();
+        std::fs::write(rows.join("b.jsonl"), line("t", 1.0, "s1")).unwrap();
+        assert_eq!(load_table(d.path()).unwrap().len(), 1);
+        // a different result for the same row: two runs mixed
+        std::fs::write(rows.join("b.jsonl"), line("t", 2.0, "s1")).unwrap();
+        assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("twice"));
+        // another tool scored by another scorer version
+        std::fs::write(rows.join("b.jsonl"), line("u", 2.0, "s2")).unwrap();
+        assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("scorers"));
     }
 }

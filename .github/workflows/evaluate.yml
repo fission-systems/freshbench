@@ -85,6 +85,37 @@ jobs:
           fi
           "$FB" rescore "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
+      - name: provenance
+        if: always()
+        env:
+          TOOL: ${{ matrix.tool }}
+          FISSION_SHA_USED: ${{ needs.build.outputs.fission_sha }}
+          QUALIFY_RUN: ${{ inputs.qualify_run }}
+          ARCH: ${{ inputs.arch }}
+          PROJECT: ${{ matrix.project }}
+          BUILD: ${{ matrix.build }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/up"
+          python3 - <<'PY'
+          import json, os, re
+          pins = dict(re.match(r"^([A-Z0-9_]+)=(.*)$", l.strip()).groups()
+                      for l in open("ci/pins.env") if re.match(r"^[A-Z0-9_]+=", l.strip()))
+          tool = os.environ["TOOL"]
+          version = {
+              "fission": "fission " + os.environ["FISSION_SHA_USED"],
+              "ghidra": "ghidra " + pins["GHIDRA_DIR"] + " sha256:" + pins["GHIDRA_SHA256"],
+              "angr": "angr " + pins["ANGR_VERSION"],
+              "kuna": "kuna " + pins["KUNA_TAG"] + " sha256:" + pins["KUNA_SHA256"],
+              "borer": "borer " + pins["BORER_TAG"] + " sha256:" + pins["BORER_SHA256"],
+          }.get(tool, tool)
+          json.dump({"tool": tool, "tool_version": version,
+                     "freshbench_commit": os.environ["GITHUB_SHA"],
+                     "qualify_run": os.environ["QUALIFY_RUN"],
+                     "evaluate_run": os.environ["GITHUB_RUN_ID"],
+                     "arch": os.environ["ARCH"], "project": os.environ["PROJECT"],
+                     "build": os.environ["BUILD"] or "all"},
+                    open(os.path.join(os.environ["RUNNER_TEMP"], "up", "provenance.json"), "w"), indent=1, sort_keys=True)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: "eval-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }

@@ -150,10 +150,16 @@ struct Rec {
     function: String,
     #[serde(default)]
     code: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
 }
 
+/// What a tool's run left for one row: its code (empty when none) and the
+/// error the adapter recorded.
+pub type Output = (String, Option<String>);
+
 /// Decompiled code of one tool, keyed by row.
-pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, String>> {
+pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, Output>> {
     let base = root.join("results").join(tool);
     let mut files = Vec::new();
     for build in sorted_dir(&base)? {
@@ -167,7 +173,7 @@ pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, String>> {
             }
         }
     }
-    let parts: Vec<Result<Vec<(RowKey, String)>>> = files
+    let parts: Vec<Result<Vec<(RowKey, Output)>>> = files
         .par_iter()
         .map(|(f, project, arch, compiler, config)| {
             let mut v = Vec::new();
@@ -185,7 +191,7 @@ pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, String>> {
                     binary: r.binary,
                     function: r.function,
                 };
-                v.push((key, r.code.unwrap_or_default()));
+                v.push((key, (r.code.unwrap_or_default(), r.error)));
             }
             Ok(v)
         })
@@ -408,7 +414,7 @@ fn score_tu(
     root: &Path,
     sp: &str,
     ts: &[&Target],
-    code: &HashMap<RowKey, String>,
+    code: &HashMap<RowKey, Output>,
     tool: &str,
     budget: u64,
     cache: &ScoreCache,
@@ -441,8 +447,22 @@ fn score_tu(
             recompile: None,
             tags: vec![],
             scorer: score::SCORER.to_string(),
+            failure: None,
         };
-        let Some(text) = code.get(&t.key).filter(|c| !c.trim().is_empty()) else {
+        let Some(text) = code
+            .get(&t.key)
+            .map(|(c, _)| c)
+            .filter(|c| !c.trim().is_empty())
+        else {
+            row.failure = Some(
+                match code.get(&t.key) {
+                    // the run never produced a record for this row
+                    None => "no_record",
+                    Some((_, Some(e))) => crate::adapters::failure_kind(e),
+                    Some((_, None)) => "empty",
+                }
+                .to_string(),
+            );
             out.push(row);
             continue;
         };
@@ -543,6 +563,9 @@ pub fn score_output(
     let Some(odef) = csyntax::output_function(&ot, text, function) else {
         return unscored("output_has_no_function");
     };
+    // tree-sitter recovered from a syntax error inside the function: the CFG
+    // may be built from a partly misread body, so the score is flagged
+    let recovered = odef.has_error();
     let og = cfg::build(odef, text);
     let of = csyntax::features(odef, text);
     let d = ged::distance_with_budget(sg, &og, budget);
@@ -576,9 +599,18 @@ pub fn score_output(
             output_nodes: Some(on),
             output_edges: Some(og.edges.len() as u32),
         }),
-        tags: taxonomy::tags(Some(sn), Some(on), Some(sf), Some(&of)),
+        tags: {
+            let mut t = taxonomy::tags(Some(sn), Some(on), Some(sf), Some(&of));
+            if recovered {
+                t.push(PARSE_RECOVERED.into());
+            }
+            t
+        },
     }
 }
+
+/// Tag of a score whose output function needed tree-sitter error recovery.
+pub const PARSE_RECOVERED: &str = "parse_recovered";
 
 /// Recompile every target `tool` printed and compare it with the original code.
 /// `toolchain(arch, compiler, flags)` gives the compiler for a build.
@@ -595,7 +627,7 @@ pub fn recompile_all(
     let todo: Vec<&Target> = targets
         .iter()
         .filter(|t| {
-            code.get(&t.key).is_some_and(|c| !c.trim().is_empty())
+            code.get(&t.key).is_some_and(|(c, _)| !c.trim().is_empty())
                 && t.binary_path.is_some()
                 && t.address.is_some()
         })
@@ -630,7 +662,7 @@ pub fn recompile_all(
                         let tc = toolchain(&t.key.arch, &t.key.compiler, &t.flags);
                         crate::recompile::score(
                             &tc,
-                            &code[&t.key],
+                            &code[&t.key].0,
                             &t.key.function,
                             &root.join(bp),
                             low,
