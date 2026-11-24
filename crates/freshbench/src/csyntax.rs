@@ -16,8 +16,45 @@ pub fn parse(text: &str) -> Result<Tree> {
     let mut p = Parser::new();
     p.set_language(&tree_sitter_c::LANGUAGE.into())
         .map_err(|e| anyhow!("tree-sitter-c: {e}"))?;
-    p.parse(text, None)
+    let blanked = blank_line_markers(text);
+    p.parse(blanked.as_deref().unwrap_or(text), None)
         .ok_or_else(|| anyhow!("tree-sitter returned no tree"))
+}
+
+/// A preprocessor line marker: `# 51 "file.c" 3` or `#line 51 "file.c"`.
+fn is_line_marker(line: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix('#') else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    rest.starts_with(|c: char| c.is_ascii_digit())
+        || rest
+            .strip_prefix("line")
+            .is_some_and(|r| r.starts_with([' ', '\t']))
+}
+
+/// The text with every line marker replaced by spaces of the same length, or
+/// None when it has none. GCC's `-E` puts markers inside expressions wherever
+/// a system-header macro expands (`key[\n# 51 "x.c" 3\n 32\n# 51 "x.c"\n]`);
+/// tree-sitter-c accepts directives only between statements, so such a
+/// function parsed as ERROR and its definition was not found. Markers carry
+/// no C meaning, and blanking them in place keeps every byte offset, so nodes
+/// still index the original text.
+fn blank_line_markers(text: &str) -> Option<String> {
+    if !text.lines().any(is_line_marker) {
+        return None;
+    }
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        if is_line_marker(body) {
+            out.extend(std::iter::repeat_n(' ', body.len()));
+            out.push_str(&line[body.len()..]);
+        } else {
+            out.push_str(line);
+        }
+    }
+    Some(out)
 }
 
 pub fn text<'a>(n: Node, src: &'a str) -> &'a str {
@@ -269,6 +306,36 @@ unsigned g(long p) {
         assert!(d["helper2"].is_some());
         assert!(d["dup"].is_none());
         assert!(!d.contains_key("nothere"));
+    }
+
+    /// GCC -E output: line markers inside an option-table initializer, where
+    /// a system-header macro expanded. Shape found by minimizing a real GCC
+    /// 16.2.0 TU whose definition tree-sitter-c lost; identifiers are made up.
+    const GCC_MARKERS: &str = "int run(int n, char **v)\n{\n char buf[\n ];\n static struct opt table[] = {\n  {\"alpha\",\n ((void *)0)\n , 'a'},\n  {\"beta\",\n# 12 \"t.c\" 3\n   0\n# 12 \"t.c\"\n   , 'b'},\n  {\"gamma\",\n# 13 \"t.c\" 3\n   1\n# 13 \"t.c\"\n   , 'g'},\n  {\"delta\",\n   1\n   , 'd'},\n };\n while ((c = next(n, v, table)) != -1) {\n  switch (c) {\n  }\n }\n return finish(buf, c);\n}\n";
+
+    #[test]
+    fn line_markers_inside_expressions() {
+        let plain: String = GCC_MARKERS
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let graph = |src: &str| {
+            let t = parse(src).unwrap();
+            let d = definitions(&t, src);
+            let def = d.get("run").copied().flatten().expect("cmd defined once");
+            assert_eq!(
+                text(def, src).lines().next(),
+                Some("int run(int n, char **v)")
+            );
+            crate::cfg::build(def, src)
+        };
+        // the same function with and without markers: same graph
+        assert_eq!(graph(GCC_MARKERS), graph(&plain));
+        assert!(is_line_marker("#line 7 \"a.c\""));
+        assert!(!is_line_marker("#define X 1"));
+        assert!(!is_line_marker("#linex"));
+        assert_eq!(blank_line_markers("int x;\n"), None);
     }
 
     #[test]

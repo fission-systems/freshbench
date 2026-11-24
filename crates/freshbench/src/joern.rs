@@ -150,6 +150,15 @@ mod tests {
     }
 
     #[test]
+    fn source_cfgs_read_through_line_markers() {
+        let tu = "# 1 \"a.c\"\nint f(int a)\n{\n int k[\n# 3 \"a.c\" 3\n 4\n# 3 \"a.c\"\n ];\n if (a) return 1;\n return 0;\n}\n";
+        let plain = "int f(int a)\n{\n int k[\n 4\n ];\n if (a) return 1;\n return 0;\n}\n";
+        let (m, p) = (source_cfgs(tu), source_cfgs(plain));
+        let (m, p) = (m["f"].clone().expect("f"), p["f"].clone().expect("f"));
+        assert_eq!(crate::ged::distance(&m, &p).value, 0);
+    }
+
+    #[test]
     fn source_and_output_cfgs() {
         let tu =
             "int g(int);\nint f(int a, int b)\n{\n  if (a && b) return g(a);\n  return 0;\n}\n";

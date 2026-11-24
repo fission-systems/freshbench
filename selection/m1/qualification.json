@@ -1,0 +1,867 @@
+{
+ "run": "https://github.com/fission-systems/freshbench/actions/runs/45438761002",
+ "image": "ghcr.io/fission-systems/freshbench-build-cross@sha256:83f041f7a522f4012b7fe756a22c26000a424791a29ebac9dcf0af3df3ec3407",
+ "rule": "candidates in selection order (sha256 project hash, corpus100.json); M1 = the first 20 that qualify on all four architectures",
+ "projects": [
+  {
+   "repo": "OpenDUNE/OpenDUNE@ebea79aeba025be2fe9004570e9255044aacc0be",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_clang-O0",
+     "config": "clang-O0",
+     "cmd": "make -j4 CC=fbcc-clang CXX=fbcxx-clang",
+     "rc": 2,
+     "error": "make: *** [Makefile:43: all] Error 1"
+    },
+    "aarch64": {
+     "result": "fails_quick_clang-O0",
+     "config": "clang-O0",
+     "cmd": "make -j4 CC=fbcc-clang CXX=fbcxx-clang",
+     "rc": 2,
+     "error": "make: *** [Makefile:43: all] Error 1"
+    },
+    "armv7": {
+     "result": "fails_quick_clang-O0",
+     "config": "clang-O0",
+     "cmd": "make -j4 CC=fbcc-clang CXX=fbcxx-clang",
+     "rc": 2,
+     "error": "make: *** [Makefile:43: all] Error 1"
+    }
+   }
+  },
+  {
+   "repo": "buserror/simavr@13d4ed32433ad7a37bb757b7e0f7dbb5373396c0",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "aliyun/iotkit-embedded@0d3beeedb31a39f4b54fb4c521e8ce63f23e817c",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "ondra-novak/gates_of_skeldal@f9e845228c6cf834954befaa2f37efe5584ecbad",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: file_to_base64: not found"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: file_to_base64: not found"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: file_to_base64: not found"
+    }
+   }
+  },
+  {
+   "repo": "cc65/cc65@eebf54af545f4ae52f8489a2f6d4d5f93e7942d2",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "kakahuote1/TinyPKI@764a63ad82e13ac5929dcd566de72c5681e83b43",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "jgaeddert/liquid-dsp@10041f70cebbe3b97887e75bb41e48b73dda1b23",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake -S . -B _fbbuild -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_C_COMPILER=fbcc-gcc -DCMAKE_CXX_COMPILER=fbcxx-gcc -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86 -DCMAKE_AR=/usr/bin/i686-linux-gnu-ar -DCMAKE_RANLIB=/usr/bin/i686-linux-gnu-ranlib -DCMAKE_LIBRARY_ARCHITECTURE=i386-linux-gnu",
+     "rc": 1,
+     "error": "CMake Error: try_run() invoked in cross-compiling mode, please set the following cache variables appropriately:"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake -S . -B _fbbuild -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_C_COMPILER=fbcc-gcc -DCMAKE_CXX_COMPILER=fbcxx-gcc -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_AR=/usr/bin/aarch64-linux-gnu-ar -DCMAKE_RANLIB=/usr/bin/aarch64-linux-gnu-ranlib -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu",
+     "rc": 1,
+     "error": "CMake Error: try_run() invoked in cross-compiling mode, please set the following cache variables appropriately:"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "collect2: error: ld returned 1 exit status"
+    }
+   }
+  },
+  {
+   "repo": "milgra/sov@19809ae535f8417098020f86ceefa25dbd3c5a90",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "bmc0/dsp@2e7eac120f21484f76db478d62eaed02489a6d56",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "libfirm/libfirm@114012d1d93427e63ba2f2ab51318e8a1b92f06c",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/tmp/fbwork/gcc-O0/ir/be/ia32/x86_architecture.c:419:9: error: impossible constraint in 'asm'"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/tmp/fbwork/gcc-O0/ir/be/ia32/x86_architecture.c:419:9: error: impossible constraint in 'asm'"
+    }
+   }
+  },
+  {
+   "repo": "libretro/libretro-lutro@6224157a615b18507bc0b117a3398c7a324cd3e5",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:616: obj/player/./libretro-common/memmap/memmap.o] Error 1"
+    }
+   }
+  },
+  {
+   "repo": "lastpass/lastpass-cli@949bad64e9db1bed89606cba78f32f6708cef3f0",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "fails_O0_eligible"
+    },
+    "i686": {
+     "result": "fails_O0_eligible"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake -S . -B _fbbuild -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_C_COMPILER=fbcc-gcc -DCMAKE_CXX_COMPILER=fbcxx-gcc -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_AR=/usr/bin/aarch64-linux-gnu-ar -DCMAKE_RANLIB=/usr/bin/aarch64-linux-gnu-ranlib -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu",
+     "rc": 1,
+     "error": "CMake Error at /usr/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake:233 (message):"
+    },
+    "armv7": {
+     "result": "fails_O0_eligible"
+    }
+   }
+  },
+  {
+   "repo": "c2lang/c2compiler@1be5152164048442c6e6962698a1bac54f3afcaf",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_clang-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:33: output/c2c/c2c~] Error 2"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "JustVugg/lumabri@dc660b6637285d120bc0277a2d5cc2b0b5dbf41d",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_O0_eligible",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:594: liblumabri.so] Error 1"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "fails_O0_eligible",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:594: liblumabri.so] Error 1"
+    }
+   }
+  },
+  {
+   "repo": "mbuesch/razer@877482f8ba2be341c219f0f3f04998913b3cf673",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "dictu-lang/Dictu@3a34a90dc57bbe0caf814d1320b4b505bc427fa1",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/tmp/fbwork/gcc-O0/src/optionals/http/http.h:8:10: fatal error: curl/curl.h: No such file or directory"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "libretro/virtualjaguar-libretro@4e27ea44da58978d7f02a68a4d6bf36553cc25a2",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:1236: src/tom/blitter_compare.o] Error 1"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:1236: src/tom/blitter_compare.o] Error 1"
+    }
+   }
+  },
+  {
+   "repo": "libretro/libretro-fceumm@77468e568d9fe9c48d684ca911f1a3fe7259fdf7",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "openargus/argus@a5e3034e1130c60bdf9d81983eb27e05f81ec041",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "./configure --host=aarch64-linux-gnu",
+     "rc": 1,
+     "error": "configure: error: cannot check for file existence when cross compiling"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "./configure --host=arm-linux-gnueabihf",
+     "rc": 1,
+     "error": "configure: error: cannot check for file existence when cross compiling"
+    }
+   }
+  },
+  {
+   "repo": "Matroska-Org/foundation-source@d69761114b79c1dfcb2226ceca84452835e745c3",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "ExpansionPak/DolRecomp@02e27aca1c408cfcb2a4079a3a5b5ab3ae39d340",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: test_codegen_emit: not found"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: test_codegen_emit: not found"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/bin/sh: 1: test_codegen_emit: not found"
+    }
+   }
+  },
+  {
+   "repo": "herrhotzenplotz/gcli@1a6ffb99705db62bff3f6957838603f6149cf362",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "./configure --host=aarch64-linux-gnu",
+     "rc": 1,
+     "error": "configure: required or forced dependency not found: libcurl"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:174: all] Error 2"
+    }
+   }
+  },
+  {
+   "repo": "exercism/c@1675b02c310198e9752e516ee1a2294b76a37f84",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [makefile:102: build/exercises/practice/all-your-base/memcheck-passed.stamp] Error 2"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [makefile:102: build/exercises/practice/all-your-base/memcheck-passed.stamp] Error 2"
+    }
+   }
+  },
+  {
+   "repo": "i-rinat/apulse@5d654cecd18474b4e0d885e774bc41fcbbc9818b",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "Mikachu/openbox@ebfa7271302b3bc4b6d349b8e4aab4cf5f6c7a6d",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "troglobit/mg@66bcd7ef2233c7ae62dcdd68f466a30586ce4e33",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "lcgamboa/picsim@3ee791875e15097a2d219c6afe08a8eadc17b673",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "Paxa/fast_excel@1053d5641646f422d0f1145af02303b12934c40a",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "ComposersDesktop/CDP8@28bc42c72c1a7cb0fab933acd1c433be958a787b",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "rhboot/efivar@349e5ffff281ee1f7155194344a839ef314d45d5",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_clang-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:17: all] Error 2"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:17: prep] Error 2"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:17: prep] Error 2"
+    }
+   }
+  },
+  {
+   "repo": "syoyo/tinydng@1f181699511e08e51baabd9fdab2311ea1253d4b",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "bstansell/conserver@a8ae3db023699265192133ab99926c78359b6584",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "monkey/monkey@e257e6383585ac281ab7de2797fbc5eca64f804f",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "rc0/mairix@8a1efe03ab455564982d306d68bf2f2c6b3df6d9",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "fails_quick_gcc-O0"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "make -j4 CC=fbcc-gcc CXX=fbcxx-gcc",
+     "rc": 2,
+     "error": "make: *** [Makefile:68: fromcheck.h] Error 2"
+    }
+   }
+  },
+  {
+   "repo": "faragon/libsrt@2520dc115610ee51dd5fe48a1436ea2d61562164",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "brightprogrammer/MisraStdC@80a576322ec65f1d97d48890a5f23a0476ef552d",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "ninja -C _fbbuild -j4",
+     "rc": 1,
+     "error": "47 | #    error \"Mutex: unsupported platform/architecture (no direct-syscall path)\""
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "ninja -C _fbbuild -j4",
+     "rc": 1,
+     "error": "47 | #    error \"Mutex: unsupported platform/architecture (no direct-syscall path)\""
+    }
+   }
+  },
+  {
+   "repo": "amazon-ion/ion-c@493c12251be6ad93b924abb5cf8621e69f1dd2d5",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "HANCORE-linux/OmaQ@008f7c812d4ca75a536468d27b8e7cd68912aa9d",
+   "m1": true,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "brunodev85/gladio@3861b0a6ed290adce2658d01d07db3532d4641e2",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "qualifies"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  },
+  {
+   "repo": "tinydesk-project/tinydesk@c6ceffc15dbfbe002d23bd0b5d44dc4410654183",
+   "m1": false,
+   "results": {
+    "x86_64": {
+     "result": "qualifies"
+    },
+    "i686": {
+     "result": "fails_quick_gcc-O0",
+     "config": "gcc-O0",
+     "cmd": "cmake --build _fbbuild -j4",
+     "rc": 1,
+     "error": "/tmp/fbwork/gcc-O0/third_party/tdsh/third_party/micropython/py/binary.c:176:5: error: invalid conversion to type '_Float16' without option '-msse2'"
+    },
+    "aarch64": {
+     "result": "qualifies"
+    },
+    "armv7": {
+     "result": "qualifies"
+    }
+   }
+  }
+ ]
+}
