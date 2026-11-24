@@ -122,6 +122,9 @@ pub struct Row {
     /// Signature and local type classes against DWARF.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub types: Option<crate::types::TypeScore>,
+    /// Recompilation against the original code (from `*.recompile.jsonl`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recompile: Option<crate::recompile::RecompileScore>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Scorer that produced the numbers ("freshbench-2.x", or "decbench-v1").
@@ -149,6 +152,7 @@ impl Row {
         self.scored_ged() == Some(0.0)
             || self.scored_joern_ged() == Some(0.0)
             || self.types_perfect()
+            || self.recompile.as_ref().is_some_and(|r| r.exact)
     }
 
     pub fn types_perfect(&self) -> bool {
@@ -224,6 +228,7 @@ impl From<V1Row> for Row {
             ged,
             joern_ged: None,
             types: None,
+            recompile: None,
             tags: vec![],
             scorer: "decbench-v1".into(),
         }
@@ -298,9 +303,16 @@ pub fn walk_sorted(dir: &Path, f: &mut dyn FnMut(&Path)) -> Result<()> {
     Ok(())
 }
 
-/// Call `f` for every row under `root`.
+fn is_recompile_file(p: &Path) -> bool {
+    p.to_string_lossy().ends_with(".recompile.jsonl")
+}
+
+/// Call `f` for every row under `root` (recompile side files are not rows).
 pub fn for_each_row(root: &Path, mut f: impl FnMut(Row)) -> Result<()> {
-    for path in row_files(root)? {
+    for path in row_files(root)?
+        .into_iter()
+        .filter(|p| !is_recompile_file(p))
+    {
         for (i, line) in open_lines(&path)?.lines().enumerate() {
             let line = line?;
             if line.trim().is_empty() {
@@ -316,6 +328,16 @@ pub fn for_each_row(root: &Path, mut f: impl FnMut(Row)) -> Result<()> {
 /// All rows grouped by key, then tool.
 pub type Table = BTreeMap<RowKey, BTreeMap<String, Row>>;
 
+/// A line of `<tool>.recompile.jsonl`: which row, and its recompilation score.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecompileLine {
+    #[serde(flatten)]
+    pub key: RowKey,
+    pub tool: String,
+    pub recompile: crate::recompile::RecompileScore,
+}
+
+/// Rows grouped by key and tool, with `*.recompile.jsonl` scores attached.
 pub fn load_table(root: &Path) -> Result<Table> {
     let mut t = Table::new();
     for_each_row(root, |r| {
@@ -323,6 +345,21 @@ pub fn load_table(root: &Path) -> Result<Table> {
             .or_default()
             .insert(r.tool.clone(), r);
     })?;
+    for path in row_files(root)?
+        .into_iter()
+        .filter(|p| is_recompile_file(p))
+    {
+        for line in open_lines(&path)?.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let l: RecompileLine = serde_json::from_str(&line)?;
+            if let Some(r) = t.get_mut(&l.key).and_then(|m| m.get_mut(&l.tool)) {
+                r.recompile = Some(l.recompile);
+            }
+        }
+    }
     Ok(t)
 }
 

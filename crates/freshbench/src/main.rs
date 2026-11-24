@@ -140,6 +140,20 @@ enum Cmd {
         #[arg(long, value_parser = parse_u64)]
         address: u64,
     },
+    /// Recompile a tool's outputs with each build's compiler and compare with the original code;
+    /// writes JSON lines that `report`/`gaps` attach to the rows (name it `<dir>/rows/<tool>.recompile.jsonl`).
+    Recompile {
+        root: PathBuf,
+        #[arg(long)]
+        tool: String,
+        #[arg(long)]
+        out: PathBuf,
+        /// "image" = the build image's fbcc wrappers (default); or an LLVM bin directory (x86-64 only, for local checks)
+        #[arg(long, default_value = "image")]
+        toolchain: String,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -491,6 +505,47 @@ fn run() -> Result<ExitCode> {
         Cmd::Signature { binary, address } => {
             let sigs = freshbench::dwarf::signatures(&std::fs::read(&binary)?)?;
             print_json(&sigs.get(&address))?;
+        }
+        Cmd::Recompile {
+            root,
+            tool,
+            out,
+            toolchain,
+            limit,
+        } => {
+            use freshbench::recompile::{image_toolchain, Toolchain};
+            let llvm = (toolchain != "image").then(|| PathBuf::from(&toolchain));
+            let tc = move |arch: &str, compiler: &str, flags: &str| -> Toolchain {
+                match &llvm {
+                    None => image_toolchain(arch, compiler, flags),
+                    Some(dir) => Toolchain {
+                        cc: vec![
+                            dir.join("clang").display().to_string(),
+                            "--target=x86_64-linux-gnu".into(),
+                        ],
+                        env: vec![],
+                        flags: flags.split_whitespace().map(str::to_string).collect(),
+                        objdump: dir.join("llvm-objdump"),
+                        long_bytes: 8,
+                    },
+                }
+            };
+            let lines = freshbench::dataset::recompile_all(&root, &tool, &tc, limit)?;
+            if let Some(d) = out.parent() {
+                std::fs::create_dir_all(d)?;
+            }
+            let mut w = std::io::BufWriter::new(std::fs::File::create(&out)?);
+            let (mut compiled, mut exact) = (0, 0);
+            for l in &lines {
+                compiled += u64::from(l.recompile.compiles);
+                exact += u64::from(l.recompile.exact);
+                serde_json::to_writer(&mut w, l)?;
+                w.write_all(b"\n")?;
+            }
+            eprintln!(
+                "{tool}: {} functions, {compiled} compile, {exact} exact",
+                lines.len()
+            );
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;

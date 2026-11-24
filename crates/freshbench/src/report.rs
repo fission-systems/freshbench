@@ -501,6 +501,7 @@ mod tests {
             }),
             joern_ged: None,
             types: None,
+            recompile: None,
             tags: vec!["over_noded".into()],
             scorer: String::new(),
         }
