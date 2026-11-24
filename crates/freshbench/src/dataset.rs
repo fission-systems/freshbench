@@ -200,8 +200,113 @@ fn sorted_dir(p: &Path) -> Result<Vec<String>> {
     Ok(v)
 }
 
+/// What a (function, output) pair scored; cached by content.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, Deserialize)]
+pub struct Cached {
+    pub outcome: Outcome,
+    pub ged: Option<GedScore>,
+    pub tags: Vec<String>,
+}
+
+/// Content-addressed scores: the key is sha256(scorer | budget | function name |
+/// source definition fingerprint | output sha256), so the same source function
+/// and the same output text are scored once - across optimization levels,
+/// architectures, tools and runs - and always get the same score. Persisted as
+/// append-only JSON lines; on load the first value for a key wins.
+#[derive(Default)]
+pub struct ScoreCache {
+    map: std::sync::Mutex<HashMap<String, Cached>>,
+    new: std::sync::Mutex<Vec<(String, Cached)>>,
+    pub hits: std::sync::atomic::AtomicU64,
+    pub misses: std::sync::atomic::AtomicU64,
+}
+
+impl ScoreCache {
+    pub fn load(path: &Path) -> Result<ScoreCache> {
+        let c = ScoreCache::default();
+        if path.exists() {
+            let mut m = c.map.lock().unwrap();
+            for line in open_lines(path)?.lines() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                #[derive(Deserialize)]
+                struct L {
+                    key: String,
+                    value: Cached,
+                }
+                let l: L = serde_json::from_str(&line)?;
+                m.entry(l.key).or_insert(l.value);
+            }
+        }
+        Ok(c)
+    }
+
+    pub fn key(budget: u64, function: &str, src_fp: &str, out_sha: &str) -> String {
+        manifest::sha256_bytes(
+            format!(
+                "{}|budget={budget}|{function}|{src_fp}|{out_sha}",
+                score::SCORER
+            )
+            .as_bytes(),
+        )
+    }
+
+    fn get(&self, k: &str) -> Option<Cached> {
+        let v = self.map.lock().unwrap().get(k).cloned();
+        let ctr = if v.is_some() {
+            &self.hits
+        } else {
+            &self.misses
+        };
+        ctr.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        v
+    }
+
+    fn put(&self, k: String, v: Cached) {
+        let mut m = self.map.lock().unwrap();
+        if !m.contains_key(&k) {
+            m.insert(k.clone(), v.clone());
+            self.new.lock().unwrap().push((k, v));
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.lock().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Append this run's new entries, sorted by key, to `path`.
+    pub fn save(&self, path: &Path) -> Result<usize> {
+        use std::io::Write;
+        let mut new = std::mem::take(&mut *self.new.lock().unwrap());
+        new.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut f = std::io::BufWriter::new(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?,
+        );
+        for (key, value) in &new {
+            serde_json::to_writer(&mut f, &serde_json::json!({"key": key, "value": value}))?;
+            f.write_all(b"\n")?;
+        }
+        Ok(new.len())
+    }
+}
+
 /// Score `tool` on every target (or the first `limit` source TUs' targets). Rows sorted by key.
-pub fn rescore(root: &Path, tool: &str, limit_tus: Option<usize>, budget: u64) -> Result<Vec<Row>> {
+pub fn rescore(
+    root: &Path,
+    tool: &str,
+    limit_tus: Option<usize>,
+    budget: u64,
+    cache: &ScoreCache,
+) -> Result<Vec<Row>> {
     let targets = targets(root)?;
     let code = records(root, tool)?;
     let mut by_tu: BTreeMap<&str, Vec<&Target>> = BTreeMap::new();
@@ -214,11 +319,13 @@ pub fn rescore(root: &Path, tool: &str, limit_tus: Option<usize>, budget: u64) -
         .collect();
     let mut rows: Vec<Row> = groups
         .par_iter()
-        .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget))
+        .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache))
         .collect();
     rows.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(rows)
 }
+
+type SourceFn = (cfg::Graph, csyntax::Features, String);
 
 fn score_tu(
     root: &Path,
@@ -227,6 +334,7 @@ fn score_tu(
     code: &HashMap<RowKey, String>,
     tool: &str,
     budget: u64,
+    cache: &ScoreCache,
 ) -> Vec<Row> {
     let tu = std::fs::read(root.join(sp))
         .map(|b| String::from_utf8_lossy(&b).into_owned())
@@ -236,7 +344,7 @@ fn score_tu(
         (Some(tr), Some(t)) => csyntax::definitions(tr, t),
         _ => BTreeMap::new(),
     };
-    let mut src_cache: HashMap<&str, Option<(cfg::Graph, csyntax::Features)>> = HashMap::new();
+    let mut src_cache: HashMap<&str, Option<SourceFn>> = HashMap::new();
     let mut out = Vec::with_capacity(ts.len());
     for t in ts {
         let mut row = Row {
@@ -253,35 +361,66 @@ fn score_tu(
             out.push(row);
             continue;
         };
-        row.code_sha256 = Some(manifest::sha256_bytes(text.as_bytes()));
+        let out_sha = manifest::sha256_bytes(text.as_bytes());
+        row.code_sha256 = Some(out_sha.clone());
         let src = src_cache.entry(t.key.function.as_str()).or_insert_with(|| {
             let def = defs.get(&t.key.function).copied().flatten()?;
             let t = tu.as_deref()?;
-            Some((cfg::build(def, t), csyntax::features(def, t)))
+            Some((
+                cfg::build(def, t),
+                csyntax::features(def, t),
+                crate::prepare::fingerprint(def, t),
+            ))
         });
-        let Some((sg, sf)) = src.as_ref() else {
+        let Some((sg, sf, src_fp)) = src.as_ref() else {
             row.outcome = Outcome::Unscored;
             row.tags = vec!["source_missing".into()];
             out.push(row);
             continue;
         };
-        let Ok(ot) = csyntax::parse(text) else {
-            row.outcome = Outcome::Unscored;
-            out.push(row);
-            continue;
+        let key = ScoreCache::key(budget, &t.key.function, src_fp, &out_sha);
+        let c = match cache.get(&key) {
+            Some(c) => c,
+            None => {
+                let c = score_output(sg, sf, text, &t.key.function, budget);
+                cache.put(key, c.clone());
+                c
+            }
         };
-        let Some(odef) = csyntax::output_function(&ot, text, &t.key.function) else {
-            row.outcome = Outcome::Unscored;
-            row.tags = vec!["output_has_no_function".into()];
-            out.push(row);
-            continue;
-        };
-        let og = cfg::build(odef, text);
-        let of = csyntax::features(odef, text);
-        let d = ged::distance_with_budget(sg, &og, budget);
-        let (sn, on) = (sg.nodes() as u32, og.nodes() as u32);
-        row.outcome = Outcome::Scored;
-        row.ged = Some(GedScore {
+        row.outcome = c.outcome;
+        row.ged = c.ged;
+        row.tags = c.tags;
+        out.push(row);
+    }
+    out
+}
+
+/// Score one output text against an already built source function.
+pub fn score_output(
+    sg: &cfg::Graph,
+    sf: &csyntax::Features,
+    text: &str,
+    function: &str,
+    budget: u64,
+) -> Cached {
+    let unscored = |tag: &str| Cached {
+        outcome: Outcome::Unscored,
+        ged: None,
+        tags: vec![tag.to_string()],
+    };
+    let Ok(ot) = csyntax::parse(text) else {
+        return unscored("output_unparsable");
+    };
+    let Some(odef) = csyntax::output_function(&ot, text, function) else {
+        return unscored("output_has_no_function");
+    };
+    let og = cfg::build(odef, text);
+    let of = csyntax::features(odef, text);
+    let d = ged::distance_with_budget(sg, &og, budget);
+    let (sn, on) = (sg.nodes() as u32, og.nodes() as u32);
+    Cached {
+        outcome: Outcome::Scored,
+        ged: Some(GedScore {
             value: d.value as f64,
             exact: d.exact,
             lower_bound: Some(d.lower_bound as f64),
@@ -290,9 +429,98 @@ fn score_tu(
             source_edges: Some(sg.edges.len() as u32),
             output_nodes: Some(on),
             output_edges: Some(og.edges.len() as u32),
-        });
-        row.tags = taxonomy::tags(Some(sn), Some(on), Some(sf), Some(&of));
-        out.push(row);
+        }),
+        tags: taxonomy::tags(Some(sn), Some(on), Some(sf), Some(&of)),
     }
-    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::{write_records, Record};
+    use crate::prepare::{PreparedBinary, PreparedBuild, SelectedFunction};
+    use std::sync::atomic::Ordering;
+
+    fn tree(root: &Path) {
+        let src =
+            "int g(int);\nint f(int a, int b)\n{\n  if (a && b) return g(a);\n  return 0;\n}\n";
+        std::fs::create_dir_all(root.join("sources/p")).unwrap();
+        std::fs::write(root.join("sources/p/0000.f.c"), src).unwrap();
+        for (config, code) in [
+            ("O2", "int sub_10(int a, int b)\n{\n  if (a == 0) return 0;\n  if (b == 0) return 0;\n  return g(a);\n}\n"),
+            ("O3", "int sub_10(int a, int b)\n{\n  if (a == 0) return 0;\n  if (b == 0) return 0;\n  return g(a);\n}\n"),
+            ("Os", "int sub_10(int a)\n{\n  return g(a);\n}\n"),
+        ] {
+            let build = format!("gcc-{config}");
+            let pb = PreparedBuild {
+                project: "p".into(),
+                arch: "x86_64".into(),
+                compiler: "gcc".into(),
+                config: config.into(),
+                flags: String::new(),
+                compiler_version: String::new(),
+                binaries: [(
+                    "bin".to_string(),
+                    PreparedBinary {
+                        sha256: String::new(),
+                        stripped_sha256: String::new(),
+                        strip_tool: String::new(),
+                        functions: vec![SelectedFunction {
+                            name: "f".into(),
+                            source: "f.c".into(),
+                            address: 0x10,
+                            high_pc: None,
+                            selection_key: String::new(),
+                            thumb: false,
+                            tu_sha256: "0000".into(),
+                            source_path: "sources/p/0000.f.c".into(),
+                        }],
+                    },
+                )]
+                .into(),
+            };
+            std::fs::create_dir_all(root.join(&build)).unwrap();
+            std::fs::write(root.join(&build).join("manifest.json"), serde_json::to_vec(&pb).unwrap()).unwrap();
+            let rec = Record { binary: "bin".into(), function: "f".into(), address: 0x10, code: Some(code.into()), error: None };
+            write_records(&root.join("results/t").join(&build).join("p/records.jsonl.gz"), &[rec]).unwrap();
+        }
+    }
+
+    #[test]
+    fn cache_hits_identical_outputs_and_changes_nothing() {
+        let d = tempfile::tempdir().unwrap();
+        tree(d.path());
+        let none = ScoreCache::default();
+        let a = rescore(d.path(), "t", None, 1000, &none).unwrap();
+        assert_eq!(a.len(), 3);
+        // O2 and O3 printed the same text for the same source: scored once
+        assert_eq!(
+            (
+                none.hits.load(Ordering::Relaxed),
+                none.misses.load(Ordering::Relaxed)
+            ),
+            (1, 2)
+        );
+        assert_eq!(a[0].ged, a[1].ged);
+        // the output duplicates `return 0` into two blocks: insert one node and two
+        // edges, delete one edge (worked by hand)
+        assert_eq!(a[0].ged.as_ref().unwrap().value, 4.0);
+        // persisted cache: a second run scores nothing and gives the same rows
+        let p = d.path().join("cache.jsonl");
+        assert_eq!(none.save(&p).unwrap(), 2);
+        let warm = ScoreCache::load(&p).unwrap();
+        let b = rescore(d.path(), "t", None, 1000, &warm).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(
+            (
+                warm.hits.load(Ordering::Relaxed),
+                warm.misses.load(Ordering::Relaxed)
+            ),
+            (3, 0)
+        );
+        // a different budget is a different key
+        let other = ScoreCache::load(&p).unwrap();
+        rescore(d.path(), "t", None, 999, &other).unwrap();
+        assert_eq!(other.hits.load(Ordering::Relaxed), 1);
+    }
 }

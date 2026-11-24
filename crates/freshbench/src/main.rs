@@ -50,6 +50,9 @@ enum Cmd {
         limit_tus: Option<usize>,
         #[arg(long, default_value_t = freshbench::ged::DEFAULT_BUDGET)]
         budget: u64,
+        /// content-addressed score cache (JSON lines; created if missing, new entries appended)
+        #[arg(long)]
+        cache: Option<PathBuf>,
     },
     /// Eligible functions of one build directory (build.json, tu_log.jsonl, i/, bin/).
     Eligible {
@@ -231,8 +234,26 @@ fn run() -> Result<ExitCode> {
             out,
             limit_tus,
             budget,
+            cache,
         } => {
-            let rows = freshbench::dataset::rescore(&root, &tool, limit_tus, budget)?;
+            let sc = match &cache {
+                Some(p) => freshbench::dataset::ScoreCache::load(p)?,
+                None => freshbench::dataset::ScoreCache::default(),
+            };
+            let t0 = std::time::Instant::now();
+            let rows = freshbench::dataset::rescore(&root, &tool, limit_tus, budget, &sc)?;
+            let (h, m) = (
+                sc.hits.load(std::sync::atomic::Ordering::Relaxed),
+                sc.misses.load(std::sync::atomic::Ordering::Relaxed),
+            );
+            eprintln!(
+                "score cache: {h} hits, {m} scored; {:.1} s",
+                t0.elapsed().as_secs_f64()
+            );
+            if let Some(p) = &cache {
+                let n = sc.save(p)?;
+                eprintln!("score cache: {n} new entries appended to {}", p.display());
+            }
             if let Some(d) = out.parent() {
                 std::fs::create_dir_all(d)?;
             }

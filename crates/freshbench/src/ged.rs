@@ -24,7 +24,7 @@ use serde::Serialize;
 
 use crate::cfg::{Graph, Label};
 
-pub const DEFAULT_BUDGET: u64 = 2_000_000;
+pub const DEFAULT_BUDGET: u64 = 200_000;
 pub const HUNGARIAN_MAX: usize = 400;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
