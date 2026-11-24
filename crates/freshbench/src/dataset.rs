@@ -337,12 +337,24 @@ pub fn rescore(
         .take(limit_tus.unwrap_or(usize::MAX))
         .collect();
     let sigs = SignatureCache::default();
-    let mut rows: Vec<Row> = groups
-        .par_iter()
-        .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache, &sigs))
-        .collect();
+    // Recursive-descent parsers and the CFG builder recurse with the nesting of the
+    // text; deeply nested decompiler output overflows a default thread stack.
+    let pool = big_stack_pool()?;
+    let mut rows: Vec<Row> = pool.install(|| {
+        groups
+            .par_iter()
+            .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache, &sigs))
+            .collect()
+    });
     rows.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(rows)
+}
+
+/// A rayon pool whose threads have a 512 MiB stack (address space, not memory).
+pub fn big_stack_pool() -> Result<rayon::ThreadPool> {
+    Ok(rayon::ThreadPoolBuilder::new()
+        .stack_size(512 << 20)
+        .build()?)
 }
 
 type SourceFn = (cfg::Graph, csyntax::Features, String);
@@ -458,16 +470,26 @@ fn score_tu(
             None => {
                 let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
                 let dm = crate::types::DataModel::for_arch(&t.key.arch);
-                let c = score_output(
-                    sg,
-                    sf,
-                    jg,
-                    truth.as_ref(),
-                    dm,
-                    text,
-                    &t.key.function,
-                    budget,
-                );
+                // a parser or builder panic on one output costs that row only
+                let c = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    score_output(
+                        sg,
+                        sf,
+                        jg,
+                        truth.as_ref(),
+                        dm,
+                        text,
+                        &t.key.function,
+                        budget,
+                    )
+                }))
+                .unwrap_or_else(|_| Cached {
+                    outcome: Outcome::Unscored,
+                    ged: None,
+                    joern_ged: None,
+                    types: None,
+                    tags: vec!["scorer_panic".into()],
+                });
                 cache.put(key, c.clone());
                 c
             }
@@ -565,53 +587,55 @@ pub fn recompile_all(
         })
         .take(limit.unwrap_or(usize::MAX))
         .collect();
-    let mut out: Vec<crate::rows::RecompileLine> = todo
-        .par_iter()
-        .map(|t| {
-            let bp = t.binary_path.as_ref().unwrap();
-            let existing = ranges.lock().unwrap().get(bp).cloned();
-            let r = match existing {
-                Some(r) => r,
-                None => {
-                    let r = std::sync::Arc::new(
-                        std::fs::read(root.join(bp))
-                            .ok()
-                            .and_then(|d| crate::dwarf::ranges(&d).ok())
-                            .unwrap_or_default(),
-                    );
-                    ranges
-                        .lock()
-                        .unwrap()
-                        .entry(bp.clone())
-                        .or_insert(r)
-                        .clone()
+    let pool = big_stack_pool()?;
+    let mut out: Vec<crate::rows::RecompileLine> = pool.install(|| {
+        todo.par_iter()
+            .map(|t| {
+                let bp = t.binary_path.as_ref().unwrap();
+                let existing = ranges.lock().unwrap().get(bp).cloned();
+                let r = match existing {
+                    Some(r) => r,
+                    None => {
+                        let r = std::sync::Arc::new(
+                            std::fs::read(root.join(bp))
+                                .ok()
+                                .and_then(|d| crate::dwarf::ranges(&d).ok())
+                                .unwrap_or_default(),
+                        );
+                        ranges
+                            .lock()
+                            .unwrap()
+                            .entry(bp.clone())
+                            .or_insert(r)
+                            .clone()
+                    }
+                };
+                let low = t.address.unwrap();
+                let score = match r.get(&low) {
+                    Some(&high) => {
+                        let tc = toolchain(&t.key.arch, &t.key.compiler, &t.flags);
+                        crate::recompile::score(
+                            &tc,
+                            &code[&t.key],
+                            &t.key.function,
+                            &root.join(bp),
+                            low,
+                            high,
+                        )
+                    }
+                    None => crate::recompile::RecompileScore {
+                        error: Some("no high_pc in DWARF".into()),
+                        ..Default::default()
+                    },
+                };
+                crate::rows::RecompileLine {
+                    key: t.key.clone(),
+                    tool: tool.to_string(),
+                    recompile: score,
                 }
-            };
-            let low = t.address.unwrap();
-            let score = match r.get(&low) {
-                Some(&high) => {
-                    let tc = toolchain(&t.key.arch, &t.key.compiler, &t.flags);
-                    crate::recompile::score(
-                        &tc,
-                        &code[&t.key],
-                        &t.key.function,
-                        &root.join(bp),
-                        low,
-                        high,
-                    )
-                }
-                None => crate::recompile::RecompileScore {
-                    error: Some("no high_pc in DWARF".into()),
-                    ..Default::default()
-                },
-            };
-            crate::rows::RecompileLine {
-                key: t.key.clone(),
-                tool: tool.to_string(),
-                recompile: score,
-            }
-        })
-        .collect();
+            })
+            .collect()
+    });
     out.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(out)
 }
