@@ -776,9 +776,13 @@ mod tests {
             src.to_string_lossy().into_owned(),
             [(tu_identity(&text), i.clone())].into_iter().collect(),
         );
-        let producer_is_gcc =
+        // Ubuntu's `cc --version` says "cc (Ubuntu ...)", never "gcc": identify GCC by its copyright line
+        let version =
             String::from_utf8_lossy(&Command::new("cc").arg("--version").output().unwrap().stdout)
-                .contains("gcc");
+                .into_owned();
+        let producer_is_gcc =
+            version.contains("Free Software Foundation") && !version.contains("clang");
+        eprintln!("elf_end_to_end: cc is gcc = {producer_is_gcc}");
         let cx = BuildContext {
             compiler: if producer_is_gcc { "gcc" } else { "clang" },
             config: "O0",
