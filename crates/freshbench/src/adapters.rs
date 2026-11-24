@@ -65,10 +65,30 @@ fn hex_list(addrs: &[u64]) -> String {
     addrs.iter().map(|a| format!("{a:#x}\n")).collect()
 }
 
-/// Run `cmd`, killing it after `timeout`. Returns (exit ok, stdout, stderr tail).
+/// SIGKILL every process of the group `pgid` (the child and whatever it
+/// spawned: a shell adapter's JVM or Python stays behind otherwise).
+fn kill_group(pgid: u32) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{pgid}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(unix))]
+    let _ = pgid;
+}
+
+/// Run `cmd` in its own process group, killing the whole group after
+/// `timeout` (and any leftovers once it exits). Returns (exit ok, stdout,
+/// stderr tail).
 pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<(bool, Vec<u8>, String)> {
     let dir = tempfile::tempdir()?;
     let (out_p, err_p) = (dir.path().join("out"), dir.path().join("err"));
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(std::fs::File::create(&out_p)?)
@@ -78,9 +98,11 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<(bool, Ve
     let start = Instant::now();
     let status = loop {
         if let Some(s) = child.try_wait()? {
+            kill_group(child.id());
             break Some(s);
         }
         if start.elapsed() > timeout {
+            kill_group(child.id());
             let _ = child.kill();
             let _ = child.wait();
             break None;
@@ -267,6 +289,24 @@ pub fn decompile_binary(
         .collect())
 }
 
+/// Why a function has no code, from the error text this module and the
+/// adapters write: `timeout`, `crash` (the tool exited non-zero), `missing`
+/// (the tool returned nothing for the address), `adapter` (unreadable
+/// output) or `tool_error` (the tool reported an error for the function).
+pub fn failure_kind(error: &str) -> &'static str {
+    if error.contains("timeout after") {
+        "timeout"
+    } else if error.contains("missing from output") {
+        "missing"
+    } else if error.contains("adapter wrote no output") || error.contains("output is not JSON") {
+        "adapter"
+    } else if error.starts_with("adapter failed") || error.starts_with("fission_cli failed") {
+        "crash"
+    } else {
+        "tool_error"
+    }
+}
+
 /// Write records as gzip JSON lines.
 pub fn write_records(path: &Path, recs: &[Record]) -> Result<()> {
     if let Some(d) = path.parent() {
@@ -285,6 +325,43 @@ pub fn write_records(path: &Path, recs: &[Record]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_kinds() {
+        assert_eq!(
+            failure_kind("adapter failed: timeout after 300s"),
+            "timeout"
+        );
+        assert_eq!(
+            failure_kind("adapter failed: Segmentation fault (whole-binary call: x)"),
+            "crash"
+        );
+        assert_eq!(failure_kind("missing from output"), "missing");
+        assert_eq!(failure_kind("fission_cli output is not JSON"), "adapter");
+        assert_eq!(failure_kind("no function at address"), "tool_error");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_kills_the_whole_process_group() {
+        let d = tempfile::tempdir().unwrap();
+        let pidf = d.path().join("pid");
+        let mut c = Command::new("sh");
+        // a grandchild the shell does not wait for, like an adapter's JVM
+        c.arg("-c")
+            .arg(format!("sleep 30 & echo $! > {}; wait", pidf.display()));
+        let (ok, _, err) = run_with_timeout(c, Duration::from_millis(500)).unwrap();
+        assert!(!ok && err.starts_with("timeout"));
+        let pid = std::fs::read_to_string(&pidf).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let alive = Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success();
+        assert!(!alive, "grandchild {} survived the timeout", pid.trim());
+    }
 
     #[test]
     fn timeout_kills() {

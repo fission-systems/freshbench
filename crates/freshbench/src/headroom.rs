@@ -272,6 +272,7 @@ mod tests {
             recompile: None,
             tags: vec![],
             scorer: String::new(),
+            failure: None,
         }
     }
 

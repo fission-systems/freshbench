@@ -9,7 +9,14 @@ use crate::manifest::sha256_bytes;
 use crate::rows::GedScore;
 use crate::taxonomy;
 
-pub const SCORER: &str = concat!("freshbench-", env!("CARGO_PKG_VERSION"));
+/// Package version plus a hash of the scoring sources (`build.rs`): any change
+/// to how a score is computed gives a new scorer id.
+pub const SCORER: &str = concat!(
+    "freshbench-",
+    env!("CARGO_PKG_VERSION"),
+    "+",
+    env!("FRESHBENCH_SCORER_SRC")
+);
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FunctionScore {

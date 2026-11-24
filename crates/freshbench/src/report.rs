@@ -43,7 +43,20 @@ impl Cell {
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 pub struct ToolSummary {
+    /// every row of the table (the union of all tools' rows): rows a tool has
+    /// no result for count as `missing`, so a run that failed on a hard project
+    /// does not shrink that tool's denominator
     pub rows: u64,
+    /// rows of the table this tool has no row for (artifact or job missing)
+    pub missing: u64,
+    /// no-output rows by `Row::failure`
+    pub failures: BTreeMap<String, u64>,
+    /// scored rows whose output needed tree-sitter error recovery, and how many
+    /// of the perfect ones did
+    pub parse_recovered: u64,
+    pub perfect_parse_recovered: u64,
+    /// perfect / scored: the rate on functions the tool printed
+    pub perfect_rate_of_scored: f64,
     pub scored: u64,
     pub perfect: u64,
     pub no_output: u64,
@@ -108,9 +121,39 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
             .map(|n| bands::band(Some(n)))
             .unwrap_or(bands::UNKNOWN);
-        for (tool, r) in per {
+        for tool in &tools {
             let o = s.overall.entry(tool.clone()).or_default();
             o.rows += 1;
+            let Some(r) = per.get(tool) else {
+                o.missing += 1;
+                per_project
+                    .entry(tool.clone())
+                    .or_default()
+                    .entry(key.project.clone())
+                    .or_default()
+                    .1 += 1;
+                for (dim, val) in [
+                    ("arch", key.arch.as_str()),
+                    ("compiler", key.compiler.as_str()),
+                    ("config", key.config.as_str()),
+                    ("band", band),
+                ] {
+                    s.by.entry(dim.to_string())
+                        .or_default()
+                        .entry(val.to_string())
+                        .or_default()
+                        .entry(tool.clone())
+                        .or_default()
+                        .rows += 1;
+                }
+                continue;
+            };
+            if let Some(f) = &r.failure {
+                *o.failures.entry(f.clone()).or_default() += 1;
+            }
+            let recovered = r.outcome == Outcome::Scored
+                && r.tags.iter().any(|t| t == crate::dataset::PARSE_RECOVERED);
+            o.parse_recovered += u64::from(recovered);
             match r.outcome {
                 Outcome::NoOutput => o.no_output += 1,
                 Outcome::Unscored => o.unscored += 1,
@@ -119,6 +162,7 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             }
             let perfect = r.scored_ged() == Some(0.0);
             o.perfect += u64::from(perfect);
+            o.perfect_parse_recovered += u64::from(perfect && recovered);
             o.joern_perfect += u64::from(r.scored_joern_ged() == Some(0.0));
             o.union_perfect += u64::from(r.union_perfect());
             if let Some(t) = &r.types {
@@ -168,6 +212,11 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
     for (tool, o) in s.overall.iter_mut() {
         o.perfect_rate = if o.rows > 0 {
             o.perfect as f64 / o.rows as f64
+        } else {
+            0.0
+        };
+        o.perfect_rate_of_scored = if o.scored > 0 {
+            o.perfect as f64 / o.scored as f64
         } else {
             0.0
         };
@@ -300,7 +349,7 @@ pub fn render_index(s: &Summary, meta: &Meta) -> String {
         num(s.common_rows)
     );
     b += "<table><tr><th>tool</th><th>perfect (FreshBench CFG)</th><th>95% interval</th><th>perfect (Joern CFG)</th><th>types perfect</th><th>locals coverage</th><th>Union</th>\
-<th>median normalized GED</th><th>GED on common rows</th><th>no output</th><th>unscored</th><th>upper bound only</th></tr>";
+<th>median normalized GED</th><th>GED on common rows</th><th>no output</th><th>missing</th><th>unscored</th><th>upper bound only</th><th>parse recovered</th></tr>";
     let mut order: Vec<&String> = s.tools.iter().collect();
     order.sort_by(|a, b| {
         s.overall[*b]
@@ -312,7 +361,7 @@ pub fn render_index(s: &Summary, meta: &Meta) -> String {
         let o = &s.overall[t];
         let _ = write!(
             b,
-            "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td><td>{} <span class=mute>({}/{})</span></td><td>{}-{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td><td>{} <span class=mute>({}/{})</span></td><td>{}-{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             pct(o.perfect_rate),
             num(o.perfect),
             num(o.rows),
@@ -325,8 +374,10 @@ pub fn render_index(s: &Summary, meta: &Meta) -> String {
             o.median_normalized_ged.map(|m| format!("{m:.3}")).unwrap_or_default(),
             num(o.ged_on_common_rows as u64),
             num(o.no_output),
+            num(o.missing),
             num(o.unscored),
             num(o.upper_bound_only),
+            num(o.parse_recovered),
             f = esc(&file_safe(t)),
             n = esc(t),
         );
@@ -504,6 +555,7 @@ mod tests {
             recompile: None,
             tags: vec!["over_noded".into()],
             scorer: String::new(),
+            failure: None,
         }
     }
 
@@ -583,6 +635,32 @@ mod tests {
         assert!(index.contains("It does not measure correctness"));
         assert!(index.contains("50.0%"));
         assert!(a[2].1.contains("reachable"));
+    }
+
+    #[test]
+    fn a_missing_result_stays_in_the_denominator() {
+        // tool c ran only on the easy row (p1/f, perfect) and has no row for
+        // p2/g: it must not score 100%
+        let mut t = table();
+        let r = row("p1", "x86_64", "f", "c", Some(0.0), 3);
+        t.get_mut(&r.key).unwrap().insert("c".into(), r);
+        let mut nr = row("p2", "armv7", "g", "a", None, 30);
+        nr.failure = Some("timeout".into());
+        t.get_mut(&nr.key).unwrap().insert("a".into(), nr);
+        let s = summarize(&t, 50);
+        let c = &s.overall["c"];
+        assert_eq!((c.rows, c.missing, c.perfect), (2, 1, 1));
+        assert_eq!(c.perfect_rate, 0.5);
+        assert_eq!(c.perfect_rate_of_scored, 1.0);
+        assert_eq!(
+            s.by["arch"]["armv7"]["c"],
+            Cell {
+                rows: 1,
+                perfect: 0
+            }
+        );
+        assert_eq!(s.overall["a"].failures["timeout"], 1);
+        assert_eq!(s.overall["a"].missing, 0);
     }
 
     #[test]
