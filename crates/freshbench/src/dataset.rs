@@ -221,7 +221,7 @@ pub struct Cached {
 }
 
 /// Bumped whenever a metric's definition changes, so cached scores are not reused across definitions.
-pub const METRICS_REV: &str = "fbcfg1+joern2+types1";
+pub const METRICS_REV: &str = "fbcfg2+joern2+types1";
 
 /// Content-addressed scores: the key is sha256(scorer | metrics revision |
 /// budget | function name | source definition fingerprint and DWARF signature |
