@@ -95,6 +95,29 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run a decompiler on every prepared build under ROOT (stripped binaries,
+    /// selected addresses); writes ROOT/results/<tool>/<build>/<project>/records.jsonl.gz.
+    Decompile {
+        root: PathBuf,
+        /// fission, or any name with --adapter
+        #[arg(long)]
+        tool: String,
+        /// fission_cli path (tool fission)
+        #[arg(long)]
+        fission_cli: Option<PathBuf>,
+        #[arg(long)]
+        resource_root: Option<PathBuf>,
+        /// adapter command following the script contract (other tools)
+        #[arg(long, num_args = 1.., allow_hyphen_values = true)]
+        adapter: Vec<String>,
+        #[arg(long, default_value_t = 1800)]
+        binary_timeout_s: u64,
+        #[arg(long, default_value_t = 300)]
+        function_timeout_s: u64,
+        /// only builds whose name matches exactly (comma list)
+        #[arg(long, value_delimiter = ',')]
+        builds: Vec<String>,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -320,6 +343,85 @@ fn run() -> Result<ExitCode> {
                 files.len(),
                 all.len()
             );
+        }
+        Cmd::Decompile {
+            root,
+            tool,
+            fission_cli,
+            resource_root,
+            adapter,
+            binary_timeout_s,
+            function_timeout_s,
+            builds,
+        } => {
+            use freshbench::adapters::{self, Tool};
+            use std::time::Duration;
+            let t = if tool == "fission" {
+                Tool::Fission {
+                    cli: fission_cli.context("--fission-cli is required for fission")?,
+                    resource_root,
+                    function_timeout_ms: function_timeout_s * 1000,
+                }
+            } else {
+                anyhow::ensure!(
+                    !adapter.is_empty(),
+                    "--adapter <command...> is required for {tool}"
+                );
+                Tool::Script {
+                    name: tool.clone(),
+                    command: adapter,
+                }
+            };
+            let mut dirs = Vec::new();
+            for e in std::fs::read_dir(&root)? {
+                let e = e?;
+                if e.path().join("manifest.json").exists() {
+                    dirs.push(e.path());
+                }
+            }
+            dirs.sort();
+            let (mut ok, mut failed) = (0u64, 0u64);
+            for d in dirs {
+                let build = d.file_name().unwrap().to_string_lossy().into_owned();
+                if !builds.is_empty() && !builds.contains(&build) {
+                    continue;
+                }
+                let pb: freshbench::prepare::PreparedBuild =
+                    serde_json::from_slice(&std::fs::read(d.join("manifest.json"))?)?;
+                let mut recs = Vec::new();
+                for (bin, b) in &pb.binaries {
+                    let funcs: BTreeMap<u64, String> = b
+                        .functions
+                        .iter()
+                        .map(|f| (f.address, f.name.clone()))
+                        .collect();
+                    let r = adapters::decompile_binary(
+                        &t,
+                        &d.join("stripped").join(bin),
+                        bin,
+                        &funcs,
+                        Duration::from_secs(binary_timeout_s),
+                        Duration::from_secs(function_timeout_s),
+                    )?;
+                    for x in &r {
+                        if x.code.is_some() {
+                            ok += 1
+                        } else {
+                            failed += 1
+                        }
+                    }
+                    recs.extend(r);
+                }
+                let out = root
+                    .join("results")
+                    .join(t.name())
+                    .join(&build)
+                    .join(&pb.project)
+                    .join("records.jsonl.gz");
+                adapters::write_records(&out, &recs)?;
+                eprintln!("{build}: {} functions", recs.len());
+            }
+            eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;
