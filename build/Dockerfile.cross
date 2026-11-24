@@ -1,0 +1,53 @@
+# FreshBench v2 build image: the v1 x86-64 image, unchanged, plus cross
+# toolchains for i386, AArch64 and ARMv7 (hard-float, Thumb-2).
+#
+# * x86-64 keeps the v1 image's GCC 16.2.0 (official gcc image) and Clang/LLVM
+#   23.1.6 bit for bit: the base is pinned by digest.
+# * Cross GCC is built here from the same GCC 16.2.0 release tarball (sha256
+#   pinned, GPG signature checked against the GNU keyring when the pin was
+#   recorded), so every architecture uses one GCC version. Upstream defaults
+#   are kept (no --enable-default-pie, as the v1 native GCC); ARMv7 uses
+#   Debian armhf's ABI (armv7-a, vfpv3-d16, hard float, Thumb-2 by default).
+# * Clang cross-compiles with the same /opt/llvm 23.1.6 (--target), using the
+#   cross GCC's crt files and libgcc (--gcc-install-dir) and the target's
+#   binutils ld.
+# * The target C library is Debian trixie's glibc, installed multiarch
+#   (libc6-dev:<arch>); project library packages are installed per
+#   architecture where Debian can co-install them, never removing a native
+#   package (--no-remove). The installed set is written to
+#   /etc/freshbench/foreign-packages.txt and is part of the image identity.
+ARG BASE=ghcr.io/sjkim1127/freshbench-build@sha256:f7a2626e8d294c14c379fdf61b8d3bd0276fdb78ed6f6adf75e3b3b71b1b10d7
+FROM ${BASE}
+ARG GCC_VER=16.2.0
+ARG GCC_SHA256=e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN dpkg --add-architecture i386 && dpkg --add-architecture arm64 && dpkg --add-architecture armhf \
+    && apt-get update && apt-get install -y --no-install-recommends --no-remove \
+      binutils-i686-linux-gnu binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf \
+      libc6-dev:i386 libc6-dev:arm64 libc6-dev:armhf \
+      linux-libc-dev:i386 linux-libc-dev:arm64 linux-libc-dev:armhf \
+      libmpc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY cross/install_foreign_dev.sh /usr/local/lib/freshbench/install_foreign_dev.sh
+RUN apt-get update && bash /usr/local/lib/freshbench/install_foreign_dev.sh && rm -rf /var/lib/apt/lists/*
+
+COPY cross/build_cross_gcc.sh /usr/local/lib/freshbench/build_cross_gcc.sh
+RUN curl -fsSL -o /tmp/gcc.tar.xz "https://ftpmirror.gnu.org/gcc/gcc-${GCC_VER}/gcc-${GCC_VER}.tar.xz" \
+    && echo "${GCC_SHA256}  /tmp/gcc.tar.xz" | sha256sum -c - \
+    && mkdir -p /tmp/gccsrc && tar -xJf /tmp/gcc.tar.xz -C /tmp/gccsrc --strip-components=1 \
+    && rm /tmp/gcc.tar.xz \
+    && bash /usr/local/lib/freshbench/build_cross_gcc.sh /tmp/gccsrc i686-linux-gnu \
+         --with-arch=i686 --with-tune=generic \
+    && bash /usr/local/lib/freshbench/build_cross_gcc.sh /tmp/gccsrc aarch64-linux-gnu \
+    && bash /usr/local/lib/freshbench/build_cross_gcc.sh /tmp/gccsrc arm-linux-gnueabihf \
+         --with-arch=armv7-a --with-fpu=vfpv3-d16 --with-float=hard --with-mode=thumb \
+    && rm -rf /tmp/gccsrc /tmp/gccbuild-*
+
+COPY fbcc.py /usr/local/bin/fbcc
+COPY build_project.py /usr/local/bin/build_project
+COPY cross/smoke.sh /usr/local/lib/freshbench/smoke.sh
+RUN chmod +x /usr/local/bin/fbcc /usr/local/bin/build_project \
+    && bash /usr/local/lib/freshbench/smoke.sh > /etc/freshbench/toolchains.txt \
+    && cat /etc/freshbench/toolchains.txt
