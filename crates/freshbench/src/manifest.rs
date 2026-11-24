@@ -146,17 +146,44 @@ pub fn build(root: &Path, prov: &Provenance) -> Result<Vec<Entry>> {
     Ok(out)
 }
 
+fn gzipped(path: &Path) -> bool {
+    path.extension().is_some_and(|x| x == "gz")
+}
+
+/// One JSON line per entry; gzip when the path ends in `.gz` (no file name and
+/// mtime 0 in the header, so the same entries give the same bytes).
 pub fn write(entries: &[Entry], path: &Path) -> Result<()> {
-    let mut f = std::io::BufWriter::new(File::create(path)?);
-    for e in entries {
-        serde_json::to_writer(&mut f, e)?;
-        f.write_all(b"\n")?;
+    fn lines(entries: &[Entry], f: &mut impl Write) -> Result<()> {
+        for e in entries {
+            serde_json::to_writer(&mut *f, e)?;
+            f.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+    let file = std::io::BufWriter::new(
+        File::create(path).with_context(|| format!("create {}", path.display()))?,
+    );
+    if gzipped(path) {
+        let mut gz = flate2::GzBuilder::new()
+            .mtime(0)
+            .write(file, flate2::Compression::best());
+        lines(entries, &mut gz)?;
+        gz.finish()?.flush()?;
+    } else {
+        let mut f = file;
+        lines(entries, &mut f)?;
+        f.flush()?;
     }
     Ok(())
 }
 
 pub fn read(path: &Path) -> Result<Vec<Entry>> {
-    let f = BufReader::new(File::open(path).with_context(|| format!("open {}", path.display()))?);
+    let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let f: Box<dyn BufRead> = if gzipped(path) {
+        Box::new(BufReader::new(flate2::read::GzDecoder::new(file)))
+    } else {
+        Box::new(BufReader::new(file))
+    };
     let mut out = Vec::new();
     for line in f.lines() {
         let line = line?;
@@ -350,6 +377,14 @@ mod tests {
         let mf = d.path().join("m.jsonl");
         write(&entries, &mf).unwrap();
         assert_eq!(read(&mf).unwrap(), entries);
+        // gzip round-trips and is byte-stable
+        let gz = d.path().join("m.jsonl.gz");
+        write(&entries, &gz).unwrap();
+        let first = std::fs::read(&gz).unwrap();
+        assert_eq!(&first[..2], b"\x1f\x8b");
+        assert_eq!(read(&gz).unwrap(), entries);
+        write(&entries, &gz).unwrap();
+        assert_eq!(std::fs::read(&gz).unwrap(), first);
         assert!(verify(&root, &entries).unwrap().is_empty());
         let s = summarize(&entries);
         assert_eq!(

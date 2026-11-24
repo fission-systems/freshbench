@@ -6,9 +6,10 @@ decompilers on the same functions, and it shows each decompiler where it can
 improve. It has its own ground truth and its own metrics, written in Rust
 (`crates/freshbench`).
 
-**Status (2026-11-24):** v2 is in progress. The scorer, the CFG builder, GED,
-`gaps` and manifests are done and tested. Ground-truth extraction, the tool
-adapters and the M1 corpus are being built. The v1 release (DecBench-based)
+**Status (2026-11-25):** v2 is in progress. The scorer, the CFG builders,
+GED, type and recompile metrics, `gaps` and manifests are done and tested.
+The M1 corpus is published ([`corpus/m1`](corpus/m1/README.md)); tool
+results on it are being produced. The v1 release (DecBench-based)
 is preserved at tag [`v1`](../../tree/v1) and in
 [`sjkim1127/freshbench`](https://huggingface.co/datasets/sjkim1127/freshbench).
 v1 numbers and v2 numbers are not comparable.
@@ -129,7 +130,7 @@ the graph FreshBench builds), `callsites`, `manifest build|verify|summary`.
 | milestone | languages | architectures | compilers | optimization | status |
 |---|---|---|---|---|---|
 | v1 | C | x86-64 | GCC 16.2.0, Clang 23.1.6 | O0 O1 O2 O3 Os O2-noinline | released (tag `v1`, DecBench-based) |
-| **M1** | C | x86-64, i686, AArch64, ARMv7 (Thumb-2, hard float) | GCC 16.2.0, Clang 23.1.6 | same six | building |
+| **M1** | C | x86-64, i686, AArch64, ARMv7 (Thumb-2, hard float) | GCC 16.2.0, Clang 23.1.6 | same six | corpus published ([`corpus/m1`](corpus/m1/README.md)); tool results pending |
 | M2 | C++, C | + PE/PDB | + MSVC, MinGW-w64 | | planned |
 | M3 | Rust, Go | | rustc, gc | | planned; no C source CFG, so binary-grounded signals only |
 
