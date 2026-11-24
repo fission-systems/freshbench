@@ -1,1 +1,1 @@
-ghcr.io/fission-systems/freshbench-build-cross@sha256:b5f6774db8ac78f3bc1d929f5f405708efcdcc571acbd553423df75cb8d4e04c
+ghcr.io/fission-systems/freshbench-build-cross@sha256:83f041f7a522f4012b7fe756a22c26000a424791a29ebac9dcf0af3df3ec3407
