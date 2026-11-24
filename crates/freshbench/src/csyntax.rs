@@ -63,8 +63,11 @@ fn collect_defs<'t>(n: Node<'t>, src: &str, out: &mut BTreeMap<String, Option<No
                     .or_insert(Some(n));
             }
         }
-        // `extern "C" { ... }`-like wrappers and preprocessor conditionals left in the text
-        "linkage_specification"
+        // `extern "C" { ... }`-like wrappers and preprocessor conditionals left in the
+        // text; and ERROR: tree-sitter's error recovery can wrap a long stretch of a
+        // TU, function definitions included, in one ERROR node
+        "ERROR"
+        | "linkage_specification"
         | "declaration_list"
         | "preproc_if"
         | "preproc_ifdef"
@@ -266,6 +269,24 @@ unsigned g(long p) {
         assert!(d["helper2"].is_some());
         assert!(d["dup"].is_none());
         assert!(!d.contains_key("nothere"));
+    }
+
+    #[test]
+    fn definitions_inside_error_recovery() {
+        // a real function (lumabri) whose `(typeof(*seen)){a, b}` compound literal makes
+        // tree-sitter-c wrap the rest of the file, the next definition included, in ERROR
+        let tu = include_str!("../tests/fixtures/typeof_compound_literal.c");
+        let t = parse(tu).unwrap();
+        let top = t.root_node();
+        let mut c = top.walk();
+        let has_error = top.children(&mut c).any(|n| n.kind() == "ERROR");
+        assert!(has_error, "fixture must trigger error recovery");
+        let d = definitions(&t, tu);
+        assert!(
+            d.get("after").is_some_and(|x| x.is_some()),
+            "{:?}",
+            d.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]
