@@ -71,9 +71,25 @@ worse one is not evidence that it is wrong.
   `freshbench determinism` checks that no (function, output hash) pair has two
   scores.
 
-Measured on 200 source TUs of the v1 corpus (Fission's outputs, 2,446 rows):
-two runs were byte-identical; 30 s wall / 87 s CPU on 14 cores; 13% of rows
-have an upper bound only.
+* **Score cache.** A score is keyed by (scorer, budget, function, source
+  definition fingerprint, output hash). The same source function and the same
+  output text are scored once, across builds, tools and runs.
+  `rescore --cache FILE` keeps the cache between runs.
+
+Measured on the whole v1 corpus (Fission's outputs, 354,167 rows, 14-core Mac,
+budget 200k, other work on the machine):
+* **Cold cache:** 3,151 s CPU (8.9 ms per row), 380 s wall. 16% of rows hit
+  the cache within the run (identical output in another build).
+* **Warm cache:** 247 s CPU (0.7 ms per row), 40 s wall. The rows are
+  byte-identical to the cold run.
+* **Upper bound only:** 25% of scored rows. Raising the budget to 2M on a
+  2,446-row sample cut that from 15% to 13%, changed the GED total by 0.7%,
+  changed no perfect row, and cost 5x the CPU.
+
+For reference, DecBench's scorer in the full-dataset sweep used 4.5 ms per
+row. In both sweeps decompiling costs far more than scoring (Fission: 4,554 s
+CPU for 96,103 functions). With a warm cache a before/after comparison
+rescores only the rows whose output changed.
 
 ## Improvement targets: `freshbench gaps`
 
