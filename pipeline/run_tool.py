@@ -140,6 +140,14 @@ def ged_bisect(binf, names, crashed, chunks):
 
 
 # 2) score every binary in a child process
+# Determinism check (freshbench/scorecache.py): a fixed, name-chosen 1% of the
+# binaries (at least one) get their GED scored a second time in a new process;
+# any function whose GED differs is recorded and its row marked ged_unstable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from freshbench.scorecache import rescore_sample  # noqa: E402
+
+rescore_bins = set(rescore_sample(sorted(manifest["binaries"]), 0.01)) or set(sorted(manifest["binaries"])[:1])
+run["ged_rescore"] = {"binaries": sorted(rescore_bins), "unstable": []}
 recs = gzip.open(out / "records.jsonl.gz", "wt")
 for binf, info in manifest["binaries"].items():
     res = pickle.loads((pk / f"{binf}.pkl").read_bytes())
@@ -182,6 +190,18 @@ for binf, info in manifest["binaries"].items():
         else:
             run["binaries"][binf]["byte_match"] = {"error": (p.stderr or "")[-1500:],
                                                    "seconds": round(time.time() - t2, 2)}
+    unstable = set()
+    if binf in rescore_bins and not crashed and not chunks:
+        r2 = score(binf, ["ged"])
+        if r2 is None:
+            run["ged_rescore"]["unstable"].append({"binary": binf, "function": None, "error": "rescore crashed"})
+        else:
+            first, second = r.get("ged", {}).get("values", {}), r2["ged"]["values"]
+            for name in sorted(set(first) | set(second)):
+                if first.get(name) != second.get(name):
+                    unstable.add(name)
+                    run["ged_rescore"]["unstable"].append(
+                        {"binary": binf, "function": name, "first": first.get(name), "second": second.get(name)})
     run["binaries"][binf]["scorer_crashed_functions"] = crashed
     run["binaries"][binf]["ged_scored_in_chunks"] = chunks
     run["binaries"][binf]["metric_errors"] = {m: r[m]["errors"] for m in METRICS if r.get(m, {}).get("errors")}
@@ -196,6 +216,8 @@ for binf, info in manifest["binaries"].items():
                "code_sha256": hashlib.sha256(code.encode()).hexdigest() if code else None}
         if name in crashed:
             row["scorer_crash"] = "ged"
+        if name in unstable:
+            row["ged_unstable"] = True
         b = bm.get(name)
         row["byte_match"] = None if b is None or b.get("skipped") else b["value"]
         row["byte_match_perfect"] = None if row["byte_match"] is None else bool(b["perfect"])

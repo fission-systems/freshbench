@@ -1,0 +1,75 @@
+name: qualify-arch
+# v2: build + prepare corpus candidates per architecture with the cross image.
+# max-parallel is kept below the org's concurrency so Fission's own CI is not starved.
+on:
+  workflow_dispatch:
+    inputs:
+      batch: { description: "selection/<file>.json (list of owner/repo@sha)", required: true }
+      arches: { description: "JSON list of arches", required: true, default: '["x86_64","i686","aarch64","armv7"]' }
+      max_parallel: { description: "concurrent jobs", default: "12" }
+permissions: { contents: read, packages: read }
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs: { repos: "${{ steps.m.outputs.repos }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "repos=$(python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' '${{ inputs.batch }}')" >> "$GITHUB_OUTPUT"
+  wheel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: c
+        with: { path: wheels, key: rust-joern-6b85a04-py312 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - if: steps.c.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          git clone -q "$RUST_JOERN_REPO" rj && git -C rj checkout -q "$RUST_JOERN_SHA"
+          (cd rj && cargo build --release -q && cp target/release/librust_joern.so python/rust_joern/)
+          pip wheel --no-deps -w wheels ./rj
+      - uses: actions/upload-artifact@v4
+        with: { name: rust-joern-wheel, path: wheels }
+  build:
+    needs: [plan, wheel]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      matrix:
+        repo: ${{ fromJSON(needs.plan.outputs.repos) }}
+        arch: ${{ fromJSON(inputs.arches) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: ci/pins.env }
+      - uses: actions/download-artifact@v4
+        with: { name: rust-joern-wheel, path: "${{ runner.temp }}/wheels" }
+      - name: target binutils (strip for prepare.py) and image
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf binutils-i686-linux-gnu > /dev/null
+          source ci/pins.env
+          docker pull -q "$BUILD_IMAGE_CROSS"
+      - name: qualify
+        run: |
+          r='${{ matrix.repo }}'; r0="${r%@*}"; slug="${r0//\//__}"
+          echo "SLUG=$slug" >> "$GITHUB_ENV"
+          ci/qualify_arch.sh "$r" "$RUNNER_TEMP/q/$slug" '${{ matrix.arch }}'
+          cat "$RUNNER_TEMP/q/$slug/status.json"
+      - name: pack
+        if: always()
+        run: |
+          d="$RUNNER_TEMP/q/$SLUG"; sudo chown -R "$(id -u)" "$d" || true
+          mkdir -p "$RUNNER_TEMP/up"
+          (cd "$d" && tar -czf "$RUNNER_TEMP/up/summary.tgz" status.json *.txt prep/prepare_summary.json 2>/dev/null || true)
+          (cd "$d" && tar -czf "$RUNNER_TEMP/up/buildlogs.tgz" builds/*.log builds/*/build.json 2>/dev/null || true)
+          if grep -q '"result": "qualifies"' "$d/status.json"; then
+            tar -C "$d" -cf "$RUNNER_TEMP/up/prep.tar" prep status.json license
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "qual-${{ env.SLUG }}-${{ matrix.arch }}", path: "${{ runner.temp }}/up", retention-days: 90 }
