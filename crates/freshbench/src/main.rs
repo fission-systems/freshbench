@@ -134,6 +134,12 @@ enum Cmd {
         #[arg(long, default_value_t = 5)]
         keep: usize,
     },
+    /// DWARF type ground truth (return, parameter and local classes) of a function.
+    Signature {
+        binary: PathBuf,
+        #[arg(long, value_parser = parse_u64)]
+        address: u64,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -481,6 +487,10 @@ fn run() -> Result<ExitCode> {
                 table.len(),
                 out.display()
             );
+        }
+        Cmd::Signature { binary, address } => {
+            let sigs = freshbench::dwarf::signatures(&std::fs::read(&binary)?)?;
+            print_json(&sigs.get(&address))?;
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;

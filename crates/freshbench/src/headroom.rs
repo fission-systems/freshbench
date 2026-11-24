@@ -268,6 +268,7 @@ mod tests {
                 ..Default::default()
             }),
             joern_ged: None,
+            types: None,
             tags: vec![],
             scorer: String::new(),
         }
