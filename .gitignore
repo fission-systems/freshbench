@@ -1,3 +1,6 @@
 selection/candidates_raw.json
 selection/enumerate.log
 __pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
