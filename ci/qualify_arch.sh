@@ -4,7 +4,8 @@
 # usage: qualify_arch.sh <owner/repo@sha> <out_dir> <arch>
 #   arch: x86_64 | i686 | aarch64 | armv7
 # Same gates as v1 (ci/qualify.sh): both O0 builds need >= 300 eligible
-# functions, then prepare.py selects 300 per build in the same sha256 order,
+# functions, then `freshbench prepare` (Rust, no DecBench; FRESHBENCH_BIN = a
+# Linux build of it) selects 300 per build in the same sha256 order,
 # which is architecture-independent - the same source functions are chosen on
 # every architecture where they are eligible.
 set -uo pipefail
@@ -40,6 +41,11 @@ build() {  # compiler config
   docker run --rm --network none -v "$src:/src:ro" -v "$out/builds:/out" "$img" \
     timeout 1800 build_project /src "$1" "$2" "/out/$1-$2" "$arch" > "$out/builds/$1-$2.log" 2>&1
 }
+# freshbench (Rust) runs inside the image: its llvm-strip is the pinned 23.1.6
+fb() {
+  docker run --rm --network none -v "$out:/w" -v "$FRESHBENCH_BIN:/usr/local/bin/freshbench:ro" \
+    -v "$here/overlap:/overlap:ro" "$img" freshbench "$@"
+}
 quick() {
   docker run --rm --network none -v "$out/builds:/out:ro" -v "$here/pipeline:/p:ro" "$img" \
     python3 /p/quickcount.py "/out/$1" 2>/dev/null | tail -1
@@ -49,10 +55,9 @@ for c in gcc clang; do
   n=$(quick "$c-O0"); status "quick_$c-O0=${n:-0}"
   if [ "${n:-0}" -lt 300 ]; then status stage=quick result="fails_quick_$c-O0"; exit 0; fi
 done
-status stage=setup_scorer
-"$here/ci/setup_scorer.sh" > "$out/setup_scorer.log" 2>&1 || { status result=scorer_setup_failed; exit 1; }
-python -I "$here/pipeline/prepare.py" "$slug" "$out/builds" "$out/prep" --no-strip \
-  --only gcc-O0,clang-O0 --submodules "$subs" --overlap "$here/overlap/decbench_fingerprints.json" \
+status stage=precheck
+fb prepare --project "$slug" --builds /w/builds --out /w/precheck --submodules "$subs" \
+  --exclude /overlap/decbench_token_fingerprints.json --only gcc-O0,clang-O0 --count-only \
   > "$out/precheck.txt" 2>&1
 if ! grep -q "^QUALIFIES" "$out/precheck.txt"; then
   status stage=precheck result=fails_O0_eligible; exit 0
@@ -61,7 +66,7 @@ for c in gcc clang; do for o in O1 O2 O3 Os O2-noinline; do
   status stage="build_$c-$o"; build "$c" "$o"
 done; done
 status stage=prepare
-python -I "$here/pipeline/prepare.py" "$slug" "$out/builds" "$out/prep" \
-  --submodules "$subs" --overlap "$here/overlap/decbench_fingerprints.json" > "$out/prepare.txt" 2>&1
+fb prepare --project "$slug" --builds /w/builds --out /w/prep --submodules "$subs" \
+  --exclude /overlap/decbench_token_fingerprints.json > "$out/prepare.txt" 2>&1
 if grep -q "^QUALIFIES" "$out/prepare.txt"; then status stage=done result=qualifies
 else status stage=done result=fails_prepare; fi

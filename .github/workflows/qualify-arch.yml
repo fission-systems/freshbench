@@ -16,25 +16,21 @@ jobs:
       - uses: actions/checkout@v4
       - id: m
         run: echo "repos=$(python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' '${{ inputs.batch }}')" >> "$GITHUB_OUTPUT"
-  wheel:
+  freshbench:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
-        id: c
-        with: { path: wheels, key: rust-joern-6b85a04-py312 }
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - if: steps.c.outputs.cache-hit != 'true'
-        run: |
-          source ci/pins.env
-          git clone -q "$RUST_JOERN_REPO" rj && git -C rj checkout -q "$RUST_JOERN_SHA"
-          (cd rj && cargo build --release -q && cp target/release/librust_joern.so python/rust_joern/)
-          pip wheel --no-deps -w wheels ./rj
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ hashFiles('Cargo.lock') }}
+      - run: cargo build --release --locked -p freshbench
       - uses: actions/upload-artifact@v4
-        with: { name: rust-joern-wheel, path: wheels }
+        with: { name: freshbench-bin, path: target/release/freshbench }
   build:
-    needs: [plan, wheel]
+    needs: [plan, freshbench]
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
@@ -45,13 +41,11 @@ jobs:
         arch: ${{ fromJSON(inputs.arches) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip, cache-dependency-path: ci/pins.env }
       - uses: actions/download-artifact@v4
-        with: { name: rust-joern-wheel, path: "${{ runner.temp }}/wheels" }
-      - name: target binutils (strip for prepare.py) and image
+        with: { name: freshbench-bin, path: "${{ runner.temp }}/fb" }
+      - run: chmod +x "$RUNNER_TEMP/fb/freshbench" && echo "FRESHBENCH_BIN=$RUNNER_TEMP/fb/freshbench" >> "$GITHUB_ENV"
+      - name: image
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf binutils-i686-linux-gnu > /dev/null
           source ci/pins.env
           docker pull -q "$BUILD_IMAGE_CROSS"
       - name: qualify
@@ -65,7 +59,7 @@ jobs:
         run: |
           d="$RUNNER_TEMP/q/$SLUG"; sudo chown -R "$(id -u)" "$d" || true
           mkdir -p "$RUNNER_TEMP/up"
-          (cd "$d" && tar -czf "$RUNNER_TEMP/up/summary.tgz" status.json *.txt prep/prepare_summary.json 2>/dev/null || true)
+          (cd "$d" && tar -czf "$RUNNER_TEMP/up/summary.tgz" status.json *.txt prep/prepare_summary.json precheck/prepare_summary.json 2>/dev/null || true)
           (cd "$d" && tar -czf "$RUNNER_TEMP/up/buildlogs.tgz" builds/*.log builds/*/build.json 2>/dev/null || true)
           if grep -q '"result": "qualifies"' "$d/status.json"; then
             tar -C "$d" -cf "$RUNNER_TEMP/up/prep.tar" prep status.json license

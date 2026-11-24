@@ -64,6 +64,37 @@ enum Cmd {
         #[arg(long)]
         json: Option<PathBuf>,
     },
+    /// Select rows for every build of a project, strip, and write the prepared tree.
+    Prepare {
+        #[arg(long)]
+        project: String,
+        /// directory holding <compiler>-<config>/ build outputs
+        #[arg(long)]
+        builds: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_delimiter = ',')]
+        submodules: Vec<String>,
+        #[arg(long)]
+        exclude: Option<PathBuf>,
+        #[arg(long, default_value_t = 300)]
+        select: usize,
+        #[arg(long, default_value = "/opt/llvm/bin/llvm-strip")]
+        strip_tool: PathBuf,
+        /// comma list of <compiler>-<config> builds
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
+        /// count eligible functions only (qualification pre-check), write nothing but the summary
+        #[arg(long)]
+        count_only: bool,
+    },
+    /// Token fingerprints of every function defined in the C files under a directory
+    /// (to exclude another corpus's functions from selection). Sorted JSON list.
+    Fingerprints {
+        dir: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -214,6 +245,81 @@ fn run() -> Result<ExitCode> {
             }
             eprintln!("{}", serde_json::to_string(&r.stats)?);
             println!("eligible {}", r.eligible.len());
+        }
+        Cmd::Prepare {
+            project,
+            builds,
+            out,
+            submodules,
+            exclude,
+            select,
+            strip_tool,
+            only,
+            count_only,
+        } => {
+            std::fs::create_dir_all(&out)?;
+            let s = freshbench::prepare::prepare(
+                &project,
+                &builds,
+                &out,
+                &submodules,
+                exclude.as_deref(),
+                select,
+                &strip_tool,
+                &only,
+                count_only,
+            )?;
+            std::fs::write(
+                out.join("prepare_summary.json"),
+                serde_json::to_vec_pretty(&s)?,
+            )?;
+            for (k, v) in &s.builds {
+                println!(
+                    "{k}: eligible {} selected {}",
+                    v["eligible"],
+                    v.get("selected").cloned().unwrap_or_default()
+                );
+            }
+            println!(
+                "{}",
+                if s.qualifies {
+                    "QUALIFIES"
+                } else {
+                    "DOES NOT QUALIFY"
+                }
+            );
+        }
+        Cmd::Fingerprints { dir, out } => {
+            use rayon::prelude::*;
+            let mut files = Vec::new();
+            rows::walk_sorted(&dir, &mut |p| {
+                if p.extension().is_some_and(|e| e == "c" || e == "i") {
+                    files.push(p.to_path_buf());
+                }
+            })?;
+            let sets: Vec<Vec<String>> = files
+                .par_iter()
+                .map(|p| {
+                    let t = std::fs::read(p)
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .unwrap_or_default();
+                    let Ok(tree) = csyntax::parse(&t) else {
+                        return vec![];
+                    };
+                    csyntax::definitions(&tree, &t)
+                        .into_values()
+                        .flatten()
+                        .map(|n| freshbench::prepare::fingerprint(n, &t))
+                        .collect()
+                })
+                .collect();
+            let all: std::collections::BTreeSet<String> = sets.into_iter().flatten().collect();
+            std::fs::write(&out, serde_json::to_vec(&all)?)?;
+            eprintln!(
+                "{} files, {} distinct function fingerprints",
+                files.len(),
+                all.len()
+            );
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;

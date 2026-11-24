@@ -612,6 +612,16 @@ struct BuildJson {
     config: String,
     work_dir: String,
     binaries: Vec<BuildBin>,
+    #[serde(default)]
+    arch: Option<String>,
+    #[serde(default)]
+    flags: String,
+    #[serde(default)]
+    cc_version: String,
+    #[serde(default)]
+    cc_fb_version: Option<String>,
+    #[serde(default)]
+    success: bool,
 }
 
 #[derive(Deserialize)]
@@ -672,6 +682,199 @@ pub fn analyse_build_dir(
     }
     let _ = project;
     Ok(out)
+}
+
+pub const CONFIGS: [&str; 6] = ["O0", "O1", "O2", "O3", "Os", "O2-noinline"];
+pub const COMPILERS: [&str; 2] = ["gcc", "clang"];
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SelectedFunction {
+    pub name: String,
+    pub source: String,
+    pub address: u64,
+    pub high_pc: Option<u64>,
+    pub selection_key: String,
+    pub tu_sha256: String,
+    /// dataset-relative path of the TU text (`sources/<project>/<tu16>.<stem>.c`)
+    pub source_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreparedBinary {
+    pub sha256: String,
+    pub stripped_sha256: String,
+    pub strip_tool: String,
+    pub functions: Vec<SelectedFunction>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreparedBuild {
+    pub project: String,
+    pub arch: String,
+    pub compiler: String,
+    pub config: String,
+    pub flags: String,
+    pub compiler_version: String,
+    pub binaries: BTreeMap<String, PreparedBinary>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct PrepareSummary {
+    pub project: String,
+    pub select: usize,
+    pub builds: BTreeMap<String, serde_json::Value>,
+    pub qualifies: bool,
+}
+
+/// Analyse every `<compiler>-<config>` build under `builds`, select up to `select`
+/// functions per build, and (unless `only_count`) write `<out>/<build>/` with
+/// binaries/, stripped/ (stripped with `strip_tool`, verified) and manifest.json,
+/// plus `<out>/sources/<project>/` holding each selected function's TU once.
+/// A project qualifies when both O0 builds have at least `select` eligible functions.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare(
+    project: &str,
+    builds: &Path,
+    out: &Path,
+    submodules: &[String],
+    exclude: Option<&Path>,
+    select: usize,
+    strip_tool: &Path,
+    only: &[String],
+    only_count: bool,
+) -> Result<PrepareSummary> {
+    let mut summary = PrepareSummary {
+        project: project.into(),
+        select,
+        ..Default::default()
+    };
+    let mut o0_ok = true;
+    let mut o0_seen = 0;
+    for comp in COMPILERS {
+        for conf in CONFIGS {
+            let key = format!("{comp}-{conf}");
+            if !only.is_empty() && !only.contains(&key) {
+                continue;
+            }
+            let bdir = builds.join(&key);
+            if !bdir.join("build.json").exists() {
+                summary.builds.insert(
+                    key.clone(),
+                    serde_json::json!({"eligible": 0, "error": "not built"}),
+                );
+                if conf == "O0" {
+                    o0_ok = false;
+                    o0_seen += 1;
+                }
+                continue;
+            }
+            let meta: BuildJson = serde_json::from_slice(&std::fs::read(bdir.join("build.json"))?)?;
+            let r = analyse_build_dir(&bdir, project, submodules, exclude)?;
+            let mut keyed: Vec<(String, &String, &Candidate)> = r
+                .eligible
+                .values()
+                .map(|(bin, c)| (selection_key(project, &c.source, &c.name), bin, c))
+                .collect();
+            keyed.sort_by(|a, b| {
+                (&a.0, a.1, &a.2.source, &a.2.name).cmp(&(&b.0, b.1, &b.2.source, &b.2.name))
+            });
+            let chosen: Vec<_> = keyed.iter().take(select).collect();
+            if conf == "O0" {
+                o0_seen += 1;
+                o0_ok &= r.eligible.len() >= select;
+            }
+            summary.builds.insert(
+                key.clone(),
+                serde_json::json!({
+                    "eligible": r.eligible.len(), "selected": chosen.len(), "stats": r.stats,
+                    "build_ok": meta.success, "binaries": meta.binaries.len(),
+                    "compiler_version": meta.cc_fb_version.clone().unwrap_or(meta.cc_version.clone()),
+                }),
+            );
+            if only_count {
+                continue;
+            }
+            let arch = meta.arch.clone().unwrap_or_else(|| "x86_64".into());
+            let odir = out.join(crate::rows::build_name(&arch, comp, conf));
+            std::fs::create_dir_all(odir.join("binaries"))?;
+            std::fs::create_dir_all(odir.join("stripped"))?;
+            let srcdir = out.join("sources").join(project);
+            std::fs::create_dir_all(&srcdir)?;
+            let tus = read_tus(&bdir)?;
+            let tu_path: BTreeMap<&String, &PathBuf> =
+                tus.values().flat_map(|m| m.iter()).collect();
+            let mut pb = PreparedBuild {
+                project: project.into(),
+                arch: arch.clone(),
+                compiler: comp.into(),
+                config: conf.into(),
+                flags: meta.flags.clone(),
+                compiler_version: meta
+                    .cc_fb_version
+                    .clone()
+                    .unwrap_or(meta.cc_version.clone()),
+                binaries: BTreeMap::new(),
+            };
+            let mut by_bin: BTreeMap<&String, Vec<&(String, &String, &Candidate)>> =
+                BTreeMap::new();
+            for c in &chosen {
+                by_bin.entry(c.1).or_default().push(c);
+            }
+            for (bin, funcs) in by_bin {
+                let src_bin = bdir.join("bin").join(bin);
+                let data = std::fs::read(&src_bin)?;
+                std::fs::write(odir.join("binaries").join(bin), &data)?;
+                let dst = odir.join("stripped").join(bin);
+                std::fs::write(&dst, &data)?;
+                let st = std::process::Command::new(strip_tool)
+                    .args(["--strip-all", "-R", ".comment", "-R", ".note.gnu.build-id"])
+                    .arg(&dst)
+                    .status()
+                    .with_context(|| format!("run {}", strip_tool.display()))?;
+                if !st.success() {
+                    bail!("{} failed on {bin}", strip_tool.display());
+                }
+                let stripped = std::fs::read(&dst)?;
+                verify_strip(&data, &stripped).with_context(|| format!("{key}/{bin}"))?;
+                let mut fs = Vec::new();
+                for (k, _, c) in funcs {
+                    let stem = Path::new(&c.source)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("tu");
+                    let rel = format!("sources/{project}/{}.{stem}.c", &c.tu_sha256[..16]);
+                    let target = out.join(&rel);
+                    if !target.exists() {
+                        let from = tu_path
+                            .get(&c.tu_sha256)
+                            .with_context(|| format!("TU {} not found", c.tu_sha256))?;
+                        std::fs::copy(from, &target)?;
+                    }
+                    fs.push(SelectedFunction {
+                        name: c.name.clone(),
+                        source: c.source.clone(),
+                        address: c.address,
+                        high_pc: c.high_pc,
+                        selection_key: k.clone(),
+                        tu_sha256: c.tu_sha256.clone(),
+                        source_path: rel,
+                    });
+                }
+                pb.binaries.insert(
+                    bin.clone(),
+                    PreparedBinary {
+                        sha256: crate::manifest::sha256_bytes(&data),
+                        stripped_sha256: crate::manifest::sha256_bytes(&stripped),
+                        strip_tool: strip_tool.display().to_string(),
+                        functions: fs,
+                    },
+                );
+            }
+            std::fs::write(odir.join("manifest.json"), serde_json::to_vec_pretty(&pb)?)?;
+        }
+    }
+    summary.qualifies = o0_ok && o0_seen == 2;
+    Ok(summary)
 }
 
 #[cfg(test)]
