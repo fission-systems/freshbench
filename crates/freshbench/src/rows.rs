@@ -116,6 +116,9 @@ pub struct Row {
     pub code_sha256: Option<String>,
     #[serde(default)]
     pub ged: Option<GedScore>,
+    /// GED on Joern-compatible CFGs (vendored rust-joern), same GED engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joern_ged: Option<GedScore>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Scorer that produced the numbers ("freshbench-2.x", or "decbench-v1").
@@ -129,6 +132,18 @@ impl Row {
             (Outcome::Scored, Some(g)) => Some(g.value),
             _ => None,
         }
+    }
+
+    pub fn scored_joern_ged(&self) -> Option<f64> {
+        match (self.outcome, &self.joern_ged) {
+            (Outcome::Scored, Some(g)) => Some(g.value),
+            _ => None,
+        }
+    }
+
+    /// Perfect on at least one metric family.
+    pub fn union_perfect(&self) -> bool {
+        self.scored_ged() == Some(0.0) || self.scored_joern_ged() == Some(0.0)
     }
 }
 
@@ -198,6 +213,7 @@ impl From<V1Row> for Row {
             address: v.address,
             code_sha256: v.code_sha256,
             ged,
+            joern_ged: None,
             tags: vec![],
             scorer: "decbench-v1".into(),
         }

@@ -205,8 +205,13 @@ fn sorted_dir(p: &Path) -> Result<Vec<String>> {
 pub struct Cached {
     pub outcome: Outcome,
     pub ged: Option<GedScore>,
+    #[serde(default)]
+    pub joern_ged: Option<GedScore>,
     pub tags: Vec<String>,
 }
+
+/// Bumped whenever a metric's definition changes, so cached scores are not reused across definitions.
+pub const METRICS_REV: &str = "fbcfg1+joern1";
 
 /// Content-addressed scores: the key is sha256(scorer | budget | function name |
 /// source definition fingerprint | output sha256), so the same source function
@@ -345,6 +350,10 @@ fn score_tu(
         _ => BTreeMap::new(),
     };
     let mut src_cache: HashMap<&str, Option<SourceFn>> = HashMap::new();
+    let joern_src = tu
+        .as_deref()
+        .map(crate::joern::source_cfgs)
+        .unwrap_or_default();
     let mut out = Vec::with_capacity(ts.len());
     for t in ts {
         let mut row = Row {
@@ -354,6 +363,7 @@ fn score_tu(
             address: t.address,
             code_sha256: None,
             ged: None,
+            joern_ged: None,
             tags: vec![],
             scorer: score::SCORER.to_string(),
         };
@@ -382,13 +392,15 @@ fn score_tu(
         let c = match cache.get(&key) {
             Some(c) => c,
             None => {
-                let c = score_output(sg, sf, text, &t.key.function, budget);
+                let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
+                let c = score_output(sg, sf, jg, text, &t.key.function, budget);
                 cache.put(key, c.clone());
                 c
             }
         };
         row.outcome = c.outcome;
         row.ged = c.ged;
+        row.joern_ged = c.joern_ged;
         row.tags = c.tags;
         out.push(row);
     }
@@ -399,6 +411,7 @@ fn score_tu(
 pub fn score_output(
     sg: &cfg::Graph,
     sf: &csyntax::Features,
+    joern_source: Option<&cfg::Graph>,
     text: &str,
     function: &str,
     budget: u64,
@@ -406,6 +419,7 @@ pub fn score_output(
     let unscored = |tag: &str| Cached {
         outcome: Outcome::Unscored,
         ged: None,
+        joern_ged: None,
         tags: vec![tag.to_string()],
     };
     let Ok(ot) = csyntax::parse(text) else {
@@ -418,8 +432,23 @@ pub fn score_output(
     let of = csyntax::features(odef, text);
     let d = ged::distance_with_budget(sg, &og, budget);
     let (sn, on) = (sg.nodes() as u32, og.nodes() as u32);
+    let joern_ged = joern_source.and_then(|jsg| {
+        let jog = crate::joern::output_cfg(text, function)?;
+        let jd = ged::distance_with_budget(jsg, &jog, budget);
+        Some(GedScore {
+            value: jd.value as f64,
+            exact: jd.exact,
+            lower_bound: Some(jd.lower_bound as f64),
+            method: jd.method.to_string(),
+            source_nodes: Some(jsg.nodes() as u32),
+            source_edges: Some(jsg.edges.len() as u32),
+            output_nodes: Some(jog.nodes() as u32),
+            output_edges: Some(jog.edges.len() as u32),
+        })
+    });
     Cached {
         outcome: Outcome::Scored,
+        joern_ged,
         ged: Some(GedScore {
             value: d.value as f64,
             exact: d.exact,

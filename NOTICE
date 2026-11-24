@@ -7,3 +7,8 @@ perfect scores) follow DecBench by Noelo-Lab (https://github.com/Noelo-Lab/decbe
 No DecBench code is included. FreshBench v1 (tag v1) used DecBench and
 rust-joern (Apache-2.0, https://github.com/Noelo-Lab/rust-joern) as
 external dependencies.
+
+rust-joern (crates/rust-joern) is vendored from https://github.com/Noelo-Lab/rust-joern
+under the Apache License 2.0 (crates/rust-joern/LICENSE); see crates/rust-joern/VENDORED.md
+for the upstream commit and local changes. crates/freshbench/src/joern.rs ports
+rust-joern's decompilation preprocessing from its Python package.

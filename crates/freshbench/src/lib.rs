@@ -15,6 +15,7 @@ pub mod csyntax;
 pub mod dataset;
 pub mod ged;
 pub mod headroom;
+pub mod joern;
 pub mod manifest;
 pub mod prepare;
 pub mod report;
