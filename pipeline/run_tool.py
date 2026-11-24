@@ -144,11 +144,17 @@ def ged_bisect(binf, names, crashed, chunks):
 
 
 # 2) score every binary in a child process
-# Determinism check (freshbench/scorecache.py): a fixed, name-chosen 1% of the
+# Determinism check : a fixed, name-chosen 1% of the
 # binaries (at least one) get their GED scored a second time in a new process;
 # any function whose GED differs is recorded and its row marked ged_unstable.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from freshbench.scorecache import rescore_sample  # noqa: E402
+
+
+def rescore_sample(keys, fraction, salt="freshbench-rescore-v1"):
+    """A fixed, content-chosen subset of names (the same every run)."""
+    limit = int(fraction * 2**32)
+    return sorted(k for k in keys
+                  if int.from_bytes(hashlib.sha256((salt + k).encode()).digest()[:4], "big") < limit)
+
 
 rescore_bins = set(rescore_sample(sorted(manifest["binaries"]), 0.01)) or set(sorted(manifest["binaries"])[:1])
 run["ged_rescore"] = {"binaries": sorted(rescore_bins), "unstable": []}
