@@ -53,6 +53,9 @@ enum Cmd {
         /// content-addressed score cache (JSON lines; created if missing, new entries appended)
         #[arg(long)]
         cache: Option<PathBuf>,
+        /// only these arch-qualified builds (`gcc-O0`, `aarch64-gcc-O0`; comma list)
+        #[arg(long, value_delimiter = ',')]
+        builds: Vec<String>,
     },
     /// Eligible functions of one build directory (build.json, tu_log.jsonl, i/, bin/).
     Eligible {
@@ -278,13 +281,14 @@ fn run() -> Result<ExitCode> {
             limit_tus,
             budget,
             cache,
+            builds,
         } => {
             let sc = match &cache {
                 Some(p) => freshbench::dataset::ScoreCache::load(p)?,
                 None => freshbench::dataset::ScoreCache::default(),
             };
             let t0 = std::time::Instant::now();
-            let rows = freshbench::dataset::rescore(&root, &tool, limit_tus, budget, &sc)?;
+            let rows = freshbench::dataset::rescore(&root, &tool, limit_tus, budget, &sc, &builds)?;
             let (h, m) = (
                 sc.hits.load(std::sync::atomic::Ordering::Relaxed),
                 sc.misses.load(std::sync::atomic::Ordering::Relaxed),

@@ -323,14 +323,24 @@ impl ScoreCache {
 }
 
 /// Score `tool` on every target (or the first `limit` source TUs' targets). Rows sorted by key.
+/// Score `tool`'s records under `root`. A non-empty `builds` (arch-qualified
+/// names, `rows::build_name`) keeps only those builds' functions, so a job that
+/// decompiled one build scores only that build.
 pub fn rescore(
     root: &Path,
     tool: &str,
     limit_tus: Option<usize>,
     budget: u64,
     cache: &ScoreCache,
+    builds: &[String],
 ) -> Result<Vec<Row>> {
-    let targets = targets(root)?;
+    let mut targets = targets(root)?;
+    if !builds.is_empty() {
+        targets.retain(|t| {
+            let b = crate::rows::build_name(&t.key.arch, &t.key.compiler, &t.key.config);
+            builds.contains(&b)
+        });
+    }
     let code = records(root, tool)?;
     let mut by_tu: BTreeMap<&str, Vec<&Target>> = BTreeMap::new();
     for t in &targets {
@@ -711,7 +721,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         tree(d.path());
         let none = ScoreCache::default();
-        let a = rescore(d.path(), "t", None, 1000, &none).unwrap();
+        let a = rescore(d.path(), "t", None, 1000, &none, &[]).unwrap();
         assert_eq!(a.len(), 3);
         // O2 and O3 printed the same text for the same source: scored once
         assert_eq!(
@@ -729,7 +739,7 @@ mod tests {
         let p = d.path().join("cache.jsonl");
         assert_eq!(none.save(&p).unwrap(), 2);
         let warm = ScoreCache::load(&p).unwrap();
-        let b = rescore(d.path(), "t", None, 1000, &warm).unwrap();
+        let b = rescore(d.path(), "t", None, 1000, &warm, &[]).unwrap();
         assert_eq!(a, b);
         assert_eq!(
             (
@@ -740,7 +750,17 @@ mod tests {
         );
         // a different budget is a different key
         let other = ScoreCache::load(&p).unwrap();
-        rescore(d.path(), "t", None, 999, &other).unwrap();
+        rescore(d.path(), "t", None, 999, &other, &[]).unwrap();
         assert_eq!(other.hits.load(Ordering::Relaxed), 1);
+        // a build filter keeps only that build's rows
+        let one = rescore(d.path(), "t", None, 1000, &warm, &["gcc-O3".into()]).unwrap();
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].key.config, "O3");
+        assert_eq!(one[0], *a.iter().find(|r| r.key.config == "O3").unwrap());
+        assert!(
+            rescore(d.path(), "t", None, 1000, &warm, &["clang-O3".into()])
+                .unwrap()
+                .is_empty()
+        );
     }
 }

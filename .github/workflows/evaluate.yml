@@ -10,6 +10,7 @@ on:
       tools: { description: "JSON list", default: '["fission","ghidra","angr","kuna","borer"]' }
       fission_ref: { description: "git ref of Fission (default: FISSION_SHA in ci/pins.env)", default: "" }
       max_parallel: { description: "concurrent jobs", default: "12" }
+      builds: { description: 'JSON list of arch-qualified builds, one job each (gcc-O0, armv7-clang-Os); [""] = every build in one job', default: '[""]' }
 permissions: { contents: read, actions: read }
 jobs:
   build:
@@ -56,6 +57,9 @@ jobs:
       matrix:
         project: ${{ fromJSON(inputs.projects) }}
         tool: ${{ fromJSON(inputs.tools) }}
+        build: ${{ fromJSON(inputs.builds) }}
+    env:
+      FB_BUILDS: ${{ matrix.build != '' && format('--builds={0}', matrix.build) || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,12 +79,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
           if [ '${{ matrix.tool }}' = fission ]; then
-            "$FB" decompile "$R" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+            "$FB" decompile "$R" $FB_BUILDS --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+            "$FB" decompile "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
           fi
-          "$FB" rescore "$R" --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
+          "$FB" rescore "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: "eval-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}", path: "${{ runner.temp }}/up", retention-days: 90 }
+        with: { name: "eval-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }
