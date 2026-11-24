@@ -26,7 +26,11 @@ source. For the second CFG family it vendors
 [rust-joern](https://github.com/Noelo-Lab/rust-joern) (Apache-2.0,
 `crates/rust-joern/`, upstream main plus the open pull requests #21-#68; see
 `VENDORED.md`), but scores its graphs with FreshBench's GED. Its scores are
-therefore not DecBench scores. See `NOTICE`.
+therefore not DecBench scores. See `NOTICE`. DecBench's maintainer agreed
+to this reuse of its metric design on 2026-11-25, with one request we keep:
+be honest about duplication. Row counts overstate how many different
+functions a corpus holds; see
+[how many functions M1 really is](corpus/m1/README.md#how-many-functions-this-really-is).
 
 ## What is measured, and what is not
 

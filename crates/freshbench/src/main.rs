@@ -101,6 +101,20 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Source-level clone audit of the selected functions (exact copies,
+    /// consistently renamed copies, and copies with other literals); JSON.
+    Duplicates {
+        root: PathBuf,
+        /// one architecture only
+        #[arg(long)]
+        arch: Option<String>,
+        /// groups listed per level
+        #[arg(long, default_value_t = 20)]
+        top: usize,
+        /// also count selected functions defined in this corpus's .c/.i files
+        #[arg(long)]
+        against: Option<PathBuf>,
+    },
     /// Run a decompiler on every prepared build under ROOT (stripped binaries,
     /// selected addresses); writes ROOT/results/<tool>/<build>/<project>/records.jsonl.gz.
     Decompile {
@@ -380,6 +394,17 @@ fn run() -> Result<ExitCode> {
                 }
             );
         }
+        Cmd::Duplicates {
+            root,
+            arch,
+            top,
+            against,
+        } => print_json(&freshbench::clones::audit(
+            &root,
+            arch.as_deref(),
+            top,
+            against.as_deref(),
+        )?)?,
         Cmd::Fingerprints { dir, out } => {
             use rayon::prelude::*;
             let mut files = Vec::new();

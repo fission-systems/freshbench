@@ -48,6 +48,52 @@ survive.
 | clang O3 | 5,948 | 5,949 | 5,944 | 5,945 |
 | clang Os | 5,962 | 5,963 | 5,956 | 5,957 |
 
+## How many functions this really is
+
+A row is one function in one build. M1 has 285,875 rows, but they are 48
+builds of **7,885 distinct source functions** (project, source file, name).
+Within a build, no function is selected twice (one binary each).
+
+Distinct is not unique either: projects copy code between their own files.
+`freshbench duplicates` compares the selected definitions on their source
+tokens, since hashing compiled bytes misses copies (the same source compiles
+to different bytes in different binaries) and conflates different sources.
+On x86-64 (7,810 functions, 71,472 rows; `duplicates-x86_64.json`):
+
+| level | what counts as a copy | redundant functions | redundant rows | of which ≥ 50 tokens |
+|---|---|---:|---:|---:|
+| exact | same tokens; own name, comments and layout aside | 266 (3.4%) | 2,415 (3.4%) | 64 |
+| renamed | also any consistent renaming of identifiers | 964 (12.3%) | 8,922 (12.5%) | 259 |
+| shape | also any literal | 1,259 (16.1%) | 11,951 (16.7%) | 413 |
+
+"Redundant" is a group's size minus one. Nearly all groups stay inside one
+project: one project copies helpers into each of its programs (one
+234-token function eight times), another generates 122 accessors of the
+same 13 tokens. After removing renamed copies, M1 holds about 6,850 distinct
+functions per architecture.
+
+Against DecBench (`--against` its 5,404 preprocessed sources): 7 functions
+are exact copies of a DecBench function and 312 are renamed copies. All of
+them are under 50 tokens (`return 0;`-sized initializers and wrappers). The
+selection excludes exact copies by token fingerprint including the name, so
+these 7 differ from their DecBench twin only in the name.
+
+For scale: DecBench's full set has 96,103 rows and 24,269 distinct
+(project, name) pairs over 3 configurations, not audited for copies the
+same way. M1 has about 3x the rows and
+about a third of the distinct functions. Each M1 function appears in up to
+48 builds, so M1 measures how a decompiler copes across architectures,
+compilers and optimization levels, on fewer distinct functions.
+
+Reproduce (x86-64 sources and truth fetched as above):
+
+```bash
+freshbench duplicates data/m1 --arch x86_64 --against <decbench-dataset>/sources
+```
+
+Results that report a single score over M1 must also report it on one
+representative per renamed-clone group.
+
 ## Projects
 
 Every project ships its license file(s) under `projects/<project>/`. GPL

@@ -11,6 +11,7 @@ pub mod adapters;
 pub mod bands;
 pub mod callsites;
 pub mod cfg;
+pub mod clones;
 pub mod corpus;
 pub mod csyntax;
 pub mod dataset;
