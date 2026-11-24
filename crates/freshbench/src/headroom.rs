@@ -267,6 +267,7 @@ mod tests {
                 source_nodes: Some(sn),
                 ..Default::default()
             }),
+            joern_ged: None,
             tags: vec![],
             scorer: String::new(),
         }

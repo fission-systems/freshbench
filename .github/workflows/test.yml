@@ -16,8 +16,10 @@ jobs:
             ~/.cargo/git
             target
           key: cargo-${{ hashFiles('Cargo.lock') }}
-      - run: cargo fmt --all --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - run: cargo fmt -p freshbench --check
+      - run: cargo clippy --locked -p freshbench --all-targets -- -D warnings
+      - run: cargo test --locked -p freshbench
+      - name: vendored rust-joern's own tests
+        run: cargo test --locked --release -p rust-joern
       - name: the ELF end-to-end test must take the GCC path
-        run: cargo test --locked elf_end_to_end -- --nocapture 2>&1 | tee e2e.log; grep -q "cc is gcc = true" e2e.log
+        run: cargo test --locked -p freshbench elf_end_to_end -- --nocapture 2>&1 | tee e2e.log; grep -q "cc is gcc = true" e2e.log

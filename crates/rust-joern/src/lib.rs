@@ -1,0 +1,739 @@
+mod builder;
+mod dataflow;
+mod ddg;
+pub mod graph;
+mod joern_calls;
+mod joern_operators;
+mod lexer;
+mod normalize;
+mod parser;
+mod syntax;
+
+use graph::{
+    Analysis, Diagnostic, Edge, ExternalReference, FunctionGraph, Node, Options, PropertyGraph,
+};
+use rayon::prelude::*;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ffi::{CStr, CString, c_char};
+
+pub fn analyze(source: &str, filename: &str, options: &Options) -> Result<Analysis, String> {
+    analyze_sources(&[(source, filename)], options)
+}
+
+/// Analyze independent source files as one analysis. Each `(source, filename)`
+/// pair retains its own language and source locations, while data-flow passes
+/// resolve internal callees against the methods recovered from all files.
+pub fn analyze_sources(sources: &[(&str, &str)], options: &Options) -> Result<Analysis, String> {
+    let mut units = sources
+        .iter()
+        .map(|&(source, filename)| build_source(source, filename, options))
+        .collect::<Result<Vec<_>, _>>()?;
+    // Joern emits source declarations only when no matching definition was
+    // recovered from any translation unit. Empty definitions are still real
+    // definitions, even though their CFG qualifies as a data-flow stub.
+    let defined_methods: HashSet<_> = units
+        .iter()
+        .flat_map(|unit| unit.defined_methods.iter().cloned())
+        .collect();
+    for unit in &mut units {
+        unit.functions.retain(|function| {
+            !unit.prototype_methods.contains(&function.fullname)
+                || !defined_methods.contains(&function.fullname)
+        });
+    }
+    let internal_methods: HashSet<_> = units
+        .iter()
+        .flat_map(|unit| unit.internal_methods.iter().cloned())
+        .collect();
+    let nonstub_methods: HashSet<_> = units
+        .iter()
+        .flat_map(|unit| &unit.functions)
+        .filter(|function| {
+            function.cpg.edges.iter().any(|edge| {
+                edge.kind == "CFG"
+                    && function.cpg.nodes[edge.source as usize].kind == "METHOD"
+                    && function.cpg.nodes[edge.target as usize].kind != "METHOD_RETURN"
+            })
+        })
+        .map(|function| function.fullname.clone())
+        .collect();
+    if options.data_flow || options.reaching_definitions {
+        units.par_iter_mut().for_each(|unit| {
+            unit.functions.par_iter_mut().for_each(|function| {
+                dataflow::apply_with_context(
+                    function,
+                    options.reaching_definitions,
+                    &nonstub_methods,
+                    unit.cpp,
+                );
+                let projection =
+                    dataflow::project_ddg(function, &nonstub_methods, &internal_methods, unit.cpp);
+                function.ddg_projection = Some(projection.clone());
+                function.ddg_view = Some(projection);
+            });
+            unit.diagnostics.push(Diagnostic {
+                filename: unit.filename.clone(),
+                line: 0,
+                column: 0,
+                severity: "warning".into(),
+                message: dataflow::LIMITATIONS.into(),
+            });
+        });
+    }
+    Ok(Analysis {
+        schema_version: 1,
+        cpp_constructor_initializers: options.cpp_constructor_initializers,
+        cpp_type_names: options.cpp_type_names.clone(),
+        functions: units
+            .iter_mut()
+            .flat_map(|unit| std::mem::take(&mut unit.functions))
+            .collect(),
+        diagnostics: units
+            .into_iter()
+            .flat_map(|unit| unit.diagnostics)
+            .collect(),
+    })
+}
+
+struct BuiltSource {
+    filename: String,
+    cpp: bool,
+    functions: Vec<FunctionGraph>,
+    diagnostics: Vec<Diagnostic>,
+    internal_methods: HashSet<String>,
+    prototype_methods: HashSet<String>,
+    defined_methods: HashSet<String>,
+}
+
+fn build_source(source: &str, filename: &str, options: &Options) -> Result<BuiltSource, String> {
+    let cpp = match options.language.as_deref() {
+        Some("cpp" | "c++") => true,
+        Some("c") => false,
+        Some(other) => return Err(format!("unsupported language: {other}")),
+        None => matches!(
+            std::path::Path::new(filename)
+                .extension()
+                .and_then(|s| s.to_str()),
+            Some("cpp" | "cc" | "cxx" | "c++" | "C" | "hpp" | "hh" | "hxx" | "ii")
+        ),
+    };
+    let preprocessed = options.preprocessed
+        || matches!(
+            std::path::Path::new(filename)
+                .extension()
+                .and_then(|s| s.to_str()),
+            Some("i" | "ii")
+        );
+    if options.cpp_constructor_initializers
+        && (!cpp || options.data_flow || options.reaching_definitions)
+    {
+        return Err("cpp_constructor_initializers requires C++ CFG-only analysis".into());
+    }
+    if !options.cpp_type_names.is_empty() && !cpp {
+        return Err("cpp_type_names requires C++ input".into());
+    }
+    for name in &options.cpp_type_names {
+        // Bound the transport to identifier-shaped names, not declarations,
+        // template syntax, expressions or invented source fragments.
+        let valid = name
+            .strip_prefix("::")
+            .unwrap_or(name)
+            .split("::")
+            .all(|part| {
+                let mut chars = part.bytes();
+                chars
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+                    && chars.all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            });
+        if !valid {
+            return Err(format!("invalid C++ context type name: {name:?}"));
+        }
+    }
+    let unit = parser::parse_with(
+        source,
+        cpp,
+        preprocessed,
+        options.joern_cdt_failures,
+        &options.cpp_type_names,
+        options.cpp_constructor_initializers,
+    );
+    let mut diagnostics: Vec<_> = unit
+        .diagnostics
+        .iter()
+        .map(|d| Diagnostic {
+            filename: filename.into(),
+            line: d.span.line,
+            column: d.span.column,
+            severity: "error".into(),
+            message: d.message.clone(),
+        })
+        .collect();
+    let known_functions = unit
+        .functions
+        .iter()
+        .flat_map(|f| {
+            [
+                f.name.clone(),
+                f.full_name.clone(),
+                f.full_name.split(':').next().unwrap().replace('.', "::"),
+            ]
+        })
+        .collect();
+    let mut methods: HashMap<String, Vec<&syntax::Function>> = HashMap::new();
+    for function in &unit.functions {
+        methods
+            .entry(function.full_name.split(':').next().unwrap().to_owned())
+            .or_default()
+            .push(function);
+    }
+    let call_bindings = builder::CallBindings {
+        methods: &methods,
+        known_types: &unit.known_type_names,
+    };
+    let mut built: Vec<_> = unit
+        .functions
+        .par_iter()
+        .map(|f| {
+            builder::build(
+                f,
+                source,
+                filename,
+                &known_functions,
+                cpp,
+                &call_bindings,
+                options,
+            )
+        })
+        .collect();
+    for (_, messages) in &mut built {
+        diagnostics.append(messages);
+    }
+    if options.strict && diagnostics.iter().any(|d| d.severity == "error") {
+        return Err(diagnostics
+            .iter()
+            .filter(|d| d.severity == "error")
+            .map(|d| format!("{}:{}:{}: {}", d.filename, d.line, d.column, d.message))
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    let mut functions: Vec<_> = built.into_iter().map(|(f, _)| f).collect();
+    bind_lambda_captures(&unit.functions, &mut functions);
+    let global = (!unit.global_expressions.is_empty()).then(|| {
+        // Global initializers/bounds can register external builtin macro
+        // methods even though PyJoern does not expose the <global> method.
+        let function = syntax::Function {
+            name: "<global>".into(),
+            full_name: "<global>".into(),
+            return_type: "void".into(),
+            binding_return_type: "void".into(),
+            signature: "void()".into(),
+            extern_c: false,
+            lambda_parent: None,
+            implicit_this: None,
+            implicit_fields: Vec::new(),
+            member_cv_qualified: false,
+            lambda: false,
+            is_static: false,
+            is_virtual: false,
+            inherited_bindings: Vec::new(),
+            inherited_closures: Vec::new(),
+            parameters: Vec::new(),
+            constructor_initializers: Vec::new(),
+            body: syntax::Stmt {
+                kind: syntax::StmtKind::Sequence(
+                    unit.global_expressions
+                        .iter()
+                        .map(|expression| syntax::Stmt {
+                            span: expression.span.clone(),
+                            kind: syntax::StmtKind::Expression(expression.clone()),
+                        })
+                        .collect(),
+                ),
+                span: syntax::Span::default(),
+            },
+            span: syntax::Span::default(),
+        };
+        builder::build(
+            &function,
+            source,
+            filename,
+            &known_functions,
+            cpp,
+            &call_bindings,
+            options,
+        )
+        .0
+        .cpg
+    });
+    append_macro_methods(
+        &mut functions,
+        global.as_ref(),
+        &unit.retained_macro_calls,
+        filename,
+    );
+    functions
+        .par_iter_mut()
+        .for_each(dataflow::decorate_parameters);
+    Ok(BuiltSource {
+        filename: filename.into(),
+        cpp,
+        functions,
+        diagnostics,
+        // Source declarations are internal methods too, even when their CFG
+        // is a stub. The DDG exporter uses these when hiding call arguments.
+        internal_methods: unit.functions.iter().map(|f| f.full_name.clone()).collect(),
+        prototype_methods: unit
+            .functions
+            .iter()
+            .filter(|f| matches!(f.body.kind, syntax::StmtKind::Empty))
+            .map(|f| f.full_name.clone())
+            .collect(),
+        defined_methods: unit
+            .functions
+            .iter()
+            .filter(|f| !matches!(f.body.kind, syntax::StmtKind::Empty))
+            .map(|f| f.full_name.clone())
+            .collect(),
+    })
+}
+
+/// Joern's base pass creates external methods for CDT's predefined macros.
+/// Their missing METHOD_RETURN line also changes PyJoern's boundary lifting.
+fn append_macro_methods(
+    functions: &mut Vec<FunctionGraph>,
+    global: Option<&PropertyGraph>,
+    retained: &[syntax::RetainedMacroCall],
+    filename: &str,
+) {
+    let mut macros = BTreeMap::new();
+    let mut calls: Vec<_> = functions
+        .iter()
+        .map(|function| &function.cpg)
+        .chain(global)
+        .flat_map(|graph| {
+            graph
+                .nodes
+                .iter()
+                .filter(|node| {
+                    node.kind == "CALL"
+                        && node
+                            .method_full_name
+                            .as_deref()
+                            .is_some_and(|name| name.starts_with(":-1:-1:"))
+                })
+                .map(move |node| (node, graph))
+        })
+        .collect();
+    calls.sort_by_key(|(call, _)| call.start_byte);
+    for (call, graph) in calls {
+        let Some(fullname) = call.method_full_name.as_deref() else {
+            continue;
+        };
+        let Some((name, arity)) = fullname
+            .strip_prefix(":-1:-1:")
+            .and_then(|identity| identity.rsplit_once(':'))
+        else {
+            continue;
+        };
+        if arity.parse::<usize>().is_err() {
+            continue;
+        }
+        let parameters = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.kind == "ARGUMENT" && edge.source == call.id)
+            .count();
+        macros.insert(
+            fullname.to_owned(),
+            (name.to_owned(), parameters, String::new(), -1, -1),
+        );
+    }
+    let macro_file = std::path::Path::new(filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename);
+    for call in retained {
+        let start = call.definition_span.line as i64;
+        let end = call.definition_span.end_line as i64;
+        macros.insert(
+            format!(
+                "{macro_file}:{start}:{end}:{}:{}",
+                call.name, call.formal_arity
+            ),
+            (
+                call.name.clone(),
+                call.parameter_count,
+                macro_file.into(),
+                start,
+                end,
+            ),
+        );
+    }
+    for (fullname, (name, parameters, filename, start_line, end_line)) in macros {
+        if functions
+            .iter()
+            .any(|function| function.fullname == fullname)
+        {
+            continue;
+        }
+        let mut cpg = PropertyGraph::default();
+        let mut node = |kind: &str, code: String, name: Option<String>, line: i64, cfg_nop| {
+            let id = cpg.nodes.len() as u32;
+            cpg.nodes.push(Node {
+                id,
+                kind: kind.into(),
+                code,
+                name,
+                method_full_name: None,
+                external_ref: None,
+                cfg_nop,
+                type_name: (kind != "METHOD").then(|| "ANY".into()),
+                line,
+                column: 0,
+                start_byte: 0,
+                end_byte: 0,
+            });
+            id
+        };
+        let method = node(
+            "METHOD",
+            String::new(),
+            Some(name.clone()),
+            start_line,
+            Some(true),
+        );
+        for index in 1..=parameters {
+            let parameter = format!("p{index}");
+            node(
+                "METHOD_PARAMETER_IN",
+                parameter.clone(),
+                Some(parameter),
+                0,
+                None,
+            );
+        }
+        node("BLOCK", String::new(), None, 0, None);
+        let ret = node("METHOD_RETURN", "RET".into(), None, 0, Some(false));
+        for target in 1..=ret {
+            cpg.edges.push(Edge {
+                source: method,
+                target,
+                kind: "AST".into(),
+                label: None,
+            });
+        }
+        cpg.edges.push(Edge {
+            source: method,
+            target: ret,
+            kind: "CFG".into(),
+            label: None,
+        });
+        let cfg = normalize::normalize(&cpg);
+        functions.push(FunctionGraph {
+            name,
+            fullname,
+            filename,
+            return_type: String::new(),
+            signature: String::new(),
+            start_line,
+            end_line,
+            cpg,
+            cfg,
+            ddg: None,
+            ddg_projection: None,
+            ddg_view: None,
+            reaching_definitions: None,
+        });
+    }
+}
+
+/// CDT converts nested bodies while the surrounding lexical scopes are active.
+/// Lambda parameter scopes are already popped, unlike GNU nested methods.
+/// Retain cross-method references because node IDs are local to each CPG.
+fn bind_lambda_captures(syntax: &[syntax::Function], functions: &mut [FunctionGraph]) {
+    for (index, lambda) in syntax.iter().enumerate() {
+        if lambda.lambda_parent.is_none() {
+            continue;
+        }
+        let marker_kind = if lambda.lambda {
+            "METHOD_REF"
+        } else {
+            "METHOD"
+        };
+        let mut ancestors: Vec<_> = syntax
+            .iter()
+            .enumerate()
+            .filter(|(parent, function)| {
+                *parent != index
+                    && function.span.start <= lambda.span.start
+                    && function.span.end >= lambda.span.end
+                    && (function.span.start < lambda.span.start
+                        || function.span.end > lambda.span.end)
+            })
+            .collect();
+        ancestors.sort_by_key(|(_, function)| {
+            std::cmp::Reverse(function.span.end - function.span.start)
+        });
+        let mut bindings = HashMap::new();
+        for (parent_index, parent) in ancestors {
+            let graph = &functions[parent_index].cpg;
+            let Some(call) = graph
+                .nodes
+                .iter()
+                .filter(|node| {
+                    node.kind == marker_kind
+                        && node.id != 0
+                        && node.start_byte <= lambda.span.start
+                        && node.end_byte >= lambda.span.end
+                })
+                .min_by_key(|node| node.end_byte - node.start_byte)
+            else {
+                continue;
+            };
+            let mut parents = vec![None; graph.nodes.len()];
+            for edge in &graph.edges {
+                if edge.kind == "AST" {
+                    parents[edge.target as usize] = Some(edge.source as usize);
+                }
+            }
+            let mut scopes = Vec::new();
+            let mut current = Some(call.id as usize);
+            while let Some(id) = current {
+                scopes.push(id);
+                current = parents[id];
+            }
+            for &scope in scopes.iter().rev() {
+                for node in &graph.nodes {
+                    let visible =
+                        node.kind == "METHOD_PARAMETER_IN" && !parent.lambda && scope == 0
+                            || node.kind == "LOCAL"
+                                && node.start_byte <= call.start_byte
+                                && parents[node.id as usize] == Some(scope);
+                    if visible && let Some(name) = &node.name {
+                        bindings.insert(
+                            name.clone(),
+                            (
+                                ExternalReference {
+                                    method_full_name: functions[parent_index].fullname.clone(),
+                                    node: node.id,
+                                },
+                                node.type_name.clone(),
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        let graph = &mut functions[index].cpg;
+        let referenced: std::collections::HashSet<_> = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.kind == "REF")
+            .map(|edge| edge.source)
+            .collect();
+        let mut changed_kind = false;
+        for node in &mut graph.nodes {
+            if !matches!(node.kind.as_str(), "IDENTIFIER" | "METHOD_REF")
+                || referenced.contains(&node.id)
+            {
+                continue;
+            }
+            if let Some((target, type_name)) =
+                node.name.as_ref().and_then(|name| bindings.get(name))
+            {
+                node.external_ref = Some(target.clone());
+                // Capture targets can have a different type from the lowered
+                // expression, notably the synthetic pointer used for `this`.
+                let resolved_this = node.kind == "IDENTIFIER"
+                    && node.name.as_deref() == Some("this")
+                    && node
+                        .type_name
+                        .as_deref()
+                        .is_some_and(|ty| ty.ends_with('*'));
+                if !resolved_this {
+                    node.type_name.clone_from(type_name);
+                }
+                if node.kind == "METHOD_REF" {
+                    node.kind = "IDENTIFIER".into();
+                    node.method_full_name = None;
+                    node.cfg_nop = None;
+                    changed_kind = true;
+                }
+            }
+        }
+        if changed_kind {
+            functions[index].cfg = normalize::normalize(&functions[index].cpg);
+        }
+    }
+}
+
+/// Analyze UTF-8 source directly in memory. The returned string must be released
+/// with `rust_joern_free`; all input pointers are borrowed for this call only.
+///
+/// # Safety
+/// `source` must address `source_len` readable bytes (or be null when length is
+/// zero), and non-null string pointers must be valid NUL-terminated UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_joern_analyze(
+    source: *const u8,
+    source_len: usize,
+    filename: *const c_char,
+    options_json: *const c_char,
+) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| -> Result<String, String> {
+        let (source, filename) = unsafe { borrow_source(source, source_len, filename) }?;
+        let options = unsafe { borrow_options(options_json) }?;
+        serde_json::to_string(&analyze(source, filename, &options)?).map_err(|e| e.to_string())
+    });
+    export_ffi_result(result)
+}
+
+/// One source file borrowed by `rust_joern_analyze_many`.
+#[repr(C)]
+pub struct RustJoernSource {
+    pub source: *const u8,
+    pub source_len: usize,
+    pub filename: *const c_char,
+}
+
+/// Analyze source files together directly in memory. Inputs remain borrowed
+/// for this call, and the result must be released with `rust_joern_free`.
+///
+/// # Safety
+/// `sources` must address `source_count` readable `RustJoernSource` entries, or
+/// be null when the count is zero. Each entry follows `rust_joern_analyze`'s
+/// pointer requirements, as does the optional NUL-terminated options string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_joern_analyze_many(
+    sources: *const RustJoernSource,
+    source_count: usize,
+    options_json: *const c_char,
+) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| -> Result<String, String> {
+        if sources.is_null() && source_count != 0 {
+            return Err("null sources pointer".into());
+        }
+        let sources = if source_count == 0 {
+            &[][..]
+        } else {
+            unsafe { std::slice::from_raw_parts(sources, source_count) }
+        };
+        let sources = sources
+            .iter()
+            .map(|source| unsafe {
+                borrow_source(source.source, source.source_len, source.filename)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let options = unsafe { borrow_options(options_json) }?;
+        serde_json::to_string(&analyze_sources(&sources, &options)?).map_err(|e| e.to_string())
+    });
+    export_ffi_result(result)
+}
+
+unsafe fn borrow_source<'a>(
+    source: *const u8,
+    source_len: usize,
+    filename: *const c_char,
+) -> Result<(&'a str, &'a str), String> {
+    if source.is_null() && source_len != 0 {
+        return Err("null source pointer".into());
+    }
+    let bytes = if source_len == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(source, source_len) }
+    };
+    let source = std::str::from_utf8(bytes).map_err(|e| format!("source is not UTF-8: {e}"))?;
+    let filename = if filename.is_null() {
+        "<memory>.c"
+    } else {
+        unsafe { CStr::from_ptr(filename) }
+            .to_str()
+            .map_err(|e| e.to_string())?
+    };
+    Ok((source, filename))
+}
+
+unsafe fn borrow_options(options_json: *const c_char) -> Result<Options, String> {
+    if options_json.is_null() {
+        Ok(Options::default())
+    } else {
+        serde_json::from_slice(unsafe { CStr::from_ptr(options_json) }.to_bytes())
+            .map_err(|e| format!("invalid options: {e}"))
+    }
+}
+
+fn export_ffi_result(result: std::thread::Result<Result<String, String>>) -> *mut c_char {
+    let json = match result {
+        Ok(Ok(json)) => json,
+        Ok(Err(message)) => serde_json::json!({"error": message}).to_string(),
+        Err(_) => serde_json::json!({"error": "native parser panicked"}).to_string(),
+    };
+    CString::new(json)
+        .expect("JSON contains no raw NUL")
+        .into_raw()
+}
+
+/// Input of `rust_joern_project_ddg`: one method's raw graph, with each node's
+/// REACHING_DEF edges listed in stored in-edge order, and the callee context
+/// `ddg::project` resolves calls against.
+#[derive(serde::Deserialize)]
+struct ProjectionRequest {
+    function: FunctionGraph,
+    #[serde(default)]
+    nonstub_methods: HashSet<String>,
+    #[serde(default)]
+    internal_methods: HashSet<String>,
+    #[serde(default)]
+    cpp: bool,
+}
+
+/// Apply the DOT DDG projection to a supplied raw method graph, such as one
+/// captured from original Joern. Returns the projected nodes and edges, and
+/// the order in which destination nodes were evaluated.
+pub fn project_ddg(request_json: &str) -> Result<String, String> {
+    let request: ProjectionRequest =
+        serde_json::from_str(request_json).map_err(|e| format!("invalid request: {e}"))?;
+    let projection = dataflow::project_ddg(
+        &request.function,
+        &request.nonstub_methods,
+        &request.internal_methods,
+        request.cpp,
+    );
+    Ok(serde_json::json!({
+        "nodes": projection.nodes,
+        "edges": projection.edges,
+        "order": ddg::display_order(&request.function),
+    })
+    .to_string())
+}
+
+/// C ABI of `project_ddg`. The result must be released with `rust_joern_free`.
+///
+/// # Safety
+/// `request_json` must be a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_joern_project_ddg(request_json: *const c_char) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| -> Result<String, String> {
+        if request_json.is_null() {
+            return Err("null request pointer".into());
+        }
+        let request = unsafe { CStr::from_ptr(request_json) }
+            .to_str()
+            .map_err(|e| e.to_string())?;
+        project_ddg(request)
+    });
+    export_ffi_result(result)
+}
+
+/// Release a string returned by a native entry point.
+///
+/// # Safety
+/// `pointer` must be null or an unreleased allocation from a native entry point.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_joern_free(pointer: *mut c_char) {
+    if !pointer.is_null() {
+        drop(unsafe { CString::from_raw(pointer) });
+    }
+}
