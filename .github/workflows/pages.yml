@@ -1,0 +1,58 @@
+name: pages
+# Results site from evaluate runs. Manual only: a public page is published only
+# when someone runs this. Needs Settings -> Pages -> Source: GitHub Actions.
+on:
+  workflow_dispatch:
+    inputs:
+      evaluate_runs: { description: "JSON list of evaluate run ids whose eval-* artifacts to publish", required: true }
+      corpus: { description: "corpus line shown on the page (milestone, dataset revision)", required: true }
+permissions: { contents: read, actions: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: false }
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ hashFiles('Cargo.lock') }}
+      - run: cargo build --release --locked -p freshbench
+      - name: collect rows
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          mkdir -p site-src/rows
+          for id in $(echo '${{ inputs.evaluate_runs }}' | python3 -c 'import json,sys;print(" ".join(map(str,json.load(sys.stdin))))'); do
+            gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -D "dl/$id"
+          done
+          # every rows/<tool>.jsonl of every artifact, named uniquely
+          find dl -path '*/rows/*.jsonl' | sort | while read -r f; do
+            cp "$f" "site-src/rows/$(echo "$f" | tr '/' '_')"
+          done
+          ls site-src/rows | wc -l
+      - name: meta
+        run: |
+          source ci/pins.env
+          python3 - <<'PY'
+          import json, os, re
+          pins = {}
+          for line in open("ci/pins.env"):
+              m = re.match(r"^([A-Z_]+)=(.*)$", line.strip())
+              if m and not m.group(1).endswith("_URL"):
+                  pins[m.group(1)] = m.group(2)
+          pins["freshbench commit"] = os.environ["GITHUB_SHA"]
+          json.dump({"title": "FreshBench results", "corpus": "${{ inputs.corpus }}", "pins": pins,
+                     "notes": ["evaluate runs: ${{ inputs.evaluate_runs }}"]}, open("meta.json", "w"), indent=1)
+          PY
+      - run: target/release/freshbench report site-src --out site --meta meta.json
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

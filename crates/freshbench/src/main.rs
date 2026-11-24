@@ -121,6 +121,19 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         builds: Vec<String>,
     },
+    /// Static results site (index.html, gaps-<tool>.html, summary.json) from result rows.
+    Report {
+        root: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// JSON {title, corpus, pins: {..}, notes: [..]} shown on every page
+        #[arg(long)]
+        meta: Option<PathBuf>,
+        #[arg(long, default_value_t = 2000)]
+        resamples: usize,
+        #[arg(long, default_value_t = 5)]
+        keep: usize,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -444,6 +457,30 @@ fn run() -> Result<ExitCode> {
                 eprintln!("{build}: {} functions", recs.len());
             }
             eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
+        }
+        Cmd::Report {
+            root,
+            out,
+            meta,
+            resamples,
+            keep,
+        } => {
+            let meta: freshbench::report::Meta = match meta {
+                Some(p) => serde_json::from_str(&read(&p)?)?,
+                None => Default::default(),
+            };
+            let table = rows::load_table(&root)?;
+            std::fs::create_dir_all(&out)?;
+            let files = freshbench::report::site(&table, &meta, resamples, keep);
+            for (name, body) in &files {
+                std::fs::write(out.join(name), body)?;
+            }
+            eprintln!(
+                "{} files, {} rows, written to {}",
+                files.len(),
+                table.len(),
+                out.display()
+            );
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;

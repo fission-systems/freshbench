@@ -17,6 +17,7 @@ pub mod ged;
 pub mod headroom;
 pub mod manifest;
 pub mod prepare;
+pub mod report;
 pub mod rows;
 pub mod score;
 pub mod taxonomy;
