@@ -11,6 +11,19 @@ use crate::{
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+fn literal_truth(condition: &Expr) -> Option<bool> {
+    match &condition.kind {
+        ExprKind::Identifier(value) if value == "true" => Some(true),
+        ExprKind::Identifier(value) if value == "false" => Some(false),
+        ExprKind::Literal(value) => match value.as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            value => integer_truth(value),
+        },
+        _ => None,
+    }
+}
+
 #[derive(Default)]
 struct Fragment {
     entry: Option<NodeId>,
@@ -84,6 +97,10 @@ struct Builder<'a> {
     cpp: bool,
     graph: PropertyGraph,
     scopes: Vec<HashMap<String, (NodeId, String)>>,
+    /// Names declared in enclosing `for` initializers. c2cpg pops their scope
+    /// before the condition, but CDT still resolves them there, so they are
+    /// never function references.
+    for_initializer_names: Vec<Vec<String>>,
     functions: &'a HashSet<String>,
     methods: &'a HashMap<String, Vec<&'a Function>>,
     known_types: &'a HashSet<String>,
@@ -96,7 +113,9 @@ struct Builder<'a> {
     lambda: bool,
     method_full_name: &'a str,
     method_scope: String,
+    class_specialization: Option<usize>,
     diagnostics: Vec<Diagnostic>,
+    diagnostic_spans: bool,
     try_depth: usize,
     joern_loop_conditions: bool,
     joern_cpp_control_flow: bool,
@@ -117,6 +136,7 @@ pub fn build(
         cpp,
         graph: PropertyGraph::default(),
         scopes: vec![HashMap::new()],
+        for_initializer_names: Vec::new(),
         functions: known_functions,
         methods: bindings.methods,
         known_types: bindings.known_types,
@@ -128,6 +148,7 @@ pub fn build(
         member_cv_qualified: function.member_cv_qualified,
         lambda: function.lambda,
         method_full_name: &function.full_name,
+        class_specialization: function.class_specialization,
         method_scope: if function.extern_c {
             String::new()
         } else {
@@ -141,6 +162,7 @@ pub fn build(
                 .unwrap_or_default()
         },
         diagnostics: Vec::new(),
+        diagnostic_spans: options.diagnostic_spans,
         try_depth: 0,
         joern_loop_conditions: options.joern_loop_conditions,
         joern_cpp_control_flow: options.joern_cpp_control_flow,
@@ -353,6 +375,10 @@ impl Builder<'_> {
         let known_function = may_reference_function
             && binding.is_none()
             && !self.inherited_bindings.contains_key(name)
+            && !self
+                .for_initializer_names
+                .iter()
+                .any(|names| names.iter().any(|n| n == name))
             && self.functions.contains(name);
         let expected_signature = (known_function && self.cpp)
             .then(|| {
@@ -415,9 +441,11 @@ impl Builder<'_> {
             let Some(methods) = self.methods.get(key) else {
                 continue;
             };
+            let specialization = self.specialization_for_lookup(key);
             let candidates: Vec<_> = methods
                 .iter()
                 .copied()
+                .filter(|method| method.class_specialization == specialization)
                 .filter(|method| {
                     signature.is_none_or(|signature| {
                         method
@@ -427,6 +455,13 @@ impl Builder<'_> {
                     })
                 })
                 .collect();
+            if candidates.is_empty()
+                && methods
+                    .iter()
+                    .all(|m| m.class_specialization != specialization)
+            {
+                continue;
+            }
             let first = candidates.first()?;
             if candidates.iter().all(|method| {
                 method.full_name == first.full_name && method.return_type == first.return_type
@@ -578,6 +613,12 @@ impl Builder<'_> {
             column: span.column,
             severity: "error".into(),
             message: message.into(),
+            span: self
+                .diagnostic_spans
+                .then_some(crate::graph::DiagnosticSpan {
+                    start_byte: span.start,
+                    end_byte: span.end,
+                }),
         });
     }
     fn control(&mut self, statement: &Stmt, parent: NodeId, name: &str) -> NodeId {
@@ -1237,6 +1278,11 @@ impl Builder<'_> {
             _ => false,
         }
     }
+    fn specialization_for_lookup(&self, key: &str) -> Option<usize> {
+        key.rsplit_once('.')
+            .filter(|(owner, _)| *owner == self.method_scope)
+            .and(self.class_specialization)
+    }
     fn resolve_call(&self, callee: &Expr, arguments: &[Expr]) -> Option<&Function> {
         let mut keys = Vec::new();
         match &callee.kind {
@@ -1264,10 +1310,12 @@ impl Builder<'_> {
             let Some(methods) = self.methods.get(&key) else {
                 continue;
             };
+            let specialization = self.specialization_for_lookup(&key);
             let mut identities = HashSet::new();
             let candidates: Vec<_> = methods
                 .iter()
                 .copied()
+                .filter(|method| method.class_specialization == specialization)
                 .filter(|method| {
                     let variadic = method.parameters.last().is_some_and(|p| {
                         p.type_name == "..." || self.code(&p.span).trim() == "..."
@@ -1420,11 +1468,7 @@ impl Builder<'_> {
         if self.joern_loop_conditions {
             return false;
         }
-        match &condition.kind {
-            ExprKind::Identifier(value) => value == "true",
-            ExprKind::Literal(value) => value == "true" || integer_truth(value) == Some(true),
-            _ => false,
-        }
+        literal_truth(condition) == Some(true)
     }
     /// Joern 4.0.150 selects FOR children by `order`, rather than CONDITION
     /// edges. `slots` holds the initializer and each nonempty condition or
@@ -1496,6 +1540,18 @@ impl Builder<'_> {
         let flow = self.statement(statement, block, false);
         self.scopes.pop();
         flow
+    }
+    fn if_branch(&mut self, statement: &Stmt, parent: NodeId, discarded: bool) -> Fragment {
+        let diagnostic_count = self.diagnostics.len();
+        let flow = self.branch(statement, parent);
+        if discarded {
+            // The parsed subtree remains in the CPG. Its unresolved executable
+            // effects and labels cannot participate in this method's CFG.
+            self.diagnostics.truncate(diagnostic_count);
+            Fragment::default()
+        } else {
+            flow
+        }
     }
     fn declarations(
         &mut self,
@@ -1615,6 +1671,11 @@ impl Builder<'_> {
                 .iter()
                 .flat_map(|statement| self.statement_parts(statement, parent))
                 .collect(),
+            // A C `ns::f(x);` statement: no node, see `bare_label_problem`.
+            StmtKind::Label {
+                statement: following,
+                ..
+            } if matches!(following.kind, StmtKind::Problem) => Vec::new(),
             StmtKind::Label {
                 name,
                 statement: following,
@@ -1755,14 +1816,27 @@ impl Builder<'_> {
                 .into_iter()
                 .fold(Fragment::default(), Fragment::append),
             StmtKind::If {
+                is_constexpr,
                 condition,
                 consequence,
                 alternative,
             } => {
+                let selected = if *is_constexpr && !self.joern_cpp_control_flow {
+                    let selected = literal_truth(condition);
+                    if selected.is_none() {
+                        self.unsupported(
+                            &condition.span,
+                            "if constexpr condition requires compile-time evaluation",
+                        );
+                    }
+                    selected
+                } else {
+                    None
+                };
                 let id = self.control(statement, parent, "IF");
                 self.scopes.push(HashMap::new());
                 let condition = self.condition(condition, id, true);
-                let yes = self.branch(consequence, id);
+                let yes = self.if_branch(consequence, id, selected == Some(false));
                 let no = alternative
                     .as_ref()
                     .map(|alternative| {
@@ -1773,9 +1847,13 @@ impl Builder<'_> {
                             Some("else"),
                         );
                         self.ast(id, else_id, None);
-                        self.branch(alternative, else_id)
+                        self.if_branch(alternative, else_id, selected == Some(true))
                     })
                     .unwrap_or_default();
+                if let Some(take_yes) = selected {
+                    self.scopes.pop();
+                    return if take_yes { yes } else { no };
+                }
                 let entry = condition.entry;
                 let mut fringe = if yes.entry.is_some() {
                     yes.fringe.clone()
@@ -1798,6 +1876,16 @@ impl Builder<'_> {
                 self.scopes.pop();
                 flow
             }
+            StmtKind::ConstevalIf(Some(body)) => self.statement(body, parent, false),
+            StmtKind::ConstevalIf(None) => Fragment::default(),
+            // c2cpg 4.0.150 converts a while or switch whose condition is a
+            // declaration to no CFG at all, body included.
+            StmtKind::While { condition, .. } | StmtKind::Switch { condition, .. }
+                if self.joern_cpp_control_flow
+                    && matches!(condition.kind, ExprKind::Statement(_)) =>
+            {
+                Fragment::default()
+            }
             StmtKind::While { condition, body } => {
                 let id = self.control(statement, parent, "WHILE");
                 self.scopes.push(HashMap::new());
@@ -1809,6 +1897,7 @@ impl Builder<'_> {
                     self.scopes.pop();
                     return flow;
                 }
+                let label_body = bare_label_problem(body);
                 let mut parts = self.statement_parts(body, id).into_iter();
                 let body = parts.next().unwrap_or_default();
                 let alternative = parts.next().unwrap_or_default();
@@ -1817,6 +1906,15 @@ impl Builder<'_> {
                 fringe.extend(&body.breaks);
                 fringe.extend(&alternative.fringe);
                 let mut links = Vec::new();
+                if let Some(target) = entry
+                    && label_body
+                    && body.entry.is_none()
+                    && alternative.entry.is_none()
+                {
+                    // c2cpg's CFG for a label is not empty, so the condition
+                    // loops on itself; an empty `{}` or a problem does not.
+                    links.extend(condition.fringe.iter().map(|&source| [source, target]));
+                }
                 if let Some(target) = body.entry {
                     links.extend(condition.fringe.iter().map(|&source| [source, target]));
                 }
@@ -1889,7 +1987,8 @@ impl Builder<'_> {
                     .unwrap_or_default();
                 // c2cpg converts the initializer in its own block scope and
                 // pops it before visiting the condition, update and body.
-                self.scopes.pop();
+                let names = self.scopes.pop().unwrap_or_default().into_keys().collect();
+                self.for_initializer_names.push(names);
                 self.scopes.push(HashMap::new());
                 let mut slots = vec![initial];
                 if let Some(condition) = condition {
@@ -1908,6 +2007,7 @@ impl Builder<'_> {
                 }
                 let flow = self.for_loop(id, slots, body);
                 self.scopes.pop();
+                self.for_initializer_names.pop();
                 flow
             }
             // CDT cannot parse a C++20 init-statement, so Joern has no loop.
@@ -2032,8 +2132,24 @@ impl Builder<'_> {
                 let mut fringe = try_flow.fringe.clone();
                 let entry = try_flow.entry;
                 for catch in catches {
-                    let catch_id = self.control(catch, id, "CATCH");
-                    let catch_flow = self.statement(catch, catch_id, false);
+                    let catch_id = self.control(&catch.body, id, "CATCH");
+                    self.scopes.push(HashMap::new());
+                    if let Some(parameter) = &catch.parameter {
+                        // Catch binding is lexical. The compatibility CFG
+                        // still does not model exception dispatch.
+                        let code = format!("{} {}", parameter.type_name, parameter.name);
+                        let local =
+                            self.node("LOCAL", &parameter.span, Some(&parameter.name), Some(&code));
+                        self.graph.nodes[local as usize].type_name =
+                            Some(parameter.type_name.clone());
+                        self.ast(catch_id, local, None);
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .insert(parameter.name.clone(), (local, parameter.type_name.clone()));
+                    }
+                    let catch_flow = self.statement(&catch.body, catch_id, false);
+                    self.scopes.pop();
                     if let Some(target) = catch_flow.entry {
                         links.extend(try_flow.fringe.iter().map(|&source| [source, target]));
                     }
@@ -2202,6 +2318,18 @@ fn member_pointer_expression(expression: &Expr) -> bool {
         | ExprKind::Generated {
             expression: inner, ..
         } => member_pointer_expression(inner),
+        _ => false,
+    }
+}
+
+/// Whether a statement is, or a compound statement holds, a C label whose
+/// statement CDT could not parse, as in `ns::f(x);`.
+fn bare_label_problem(statement: &Stmt) -> bool {
+    match &statement.kind {
+        StmtKind::Label { statement, .. } => matches!(statement.kind, StmtKind::Problem),
+        StmtKind::Block(statements) | StmtKind::Sequence(statements) => {
+            statements.iter().any(bare_label_problem)
+        }
         _ => false,
     }
 }

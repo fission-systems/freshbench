@@ -10,7 +10,8 @@ mod parser;
 mod syntax;
 
 use graph::{
-    Analysis, Diagnostic, Edge, ExternalReference, FunctionGraph, Node, Options, PropertyGraph,
+    Analysis, Diagnostic, DiagnosticSpan, Edge, ExternalReference, FunctionGraph, Node, Options,
+    PropertyGraph,
 };
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -77,11 +78,13 @@ pub fn analyze_sources(sources: &[(&str, &str)], options: &Options) -> Result<An
                 column: 0,
                 severity: "warning".into(),
                 message: dataflow::LIMITATIONS.into(),
+                span: None,
             });
         });
     }
     Ok(Analysis {
         schema_version: 1,
+        diagnostic_spans: options.diagnostic_spans,
         cpp_constructor_initializers: options.cpp_constructor_initializers,
         cpp_type_names: options.cpp_type_names.clone(),
         functions: units
@@ -150,14 +153,7 @@ fn build_source(source: &str, filename: &str, options: &Options) -> Result<Built
             return Err(format!("invalid C++ context type name: {name:?}"));
         }
     }
-    let unit = parser::parse_with(
-        source,
-        cpp,
-        preprocessed,
-        options.joern_cdt_failures,
-        &options.cpp_type_names,
-        options.cpp_constructor_initializers,
-    );
+    let unit = parser::parse_with(source, cpp, preprocessed, options);
     let mut diagnostics: Vec<_> = unit
         .diagnostics
         .iter()
@@ -167,6 +163,10 @@ fn build_source(source: &str, filename: &str, options: &Options) -> Result<Built
             column: d.span.column,
             severity: "error".into(),
             message: d.message.clone(),
+            span: options.diagnostic_spans.then_some(DiagnosticSpan {
+                start_byte: d.span.start,
+                end_byte: d.span.end,
+            }),
         })
         .collect();
     let known_functions = unit
@@ -181,7 +181,10 @@ fn build_source(source: &str, filename: &str, options: &Options) -> Result<Built
         })
         .collect();
     let mut methods: HashMap<String, Vec<&syntax::Function>> = HashMap::new();
-    for function in &unit.functions {
+    // Closures bind through the lambda expression or local variable. Their
+    // full names contain the enclosing method's signature, so splitting them
+    // at ':' would add a false overload under the enclosing method's name.
+    for function in unit.functions.iter().filter(|function| !function.lambda) {
         methods
             .entry(function.full_name.split(':').next().unwrap().to_owned())
             .or_default()
@@ -230,6 +233,7 @@ fn build_source(source: &str, filename: &str, options: &Options) -> Result<Built
             signature: "void()".into(),
             extern_c: false,
             lambda_parent: None,
+            class_specialization: None,
             implicit_this: None,
             implicit_fields: Vec::new(),
             member_cv_qualified: false,

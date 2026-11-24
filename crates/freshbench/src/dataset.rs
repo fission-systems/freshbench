@@ -225,10 +225,11 @@ pub struct Cached {
 }
 
 /// Bumped whenever a metric's definition changes, so cached scores are not reused across definitions.
-pub const METRICS_REV: &str = "fbcfg1+joern1+types1";
+pub const METRICS_REV: &str = "fbcfg1+joern2+types1";
 
-/// Content-addressed scores: the key is sha256(scorer | budget | function name |
-/// source definition fingerprint | output sha256), so the same source function
+/// Content-addressed scores: the key is sha256(scorer | metrics revision |
+/// budget | function name | source definition fingerprint and DWARF signature |
+/// output sha256), so the same source function
 /// and the same output text are scored once - across optimization levels,
 /// architectures, tools and runs - and always get the same score. Persisted as
 /// append-only JSON lines; on load the first value for a key wins.
@@ -263,9 +264,16 @@ impl ScoreCache {
     }
 
     pub fn key(budget: u64, function: &str, src_fp: &str, out_sha: &str) -> String {
+        Self::key_at(METRICS_REV, budget, function, src_fp, out_sha)
+    }
+
+    /// The key under a given metrics revision: a change to a CFG builder, the
+    /// vendored rust-joern or the type classes bumps `METRICS_REV`, so no score
+    /// from an older definition is ever returned.
+    fn key_at(rev: &str, budget: u64, function: &str, src_fp: &str, out_sha: &str) -> String {
         manifest::sha256_bytes(
             format!(
-                "{}|budget={budget}|{function}|{src_fp}|{out_sha}",
+                "{}|{rev}|budget={budget}|{function}|{src_fp}|{out_sha}",
                 score::SCORER
             )
             .as_bytes(),
@@ -690,6 +698,16 @@ mod tests {
             let rec = Record { binary: "bin".into(), function: "f".into(), address: 0x10, code: Some(code.into()), error: None };
             write_records(&root.join("results/t").join(&build).join("p/records.jsonl.gz"), &[rec]).unwrap();
         }
+    }
+
+    #[test]
+    fn cache_key_changes_with_the_metrics_revision() {
+        let k = ScoreCache::key(200_000, "f", "src", "out");
+        assert_eq!(
+            k,
+            ScoreCache::key_at(METRICS_REV, 200_000, "f", "src", "out")
+        );
+        assert_ne!(k, ScoreCache::key_at("older", 200_000, "f", "src", "out"));
     }
 
     #[test]

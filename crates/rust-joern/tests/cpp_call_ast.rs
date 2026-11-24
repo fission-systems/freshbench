@@ -90,6 +90,37 @@ fn unresolved_member_shares_one_receiver_ast_and_evaluation() {
 }
 
 #[test]
+fn braced_temporary_statement_preserves_receiver_and_evaluation() {
+    let analysis = parse(
+        "struct Box { int value; void write(); }; int tick(); void after(); \
+         void f() { Box{tick()}.write(); after(); }",
+    );
+    let f = method(&analysis, "f");
+    let tick = call(f, "tick");
+    let temporary = call(f, "Box");
+    let write = call(f, "write");
+    assert_eq!(edge(f, write, "ARGUMENT", Some("0")), Some(temporary));
+    assert!(reaches(f, tick, temporary, None));
+    assert!(reaches(f, temporary, write, None));
+    assert!(reaches(f, write, call(f, "after"), None));
+}
+
+#[test]
+fn braced_temporary_statement_does_not_treat_a_shadowing_object_as_a_type() {
+    let result = analyze(
+        "struct Box { int value; void write(); }; void f(int Box) { Box{}.write(); }",
+        "calls.cpp",
+        &Options {
+            language: Some("cpp".into()),
+            strict: true,
+            preprocessed: true,
+            ..Options::default()
+        },
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn resolved_nonvirtual_base_is_not_implicitly_promoted_to_receiver() {
     let analysis = parse("struct Box { int method(int); }; int f(Box* p) { return p->method(1); }");
     let f = method(&analysis, "f");
@@ -229,4 +260,75 @@ fn unsupported_known_owner_lookup_is_not_a_proven_problem_binding() {
         assert!(edge(f, id, "RECEIVER", None).is_none());
         assert!(f.cpg.nodes[id as usize].method_full_name.is_none());
     }
+}
+
+// CDT reads a direct initializer when an argument cannot be a parameter
+// declaration; Joern lowers it to a call on the declared object.
+#[test]
+fn direct_initializer_expression_is_not_a_local_prototype() {
+    for (argument, operator) in [
+        ("c ? p : q", Some("<operator>.conditional")),
+        ("(p == q) ? p : nullptr", Some("<operator>.conditional")),
+        ("make()", Some("make")),
+        ("p->next", Some("<operator>.indirectFieldAccess")),
+        ("7", None),
+    ] {
+        let source = format!(
+            "struct M {{ M* next; }}; struct S {{ S(M*); S(int); }}; M* make();
+            void f(M* p, M* q, bool c) {{ S s({argument}); }}"
+        );
+        let analysis = parse(&source);
+        assert!(
+            analysis.functions.iter().all(|f| f.name != "s"),
+            "{argument}"
+        );
+        let f = method(&analysis, "f");
+        let id = call(f, "<operator>.assignment");
+        assert_eq!(f.cpg.nodes[id as usize].code, format!("s({argument})"));
+        if let Some(operator) = operator {
+            let argument = edge(f, id, "ARGUMENT", Some("2")).unwrap();
+            assert_eq!(
+                f.cpg.nodes[argument as usize].name.as_deref(),
+                Some(operator)
+            );
+        }
+    }
+    let analysis = parse("struct M; struct S; void f() { S s(M* p); }");
+    assert!(analysis.functions.iter().any(|f| f.fullname == "s:S(M*)"));
+}
+
+#[test]
+fn temporary_member_access_is_a_call_not_a_grouped_declaration() {
+    let local = |f: &FunctionGraph| {
+        f.cpg
+            .nodes
+            .iter()
+            .any(|n| n.kind == "LOCAL" && n.name.as_deref() == Some("x"))
+    };
+    for source in [
+        "struct T { explicit T(int); void get(int*) const; }; void f(int x, int y) { T(x).get(&y); }",
+        "struct T { explicit T(int); T* operator->(); int get(); }; void f(int x) { T(x)->get(); }",
+    ] {
+        let analysis = parse(source);
+        let f = method(&analysis, "f");
+        call(f, "get");
+        assert!(!local(f), "{source}");
+    }
+    // A grouped declarator without member access still declares its name.
+    let analysis = parse("struct T { T(); }; void f() { T (x); }");
+    assert!(local(method(&analysis, "f")));
+}
+
+#[test]
+fn member_body_sees_fields_declared_later_in_the_class() {
+    // A member body is a complete-class context, so `g(n);` is a call even
+    // when both `g` and the field `n` are declared after it.
+    let analysis = parse(
+        "struct S { void f() { if (k) { g(n); h(); } } void g(int); void h(); int n; int k; };",
+    );
+    let f = method(&analysis, "f");
+    assert!(f.cpg.nodes.iter().all(|n| n.kind != "LOCAL"));
+    let argument = edge(f, call(f, "g"), "ARGUMENT", Some("1")).unwrap();
+    let node = f.cpg.nodes.iter().find(|n| n.id == argument).unwrap();
+    assert_eq!(node.code, "this->n");
 }

@@ -8,7 +8,9 @@ fn provided_type_name_is_explicitly_acknowledged() {
         strict: true,
         ..Options::default()
     };
-    assert!(analyze(source, "input.cpp", &options).is_err());
+    // Joern 4.0.150 reads `Options{}` in an argument as a braced temporary
+    // without a declaration of `Options`.
+    assert!(analyze(source, "input.cpp", &options).is_ok());
     options.cpp_type_names = vec!["Options".into()];
     let result = analyze(source, "input.cpp", &options).unwrap();
     assert_eq!(result.cpp_type_names, vec!["Options"]);
@@ -31,6 +33,46 @@ fn value_binding_does_not_become_a_supplied_type() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn qualified_type_context_matches_tokens_across_trivia() {
+    let options = Options {
+        language: Some("cpp".into()),
+        strict: true,
+        cpp_type_names: vec!["demo::Options".into(), "::demo::Global".into()],
+        ..Options::default()
+    };
+    for name in [
+        "demo :: Options",
+        "demo/* comment */:: Options",
+        ":: demo :: Global",
+    ] {
+        let source =
+            format!("int f(int flag){{ if (flag) return consume({name}{{tick()}}); return 0; }}");
+        let analysis = analyze(&source, "input.cpp", &options).unwrap();
+        let method = analysis
+            .functions
+            .iter()
+            .find(|method| method.name == "f")
+            .unwrap();
+        let calls: Vec<_> = method
+            .cpg
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "CALL")
+            .map(|node| node.code.as_str())
+            .collect();
+        assert!(calls.contains(&"tick()"));
+        assert!(calls.contains(&format!("{name}{{tick()}}").as_str()));
+    }
+    // Since PR #55, a qualified `T{...}` in an expression is a braced
+    // temporary as Joern 4.0.150 reads it, whether or not the context
+    // supplies `T`; names outside the context are no longer rejected.
+    for name in ["other :: Options", ":: demo :: Options", "demo :: Global"] {
+        let source = format!("int f(){{ return consume({name}{{}}); }}");
+        assert!(analyze(&source, "input.cpp", &options).is_ok(), "{name}");
+    }
 }
 
 #[test]

@@ -1,8 +1,10 @@
 //! The C/C++ syntax used by the CDT-to-CPG conversion, without a parser runtime.
 //! Unsupported executable syntax is reported, rather than silently dropping its CFG.
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use crate::graph::Options;
 use crate::lexer::{
     RetainedMacroInvocation, Token, TokenKind, lex_preprocessed,
     lex_preprocessed_with_macros_for_language,
@@ -16,81 +18,139 @@ pub fn parse(source: &str, cpp: bool) -> TranslationUnit {
 
 #[cfg(test)]
 pub fn parse_preprocessed(source: &str, cpp: bool, preprocessed: bool) -> TranslationUnit {
-    parse_with(source, cpp, preprocessed, false, &[], false)
+    parse_with(source, cpp, preprocessed, &Options::default())
 }
 
-/// `cdt_failures` reproduces CDT's failure on a parameter list or expression
-/// it cannot parse; otherwise that code is still analyzed. `type_names` are
-/// caller-proved visible C++ type names for an isolated source slice.
-/// `constructor_initializers` enables the opt-in scalar initializer profile.
 pub fn parse_with(
     source: &str,
     cpp: bool,
     preprocessed: bool,
-    cdt_failures: bool,
-    type_names: &[String],
-    constructor_initializers: bool,
+    options: &Options,
 ) -> TranslationUnit {
-    let (unit, later) = parse_unit(
-        source,
-        cpp,
-        preprocessed,
-        cdt_failures,
-        type_names,
-        constructor_initializers,
-        HashSet::new(),
-    );
+    let (unit, later) = parse_unit(source, cpp, preprocessed, options, HashSet::new());
     if later.is_empty() {
         return unit;
     }
     // C binds a function before its declaration as well (`CScope`). A
     // `T *x;` that names a later one is parsed again with those bindings.
-    parse_unit(
-        source,
-        cpp,
-        preprocessed,
-        cdt_failures,
-        type_names,
-        constructor_initializers,
-        later,
-    )
-    .0
+    parse_unit(source, cpp, preprocessed, options, later).0
+}
+
+/// Index only balanced groups. A mismatched closer invalidates all open
+/// groups, but balanced groups before or after it keep their own matches.
+fn delimiter_ends(source: &str, tokens: &[Token]) -> Vec<usize> {
+    let mut ends = vec![usize::MAX; tokens.len()];
+    let mut openings = Vec::new();
+    let source = source.as_bytes();
+    for (i, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Punctuation {
+            continue;
+        }
+        let text = &source[token.span.start..token.span.end];
+        let closing = match text {
+            b"(" => {
+                openings.push((i, b')'));
+                continue;
+            }
+            b"[" | b"<:" => {
+                openings.push((i, b']'));
+                continue;
+            }
+            b"{" | b"<%" => {
+                openings.push((i, b'}'));
+                continue;
+            }
+            b")" => b')',
+            b"]" | b":>" => b']',
+            b"}" | b"%>" => b'}',
+            _ => continue,
+        };
+        if let Some((open, expected)) = openings.pop()
+            && expected == closing
+        {
+            ends[open] = i;
+        } else {
+            openings.clear();
+        }
+    }
+    ends
+}
+
+/// Decompiled C++ calls `operator new[](n)` in C output, where `operator` is
+/// no keyword and CDT fails. By default such a name followed by `(` becomes
+/// one identifier, so the call is an ordinary named call.
+fn fuse_c_operator_function_names(source: &str, tokens: Vec<Token>) -> Vec<Token> {
+    let text = |token: Option<&Token>| token.map_or("", |t| &source[t.span.start..t.span.end]);
+    let mut fused = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let mut last = i + 1;
+        if text(tokens.get(i)) == "operator"
+            && matches!(text(tokens.get(last)), "new" | "delete")
+            && !tokens[i..=last]
+                .iter()
+                .any(|t| t.macro_expansion || t.macro_recovery)
+        {
+            if text(tokens.get(last + 1)) == "[" && text(tokens.get(last + 2)) == "]" {
+                last += 2;
+            }
+            if text(tokens.get(last + 1)) == "(" {
+                let mut token = tokens[i].clone();
+                token.kind = TokenKind::Identifier;
+                token.span.end = tokens[last].span.end;
+                token.span.end_line = tokens[last].span.end_line;
+                fused.push(token);
+                i = last + 1;
+                continue;
+            }
+        }
+        fused.push(tokens[i].clone());
+        i += 1;
+    }
+    fused
 }
 
 fn parse_unit(
     source: &str,
     cpp: bool,
     preprocessed: bool,
-    cdt_failures: bool,
-    type_names: &[String],
-    constructor_initializers: bool,
+    options: &Options,
     later_functions: HashSet<String>,
 ) -> (TranslationUnit, HashSet<String>) {
-    let (tokens, diagnostics, retained_macro_invocations) =
+    let (mut tokens, diagnostics, retained_macro_invocations) =
         lex_preprocessed_with_macros_for_language(source, preprocessed, cpp);
+    if !cpp && !options.joern_cdt_failures && retained_macro_invocations.is_empty() {
+        tokens = fuse_c_operator_function_names(source, tokens);
+    }
     let limit = tokens.len();
     let mut parser = Parser {
         source,
+        delimiter_ends: delimiter_ends(source, &tokens),
         tokens,
         pos: 0,
         limit,
         cpp,
-        cdt_failures,
+        cdt_failures: options.joern_cdt_failures,
+        joern_cpp_control_flow: options.joern_cpp_control_flow,
+        consteval_alias_undo: Vec::new(),
         diagnostics,
-        types: type_names.iter().cloned().collect(),
-        explicit_types: type_names.iter().cloned().collect(),
-        supplied_type_names: type_names.iter().cloned().collect(),
+        types: options.cpp_type_names.iter().cloned().collect(),
+        explicit_types: options.cpp_type_names.iter().cloned().collect(),
+        supplied_type_names: options.cpp_type_names.iter().cloned().collect(),
         type_aliases: HashMap::new(),
         class_alias_undo: Vec::new(),
         extern_c: false,
         extern_c_names: HashSet::new(),
         class_scopes: HashSet::new(),
+        primary_class_templates: HashMap::new(),
+        template_classes: HashSet::new(),
+        distinct_dependent_types: Cell::new(false),
         class_fields: HashMap::new(),
-        scalar_constructor_classes: HashSet::new(),
-        constructor_initializers,
+        scalar_constructor_classes: HashMap::new(),
+        constructor_initializers: options.cpp_constructor_initializers,
         function_fields: Vec::new(),
         function_member_cv: false,
-        variables: Rc::new(HashSet::new()),
+        variables: VariableNames::default(),
         variable_types: Rc::new(HashMap::new()),
         variable_closures: Rc::new(HashMap::new()),
         function_returns: HashMap::new(),
@@ -104,6 +164,7 @@ fn parse_unit(
         using_namespaces: Vec::new(),
         lexical_scope: String::new(),
         asm_problem_recovery: false,
+        compound_item: false,
         in_function_body: false,
         function_declarations: Vec::new(),
         global_expressions: Vec::new(),
@@ -111,6 +172,7 @@ fn parse_unit(
         current_method: String::new(),
         lambda_counter: 0,
         defined_cpp_methods: HashSet::new(),
+        class_specialization: None,
         lambda_ast_parent: String::new(),
         retained_macro_invocations,
         retained_macro_call_ends: HashSet::new(),
@@ -239,6 +301,35 @@ fn joern_declaration_order(names: &[String], registered_count: usize) -> HashMap
 #[cfg(test)]
 mod expression_port_tests {
     use super::*;
+
+    #[test]
+    fn qualified_template_ids_preserve_following_cpp_bodies() {
+        let source = "namespace n { struct A {}; }
+            template<class T> struct W {};
+            template<class T> T make(int) { return {}; }
+            struct C {
+                const W<::n::A>* first() const {
+                    return make<const W<::n::A>*>(0);
+                }
+                int second() const { return 2; }
+            };
+            int after(int x) { if (x) return 1; return 0; }";
+        for cdt_failures in [false, true] {
+            let options = Options {
+                joern_cdt_failures: cdt_failures,
+                ..Options::default()
+            };
+            let unit = parse_with(source, true, true, &options);
+            assert!(unit.diagnostics.is_empty(), "{:?}", unit.diagnostics);
+            let names: Vec<_> = unit.functions.iter().map(|f| f.name.as_str()).collect();
+            assert_eq!(names, ["make", "first", "second", "after"]);
+            assert!(
+                unit.functions
+                    .iter()
+                    .all(|f| matches!(f.body.kind, StmtKind::Block(_)))
+            );
+        }
+    }
 
     #[test]
     fn consecutive_casts_keep_the_prefix_increment_operand() {
@@ -783,11 +874,14 @@ struct AliasUndo {
 struct Parser<'a> {
     source: &'a str,
     tokens: Vec<Token>,
+    delimiter_ends: Vec<usize>,
     pos: usize,
     limit: usize,
     cpp: bool,
     /// Whether code that CDT fails to parse is dropped as Joern drops it.
     cdt_failures: bool,
+    joern_cpp_control_flow: bool,
+    consteval_alias_undo: Vec<HashMap<String, AliasUndo>>,
     diagnostics: Vec<ParseDiagnostic>,
     types: HashSet<String>,
     explicit_types: HashSet<String>,
@@ -797,12 +891,19 @@ struct Parser<'a> {
     extern_c: bool,
     extern_c_names: HashSet<String>,
     class_scopes: HashSet<String>,
+    primary_class_templates: HashMap<String, usize>,
+    /// Class templates. Inside them CDT types the injected class name as
+    /// dependent, which Joern exports as `ANY`.
+    template_classes: HashSet<String>,
+    /// Keep dependent type spellings while comparing CDT bindings: Joern
+    /// prints `ANY` for each of them, but CDT still tells them apart.
+    distinct_dependent_types: Cell<bool>,
     class_fields: HashMap<String, Vec<(String, String)>>,
-    scalar_constructor_classes: HashSet<String>,
+    scalar_constructor_classes: HashMap<String, HashMap<String, String>>,
     constructor_initializers: bool,
     function_fields: Vec<(String, String)>,
     function_member_cv: bool,
-    variables: Rc<HashSet<String>>,
+    variables: VariableNames,
     variable_types: Rc<HashMap<String, String>>,
     variable_closures: Rc<HashMap<String, Closure>>,
     function_returns: HashMap<String, String>,
@@ -822,16 +923,61 @@ struct Parser<'a> {
     using_namespaces: Vec<String>,
     lexical_scope: String,
     asm_problem_recovery: bool,
+    /// The next statement is an item of a compound statement.
+    compound_item: bool,
     in_function_body: bool,
     function_declarations: Vec<Function>,
     global_expressions: Vec<Expr>,
     macro_expansion: bool,
     current_method: String,
     lambda_counter: usize,
-    defined_cpp_methods: HashSet<String>,
+    defined_cpp_methods: HashSet<(Option<usize>, String)>,
+    class_specialization: Option<usize>,
     lambda_ast_parent: String,
     retained_macro_invocations: Vec<RetainedMacroInvocation>,
     retained_macro_call_ends: HashSet<usize>,
+}
+
+/// The parser only adds visible names and rolls back additions on scope exit.
+/// Sharing the set is reserved for a separate macro-expansion parser.
+#[derive(Default)]
+struct VariableNames {
+    names: Rc<HashSet<Rc<str>>>,
+    insertions: Vec<Rc<str>>,
+}
+
+impl VariableNames {
+    fn contains(&self, name: &str) -> bool {
+        self.names.contains(name)
+    }
+
+    fn insert(&mut self, name: &str) {
+        if !self.contains(name) {
+            let name: Rc<str> = name.into();
+            Rc::make_mut(&mut self.names).insert(Rc::clone(&name));
+            self.insertions.push(name);
+        }
+    }
+
+    fn checkpoint(&self) -> usize {
+        self.insertions.len()
+    }
+
+    fn restore(&mut self, checkpoint: usize) {
+        if checkpoint < self.insertions.len() {
+            let names = Rc::make_mut(&mut self.names);
+            for name in self.insertions.drain(checkpoint..) {
+                names.remove(&name);
+            }
+        }
+    }
+
+    fn fork(&self) -> Self {
+        Self {
+            names: Rc::clone(&self.names),
+            insertions: Vec::new(),
+        }
+    }
 }
 
 struct Header {
@@ -939,36 +1085,10 @@ impl Parser<'_> {
     }
 
     fn matching(&self, start: usize, limit: usize) -> Option<usize> {
-        let close = match self.text(start) {
-            "(" => ")",
-            "[" | "<:" => "]",
-            "{" | "<%" => "}",
-            _ => return None,
-        };
-        let mut stack = vec![close];
-        for i in start + 1..limit {
-            match self.text(i) {
-                "(" => stack.push(")"),
-                "[" | "<:" => stack.push("]"),
-                "{" | "<%" => stack.push("}"),
-                ")" | "]" | "}" | ":>" | "%>" => {
-                    let t = match self.text(i) {
-                        ":>" => "]",
-                        "%>" => "}",
-                        other => other,
-                    };
-                    if stack.last() != Some(&t) {
-                        return None;
-                    }
-                    stack.pop();
-                    if stack.is_empty() {
-                        return Some(i);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
+        self.delimiter_ends
+            .get(start)
+            .copied()
+            .filter(|&end| end < limit)
     }
 
     fn brace_end(&self, start: usize, limit: usize) -> Option<usize> {
@@ -1126,11 +1246,23 @@ impl Parser<'_> {
             // By default such a declaration stays a problem.
             let file_scope =
                 self.cdt_failures && !self.cpp && self.record_depth == 0 && prefix.is_empty();
-            let header = if is_typedef {
+            // Specialization arguments can contain expressions that resemble
+            // declarators. Recognize the record head before looking for a method.
+            let specialization =
+                (self.cpp && self.text(start) == "template" && self.text(cursor) == "{")
+                    .then(|| self.record_definition(start, cursor))
+                    .flatten()
+                    .filter(|(_, specialized)| *specialized);
+            let header = if is_typedef || specialization.is_some() {
                 None
             } else {
                 self.function_header_in(start, cursor, file_scope)
             };
+            if let Some(body) = header.as_ref().and_then(|header| {
+                self.constructor_body_after_initializers(header, prefix, cursor, self.limit)
+            }) {
+                cursor = body;
+            }
             // CDT accepts K&R definitions. Their parameter declarations contain
             // semicolons before the function body, unlike ordinary prototypes.
             if self.text(cursor) == ";"
@@ -1205,7 +1337,14 @@ impl Parser<'_> {
                         self.pos = cursor + 1;
                         continue;
                     }
-                    if let Some(header) = header.filter(|h| h.name_start < base_end) {
+                    let template_prototype = self.cpp
+                        && self.record_depth == 0
+                        && self.text(start) == "template"
+                        && self.text(start + 1) == "<";
+                    if let Some(header) = header.filter(|h| {
+                        h.name_start < base_end
+                            || template_prototype && h.parameters_end + 1 == cursor
+                    }) {
                         // A C++ constructor has no return decl-specifier;
                         // specifier recovery may consume its class-name token.
                         self.add_function(start, cursor, header, prefix, false, functions);
@@ -1238,7 +1377,7 @@ impl Parser<'_> {
                                 if self.function_header(a, b).is_some() {
                                     // Still a function binding to CDT.
                                     let name = self.text(name).to_string();
-                                    Rc::make_mut(&mut self.variables).insert(name);
+                                    self.variables.insert(&name);
                                 } else {
                                     self.bind_object(name, prefix);
                                 }
@@ -1251,7 +1390,8 @@ impl Parser<'_> {
                 self.add_function(start, cursor, header, prefix, true, functions);
             } else {
                 let namespace = (start..cursor).find(|i| self.cpp && self.text(*i) == "namespace");
-                let class = self.record_definition(start, cursor);
+                let record = specialization.or_else(|| self.record_definition(start, cursor));
+                let class = record.map(|(introducer, _)| introducer);
                 let linkage = self.text(start) == "extern"
                     && self
                         .tokens
@@ -1272,33 +1412,74 @@ impl Parser<'_> {
                                 .get(*i)
                                 .is_some_and(|t| t.kind == TokenKind::Identifier)
                         })
-                        .map(|i| self.text(i).to_string())
+                        .map(|i| {
+                            let mut end = i + 1;
+                            if self.cpp && class.is_some() {
+                                while self.text(end) == "::"
+                                    && end + 1 < cursor
+                                    && self.tokens[end + 1].kind == TokenKind::Identifier
+                                {
+                                    end += 2;
+                                }
+                            }
+                            (i..end).map(|index| self.text(index)).collect::<String>()
+                        })
                         .unwrap_or_default();
                     if self.cpp && class.is_some() && !name.is_empty() {
+                        if self.class_specialization.is_some() {
+                            self.remember_class_alias(&name);
+                        }
                         self.types.insert(name.clone());
                         self.explicit_types.insert(name.clone());
                     }
-                    let nested = if name.is_empty() {
+                    let qualified_owner = (self.cpp && class.is_some())
+                        .then(|| {
+                            let (owner, member) = name.rsplit_once("::")?;
+                            self.resolve_class_name(owner)
+                                .map(|owner| format!("{owner}::{member}"))
+                        })
+                        .flatten();
+                    let nested = if let Some(owner) = qualified_owner {
+                        owner
+                    } else if name.is_empty() {
                         prefix.to_string()
                     } else if prefix.is_empty() {
                         name
                     } else {
                         format!("{prefix}::{name}")
                     };
+                    let outer_specialization = self.class_specialization;
+                    if specialization.is_some() {
+                        self.class_specialization = Some(start);
+                    }
+                    let mut restore_class = None;
                     if self.cpp && class.is_some() && !nested.is_empty() {
-                        self.class_scopes.insert(nested.clone());
-                        let close = self.matching(cursor, self.limit).unwrap_or(self.limit);
-                        let fields = self.collect_class_fields(cursor + 1, close);
-                        self.scalar_constructor_classes.remove(&nested);
-                        if self.constructor_initializers
-                            && self.scalar_constructor_class(start, cursor, close, &fields)
-                        {
-                            self.scalar_constructor_classes.insert(nested.clone());
+                        let new_scope = self.class_scopes.insert(nested.clone());
+                        if self.text(start) == "template" {
+                            self.template_classes.insert(nested.clone());
                         }
-                        self.class_fields.insert(nested.clone(), fields);
+                        if let Some((_, parameters)) = self.simple_type_template_head(start, cursor)
+                        {
+                            self.primary_class_templates
+                                .insert(nested.clone(), parameters.len());
+                        }
+                        let close = self.matching(cursor, self.limit).unwrap_or(self.limit);
+                        let fields = self.collect_class_fields(&nested, cursor + 1, close);
+                        let outer_scalar = self.scalar_constructor_classes.remove(&nested);
+                        if self.constructor_initializers
+                            && let Some(pointer_types) = self
+                                .scalar_constructor_class(&nested, start, cursor, close, &fields)
+                        {
+                            self.scalar_constructor_classes
+                                .insert(nested.clone(), pointer_types);
+                        }
+                        let outer_fields = self.class_fields.insert(nested.clone(), fields);
+                        if self.class_specialization.is_some() {
+                            restore_class = Some((new_scope, outer_scalar, outer_fields));
+                        }
                     }
                     let previous_linkage = self.extern_c;
-                    let outer_variables = class.map(|_| self.variables.clone());
+                    let variable_scope = class.map(|_| self.variables.checkpoint());
                     if self.cpp && class.is_some() {
                         self.class_alias_undo.push(HashMap::new());
                     }
@@ -1310,23 +1491,31 @@ impl Parser<'_> {
                     self.translation_scope(&nested, functions, true);
                     self.record_depth -= usize::from(class.is_some());
                     self.extern_c = previous_linkage;
-                    if let Some(variables) = outer_variables {
-                        self.variables = variables;
+                    self.class_specialization = outer_specialization;
+                    // A specialization uses the same projected class name as
+                    // the primary template, but owns a different member scope.
+                    if let Some((new_scope, outer_scalar, outer_fields)) = restore_class {
+                        if new_scope {
+                            self.class_scopes.remove(&nested);
+                        }
+                        if let Some(pointer_types) = outer_scalar {
+                            self.scalar_constructor_classes
+                                .insert(nested.clone(), pointer_types);
+                        } else {
+                            self.scalar_constructor_classes.remove(&nested);
+                        }
+                        if let Some(fields) = outer_fields {
+                            self.class_fields.insert(nested.clone(), fields);
+                        } else {
+                            self.class_fields.remove(&nested);
+                        }
+                    }
+                    if let Some(scope) = variable_scope {
+                        self.variables.restore(scope);
                     }
                     if self.cpp && class.is_some() {
-                        for (name, undo) in self.class_alias_undo.pop().unwrap() {
-                            if let Some(alias) = undo.alias {
-                                self.type_aliases.insert(name.clone(), alias);
-                            } else {
-                                self.type_aliases.remove(&name);
-                            }
-                            if !undo.was_type {
-                                self.types.remove(&name);
-                            }
-                            if !undo.was_explicit {
-                                self.explicit_types.remove(&name);
-                            }
-                        }
+                        let aliases = self.class_alias_undo.pop().unwrap();
+                        self.restore_aliases(aliases);
                     }
                     self.expect("}");
                     // Names after an anonymous record, including typedef aliases.
@@ -1412,7 +1601,7 @@ impl Parser<'_> {
             }
             self.object_bindings.insert(name.clone());
         }
-        Rc::make_mut(&mut self.variables).insert(name);
+        self.variables.insert(&name);
     }
 
     fn record_retained_macro_call(&mut self, callee: &Expr, _arguments: &[Expr]) {
@@ -1485,29 +1674,37 @@ impl Parser<'_> {
         None
     }
 
-    fn record_definition(&self, start: usize, end: usize) -> Option<usize> {
+    fn record_definition(&self, start: usize, end: usize) -> Option<(usize, bool)> {
         // A template parameter's `class` is not the record introducer, and
         // its default argument is not an object initializer.
-        let mut start = start;
-        while self.cpp && self.text(start) == "template" && self.text(start + 1) == "<" {
-            start = self.angle_close(start + 1, end)? + 1;
-        }
-        if (start..end).any(|i| self.text(i) == "=") {
-            return None;
-        }
+        let head = self.after_template_heads(start, end)?;
         let introducer =
-            (start..end).find(|i| matches!(self.text(*i), "struct" | "class" | "union"))?;
+            (head..end).find(|i| matches!(self.text(*i), "struct" | "class" | "union"))?;
         // In C++, the class/struct token in an enum-key does not introduce a
         // record scope. Its brace body contains enumerators, not members.
-        if self.cpp && introducer > start && self.text(introducer - 1) == "enum" {
+        if self.cpp && introducer > head && self.text(introducer - 1) == "enum" {
             return None;
         }
         let mut after = introducer + 1;
         while let Some(next) = self.skip_attribute(after, end) {
             after = next;
         }
+        let mut specialized = false;
         if after < end && self.tokens[after].kind == TokenKind::Identifier {
             after += 1;
+            // C++ qualified records, and decompiled C++ declaring
+            // `class ns::Record { ... }` in C output.
+            while (self.cpp || !self.cdt_failures)
+                && self.text(after) == "::"
+                && after + 1 < end
+                && self.tokens[after + 1].kind == TokenKind::Identifier
+            {
+                after += 2;
+            }
+            if head > start && introducer == head && self.text(after) == "<" {
+                after = self.record_specialization_close(after, end)? + 1;
+                specialized = true;
+            }
         }
         while after < end {
             if let Some(next) = self.skip_attribute(after, end) {
@@ -1518,7 +1715,94 @@ impl Parser<'_> {
                 break;
             }
         }
-        (after == end || self.text(after) == ":").then_some(introducer)
+        let check_start = if specialized { after } else { head };
+        ((after == end || self.text(after) == ":")
+            && !(check_start..end).any(|i| self.text(i) == "="))
+        .then_some((introducer, specialized))
+    }
+
+    fn record_specialization_close(&self, open: usize, end: usize) -> Option<usize> {
+        let mut depth = 1;
+        let mut cursor = open + 1;
+        while cursor < end {
+            match self.text(cursor) {
+                "<" => depth += 1,
+                ">" => depth -= 1,
+                ">>" => depth -= 2,
+                "(" | "[" | "{" => cursor = self.matching(cursor, end)?,
+                ")" | "]" | "}" | ";" => return None,
+                _ => {}
+            }
+            if depth <= 0 {
+                return (depth == 0).then_some(cursor);
+            }
+            cursor += 1;
+        }
+        None
+    }
+
+    fn after_template_heads(&self, mut start: usize, end: usize) -> Option<usize> {
+        while self.cpp && self.text(start) == "template" && self.text(start + 1) == "<" {
+            let mut cursor = start + 2;
+            let mut depth = 1;
+            while cursor < end && depth > 0 {
+                match self.text(cursor) {
+                    "(" | "[" | "<:" | "{" | "<%" => {
+                        cursor = self.matching(cursor, end)? + 1;
+                        continue;
+                    }
+                    ")" | "]" | ":>" | "}" | "%>" | ";" => return None,
+                    "<" => depth += 1,
+                    ">" => depth -= 1,
+                    ">>" => depth -= 2,
+                    _ => {}
+                }
+                cursor += 1;
+            }
+            if depth != 0 {
+                return None;
+            }
+            start = cursor;
+        }
+        Some(start)
+    }
+
+    fn explicit_specialization_head(&self, start: usize) -> bool {
+        self.cpp
+            && self.text(start) == "template"
+            && self.text(start + 1) == "<"
+            && self.text(start + 2) == ">"
+    }
+
+    fn specialized_function_name(&self, start: usize, open: usize) -> Option<usize> {
+        if !self.explicit_specialization_head(start) || self.record_depth != 0 {
+            return None;
+        }
+        let mut depth = 0;
+        for cursor in (start + 3..open).rev() {
+            match self.text(cursor) {
+                ">" => depth += 1,
+                ">>" => depth += 2,
+                "<" if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let name = cursor - 1;
+                        return (name > start + 3
+                            && self.tokens[name].kind == TokenKind::Identifier
+                            && self.text(name - 1) != "operator"
+                            // `C::F<A>` specializes a member of class `C`.
+                            && (self.text(name - 1) != "::"
+                                || self.tokens[name - 2].kind == TokenKind::Identifier)
+                            && !self.type_word(self.text(name))
+                            && !qualifier(self.text(name)))
+                        .then_some(name);
+                    }
+                }
+                "(" | ")" | "[" | "]" | "{" | "}" | ";" => return None,
+                _ => {}
+            }
+        }
+        None
     }
 
     fn function_header(&self, start: usize, end: usize) -> Option<Header> {
@@ -1527,6 +1811,13 @@ impl Parser<'_> {
 
     /// `c_file_scope` marks the start of a C declaration at file scope.
     fn function_header_in(&self, start: usize, end: usize, c_file_scope: bool) -> Option<Header> {
+        // The owner check and explicit-specialization name below read the
+        // declaration's own template head, even if the declarator scan
+        // starts after it.
+        let declaration_start = start;
+        // Defaults in a template head are outside the declarator. In
+        // particular, their '=' does not start an object initializer.
+        let start = self.after_template_heads(start, end)?;
         if matches!(self.text(start), "static_assert" | "_Static_assert")
             || (self.cpp && self.text(start) == "using")
         {
@@ -1584,28 +1875,48 @@ impl Parser<'_> {
                 i = close + 1;
                 continue;
             }
-            if self.text(i - 1) == "operator" && close == i + 1 && self.text(close + 1) == "(" {
+            // CDT's C parser has no operator-function-ids: `operator` is a name.
+            let operator_ids = self.cpp || !self.cdt_failures;
+            if operator_ids
+                && self.text(i - 1) == "operator"
+                && close == i + 1
+                && self.text(close + 1) == "("
+            {
                 i = close + 1;
                 continue;
             }
             let mut name_end = i;
             let mut name_start = i - 1;
-            if name_start > start && self.text(name_start - 1) == "operator" {
+            if matches!(self.text(name_start), ">" | ">>")
+                && let Some(name) = self.specialized_function_name(declaration_start, i)
+            {
+                name_start = name;
+                // CDT gives explicit specializations the primary short name.
+                name_end = name + 1;
+            } else if operator_ids && name_start > start && self.text(name_start - 1) == "operator"
+            {
                 name_start -= 1;
-            } else if matches!(self.text(name_start), ")" | "]")
+            } else if operator_ids
+                && matches!(self.text(name_start), ")" | "]")
                 && name_start > start
                 && matches!(self.text(name_start - 1), "(" | "[")
                 && name_start >= 2
                 && self.text(name_start - 2) == "operator"
             {
                 name_start -= 2;
-            } else if self.text(name_start) == "]"
+            } else if operator_ids
+                && self.text(name_start) == "]"
                 && name_start >= start + 3
                 && self.text(name_start - 1) == "["
                 && matches!(self.text(name_start - 2), "new" | "delete")
                 && self.text(name_start - 3) == "operator"
             {
                 name_start -= 3;
+            } else if let Some(open) = self.c_template_declarator(start, name_start, end) {
+                // Decompiled C++ names an instantiation `F<A>(...)`. As in
+                // Joern's C++ frontend, the function is named `F`.
+                name_end = open;
+                name_start = open - 1;
             } else if self.tokens[name_start].kind != TokenKind::Identifier
                 || self.type_word(self.text(name_start))
                 || qualifier(self.text(name_start))
@@ -1616,11 +1927,37 @@ impl Parser<'_> {
             if name_start > start && self.text(name_start - 1) == "~" {
                 name_start -= 1;
             }
-            while name_start >= start + 2
-                && self.text(name_start - 1) == "::"
-                && self.tokens[name_start - 2].kind == TokenKind::Identifier
-            {
-                name_start -= 2;
+            let mut owner_arguments = None;
+            while name_start >= start + 2 && self.text(name_start - 1) == "::" {
+                let component_end = name_start - 1;
+                if self.tokens[component_end - 1].kind == TokenKind::Identifier {
+                    name_start -= 2;
+                } else if owner_arguments.is_none()
+                    && let Some((open, count)) =
+                        self.primary_template_owner_arguments(declaration_start, component_end)
+                {
+                    owner_arguments = Some((open..component_end, count, name_start));
+                    name_start = open - 1;
+                } else {
+                    break;
+                }
+            }
+            let mut primary_template_name = None;
+            if let Some((arguments, count, fallback)) = owner_arguments {
+                let qualified = (name_start..name_end)
+                    .filter(|i| !arguments.contains(i))
+                    .map(|i| self.text(i))
+                    .collect::<String>();
+                if qualified
+                    .rsplit_once("::")
+                    .and_then(|(owner, _)| self.resolve_class_name(owner))
+                    .and_then(|owner| self.primary_class_templates.get(&owner))
+                    == Some(&count)
+                {
+                    primary_template_name = Some(qualified);
+                } else {
+                    name_start = fallback;
+                }
             }
             if (start..name_start).any(|n| self.text(n) == "=" || self.text(n) == ":") {
                 i = close + 1;
@@ -1654,15 +1991,14 @@ impl Parser<'_> {
                 continue;
             }
             // Handle operator names without spaces; ordinary qualified names use ::.
-            if name_start > start && self.text(name_start - 1) == "operator" {
+            if operator_ids && name_start > start && self.text(name_start - 1) == "operator" {
                 name_start -= 1;
             }
             if name_start >= name_end {
                 name_end = i;
             }
-            let name = (name_start..name_end)
-                .map(|n| self.text(n))
-                .collect::<String>();
+            let name = primary_template_name
+                .unwrap_or_else(|| (name_start..name_end).map(|i| self.text(i)).collect());
             return Some(Header {
                 name,
                 name_start,
@@ -1672,6 +2008,87 @@ impl Parser<'_> {
                 shared: None,
                 outer_parameters: None,
             });
+        }
+        None
+    }
+
+    /// The owner's injected class name may repeat the primary template's
+    /// type parameters, as in `template<class T> int Box<T>::size()`.
+    /// Keep specialization arguments distinct by leaving them out of this path.
+    fn primary_template_owner_arguments(&self, start: usize, end: usize) -> Option<(usize, usize)> {
+        if self.text(end - 1) != ">" {
+            return None;
+        }
+        let (head_close, parameters) = self.simple_type_template_head(start, end)?;
+        let open = (head_close + 2..end - 1)
+            .rev()
+            .find(|&i| self.text(i) == "<")?;
+        if self.tokens[open - 1].kind != TokenKind::Identifier {
+            return None;
+        }
+        let arguments = self.split_ranges(open + 1, end - 1, ",");
+        (parameters.len() == arguments.len()
+            && parameters
+                .iter()
+                .zip(arguments)
+                .all(|(&(a, _), (x, y))| y == x + 1 && self.text(a + 1) == self.text(x)))
+        .then_some((open, parameters.len()))
+    }
+
+    fn simple_type_template_head(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> Option<(usize, Vec<(usize, usize)>)> {
+        if !self.cpp || self.text(start) != "template" || self.text(start + 1) != "<" {
+            return None;
+        }
+        let close = self.angle_close(start + 1, end)?;
+        let parameters = self.split_ranges(start + 2, close, ",");
+        (!parameters.is_empty()
+            && parameters.iter().all(|&(a, b)| {
+                b == a + 2
+                    && matches!(self.text(a), "class" | "typename")
+                    && self.tokens[a + 1].kind == TokenKind::Identifier
+            }))
+        .then_some((close, parameters))
+    }
+
+    /// The `<` of a template-id declarator such as `EmitCopy<true>(...)` in a
+    /// file-scope C definition, which only decompiled C++ produces. CDT has no
+    /// method for it, so `joern_cdt_failures` keeps it a problem.
+    fn c_template_declarator(&self, start: usize, close: usize, end: usize) -> Option<usize> {
+        if self.cpp
+            || self.cdt_failures
+            || self.in_function_body
+            || self.record_depth != 0
+            || self.text(end) != "{"
+            || !matches!(self.text(close), ">" | ">>")
+        {
+            return None;
+        }
+        let (mut angles, mut groups) = (0usize, 0usize);
+        let mut at = close + 1;
+        while at > start {
+            at -= 1;
+            match self.text(at) {
+                ">" => angles += 1,
+                ">>" => angles += 2,
+                "<" if groups == 0 => {
+                    angles = angles.checked_sub(1)?;
+                    if angles == 0 {
+                        let name = at.checked_sub(1).filter(|&name| name >= start)?;
+                        return (self.tokens[name].kind == TokenKind::Identifier
+                            && !self.type_word(self.text(name))
+                            && !qualifier(self.text(name)))
+                        .then_some(at);
+                    }
+                }
+                ")" | "]" => groups += 1,
+                "(" | "[" => groups = groups.checked_sub(1)?,
+                ";" | "{" | "}" | "=" => return None,
+                _ => {}
+            }
         }
         None
     }
@@ -1738,7 +2155,61 @@ impl Parser<'_> {
         Some(header)
     }
 
-    fn collect_class_fields(&self, start: usize, end: usize) -> Vec<(String, String)> {
+    /// A top-level brace can belong to a member initializer rather than to
+    /// the compound statement. Only move past a complete initializer list.
+    fn constructor_body_after_initializers(
+        &self,
+        header: &Header,
+        scope: &str,
+        first_brace: usize,
+        limit: usize,
+    ) -> Option<usize> {
+        if !self.cpp || self.text(first_brace) != "{" {
+            return None;
+        }
+        let mut cursor = self.initializer_list_colon(header.parameters_end + 1, first_brace)?;
+        let is_constructor = match header.name.rsplit_once("::") {
+            Some((owner, name)) => self
+                .resolve_class_name(owner)
+                .is_some_and(|owner| owner.rsplit("::").next() == Some(name)),
+            None => {
+                self.class_scopes.contains(scope) && scope.rsplit("::").next() == Some(&header.name)
+            }
+        };
+        if !is_constructor {
+            return None;
+        }
+        loop {
+            let id = cursor + 1;
+            if id >= limit || self.tokens[id].kind != TokenKind::Identifier {
+                return None;
+            }
+            if !matches!(self.text(id + 1), "(" | "{") {
+                return None;
+            }
+            cursor = self.matching(id + 1, limit)? + 1;
+            match self.text(cursor) {
+                "{" => return (cursor < limit && cursor > first_brace).then_some(cursor),
+                "," => (),
+                _ => return None,
+            }
+        }
+    }
+
+    fn initializer_list_colon(&self, start: usize, end: usize) -> Option<usize> {
+        let mut cursor = start;
+        while cursor < end {
+            match self.text(cursor) {
+                ":" => return Some(cursor),
+                "(" | "[" => cursor = self.matching(cursor, end)? + 1,
+                "?" => return None,
+                _ => cursor += 1,
+            }
+        }
+        None
+    }
+
+    fn collect_class_fields(&self, scope: &str, start: usize, end: usize) -> Vec<(String, String)> {
         let mut fields = Vec::new();
         let mut at = start;
         while at < end {
@@ -1759,7 +2230,14 @@ impl Parser<'_> {
             if at >= end {
                 break;
             }
-            let method = self.function_header(from, at).is_some();
+            let header = self.function_header(from, at);
+            if let Some(body) = header
+                .as_ref()
+                .and_then(|header| self.constructor_body_after_initializers(header, scope, at, end))
+            {
+                at = body;
+            }
+            let method = header.is_some();
             if self.text(at) == "{" {
                 at = self.matching(at, end).map_or(end, |close| close + 1);
                 if method {
@@ -1794,15 +2272,18 @@ impl Parser<'_> {
 
     fn scalar_constructor_class(
         &self,
+        scope: &str,
         start: usize,
         open: usize,
         end: usize,
         fields: &[(String, String)],
-    ) -> bool {
+    ) -> Option<HashMap<String, String>> {
         if (start..open).any(|i| matches!(self.text(i), ":" | "union" | "template")) {
-            return false;
+            return None;
         }
         let mut collected = Vec::new();
+        let mut pointer_types = HashMap::new();
+        let mut class_type_alias = false;
         let mut at = open + 1;
         while at < end {
             if matches!(self.text(at), "public" | "private" | "protected")
@@ -1818,33 +2299,36 @@ impl Parser<'_> {
             let from = at;
             while at < end && !matches!(self.text(at), ";" | "{") {
                 if matches!(self.text(at), "(" | "[") {
-                    let Some(close) = self.matching(at, end) else {
-                        return false;
-                    };
+                    let close = self.matching(at, end)?;
                     at = close + 1;
                 } else {
                     at += 1;
                 }
             }
             if at == end || (from..at).any(|i| self.text(i) == "virtual") {
-                return false;
+                return None;
             }
             if (from..at).any(|i| self.text(i) == "(" && self.text(i + 1) == "*") {
-                return false;
+                return None;
             }
-            if self.function_header(from, at).is_some() {
+            if let Some(header) = self.function_header(from, at) {
                 if self.text(at) == "{" {
-                    let Some(close) = self.matching(at, end) else {
-                        return false;
-                    };
+                    if let Some(body) =
+                        self.constructor_body_after_initializers(&header, scope, at, end)
+                    {
+                        at = body;
+                    }
+                    let close = self.matching(at, end)?;
                     at = close;
                 }
                 at += 1;
                 continue;
             }
-            if (from..at).any(|i| matches!(self.text(i), "static" | "typedef" | "using")) {
+            let type_alias = (from..at).any(|i| matches!(self.text(i), "typedef" | "using"));
+            class_type_alias |= type_alias;
+            if type_alias || (from..at).any(|i| self.text(i) == "static") {
                 if self.text(at) != ";" {
-                    return false;
+                    return None;
                 }
                 at += 1;
                 continue;
@@ -1867,12 +2351,12 @@ impl Parser<'_> {
                     )
                 })
             {
-                return false;
+                return None;
             }
             let base = self.specifier_end(from, at);
             for (a, b) in self.split_ranges(base, at, ",") {
-                let (Some(name), _) = self.declarator_name(a, b) else {
-                    return false;
+                let (Some(name), suffix) = self.declarator_name(a, b) else {
+                    return None;
                 };
                 let ty = self.declarator_type(from, base, Some(name), b);
                 let scalar = ty.split_whitespace().all(|word| {
@@ -1893,19 +2377,91 @@ impl Parser<'_> {
                 });
                 // Only plain pointer declarators are admitted for nominal pointees.
                 if !scalar && !(a..name).any(|i| self.text(i) == "*") {
-                    return false;
+                    return None;
+                }
+                if suffix == b
+                    && let Some(spelling) = self.plain_pointer_spelling(from, base, a, name)
+                {
+                    pointer_types.insert(self.text(name).to_string(), spelling);
                 }
                 collected.push((self.text(name).to_string(), ty));
             }
             at += 1;
         }
-        collected == fields
-            && fields
-                .iter()
-                .map(|(name, _)| name)
-                .collect::<HashSet<_>>()
-                .len()
-                == fields.len()
+        let field_names: HashSet<_> = fields.iter().map(|(name, _)| name.as_str()).collect();
+        if collected != fields || field_names.len() != fields.len() {
+            return None;
+        }
+        // The field and parameter spellings must resolve in the same class
+        // scope. Leave class-local aliases and shadowed type names unproved.
+        if class_type_alias {
+            pointer_types.clear();
+        } else {
+            pointer_types.retain(|_, spelling| {
+                !spelling
+                    .split_ascii_whitespace()
+                    .any(|word| field_names.contains(word))
+            });
+        }
+        Some(pointer_types)
+    }
+
+    fn plain_pointer_spelling(
+        &self,
+        start: usize,
+        base: usize,
+        declarator: usize,
+        name: usize,
+    ) -> Option<String> {
+        // Keep pointee cv qualifiers exactly. A single plain '*' cannot
+        // involve array adjustment, pointer-to-member types or a volatile
+        // pointer read. Check the complete token ranges before comparing.
+        if self.text(declarator) != "*"
+            || name != declarator + 1
+            || (start..base)
+                .chain(declarator..=name)
+                .any(|i| self.tokens[i].macro_recovery || self.tokens[i].macro_expansion)
+        {
+            return None;
+        }
+        let words: Vec<_> = (start..base).map(|i| self.text(i)).collect();
+        let mut pointee = words
+            .iter()
+            .copied()
+            .filter(|word| !matches!(*word, "const" | "volatile"));
+        let first = pointee.next()?;
+        if pointee.next().is_some()
+            || (!self.type_word(first)
+                && (!self.explicit_types.contains(first)
+                    || self.supplied_type_names.contains(first)))
+            || matches!(first, "auto" | "__auto_type")
+        {
+            return None;
+        }
+        Some(words.join(" "))
+    }
+
+    fn plain_pointer_parameters(&self, start: usize, end: usize) -> HashMap<String, String> {
+        let mut spellings = HashMap::new();
+        let mut names = HashSet::new();
+        for (start, end) in self.split_ranges(start, end, ",") {
+            let base = self.specifier_end(start, end);
+            if let (Some(name), after) = self.declarator_name(base, end) {
+                let name_text = self.text(name);
+                if !names.insert(name_text) {
+                    return HashMap::new();
+                }
+                if after == end
+                    && let Some(spelling) = self.plain_pointer_spelling(start, base, base, name)
+                    && !spelling
+                        .split_ascii_whitespace()
+                        .any(|word| names.contains(word))
+                {
+                    spellings.insert(name_text.to_string(), spelling);
+                }
+            }
+        }
+        spellings
     }
 
     fn scalar_member_initializers(
@@ -1914,12 +2470,14 @@ impl Parser<'_> {
         end: usize,
         fields: &[(String, String)],
         functions: &[Function],
+        pointer_members: &HashMap<String, String>,
+        pointer_parameters: &HashMap<String, String>,
     ) -> Option<Vec<MemberInitialization>> {
         let mut entries = HashMap::new();
         for (a, b) in self.split_ranges(start, end, ",") {
             if a + 2 >= b
                 || self.tokens[a].kind != TokenKind::Identifier
-                || self.text(a + 1) != "("
+                || !matches!(self.text(a + 1), "(" | "{")
                 || self.matching(a + 1, b) != Some(b - 1)
                 || self.split_ranges(a + 2, b - 1, ",").len() != 1
                 || a + 2 == b - 1
@@ -1940,7 +2498,31 @@ impl Parser<'_> {
         for (member, expected_type) in fields {
             let &(a, b) = entries.get(member)?;
             let value = self.expression_range(a + 2, b - 1);
-            if !self.scalar_initialization_value(&value, expected_type, fields, functions) {
+            let supported = if self.text(a + 1) == "{" {
+                // List initialization rejects narrowing. Admit only literals
+                // whose destination and representability are established.
+                match (&value.kind, expected_type.as_str()) {
+                    (ExprKind::Literal(text), "int") => {
+                        // C++ guarantees at least a 16-bit int.
+                        (text == "0" || !text.starts_with('0'))
+                            && text.bytes().all(|byte| byte.is_ascii_digit())
+                            && text.parse::<i16>().is_ok()
+                    }
+                    (ExprKind::Literal(text), "bool") => matches!(text.as_str(), "true" | "false"),
+                    (ExprKind::Literal(text), ty) if ty.contains('*') => text == "nullptr",
+                    _ => false,
+                }
+            } else {
+                self.scalar_initialization_value(
+                    &value,
+                    expected_type,
+                    fields,
+                    functions,
+                    pointer_members.get(member).map(String::as_str),
+                    pointer_parameters,
+                )
+            };
+            if !supported {
                 return None;
             }
             plan.push(MemberInitialization {
@@ -1959,6 +2541,8 @@ impl Parser<'_> {
         expected_type: &str,
         fields: &[(String, String)],
         functions: &[Function],
+        member_pointer_spelling: Option<&str>,
+        pointer_parameters: &HashMap<String, String>,
     ) -> bool {
         let scalar_type = |ty: &str| {
             !ty.is_empty()
@@ -1987,6 +2571,12 @@ impl Parser<'_> {
             scalar_type(ty) && !expected_type.contains('*') && !ty.contains('*')
         };
         match &value.kind {
+            ExprKind::Identifier(name) if expected_type.contains('*') => member_pointer_spelling
+                .is_some_and(|spelling| {
+                    pointer_parameters
+                        .get(name)
+                        .is_some_and(|ty| ty == spelling)
+                }),
             ExprKind::Identifier(name) => self
                 .variable_types
                 .get(name)
@@ -2011,9 +2601,14 @@ impl Parser<'_> {
                     false
                 }
             }
-            ExprKind::Bracketed(inner) => {
-                self.scalar_initialization_value(inner, expected_type, fields, functions)
-            }
+            ExprKind::Bracketed(inner) => self.scalar_initialization_value(
+                inner,
+                expected_type,
+                fields,
+                functions,
+                member_pointer_spelling,
+                pointer_parameters,
+            ),
             ExprKind::Call { callee, arguments } if arguments.is_empty() => {
                 let ExprKind::Identifier(name) = &callee.kind else {
                     return false;
@@ -2041,11 +2636,10 @@ impl Parser<'_> {
         definition: bool,
         functions: &mut Vec<Function>,
     ) {
-        let initializer_guard = if self.cpp
-            && self.constructor_initializers
-            && definition
-            && (header.parameters_end + 1..body_start).any(|i| self.text(i) == ":")
-        {
+        let initializer_colon = (self.cpp && definition)
+            .then(|| self.initializer_list_colon(header.parameters_end + 1, body_start))
+            .flatten();
+        let initializer_guard = if initializer_colon.is_some() && self.constructor_initializers {
             let index = self.diagnostics.len();
             self.diagnose(header.parameters_end + 1, body_start,
                 "constructor member-initializer CFG is unsupported: complete explicit scalar-member plan required");
@@ -2053,8 +2647,11 @@ impl Parser<'_> {
         } else {
             None
         };
-        if self.cdt_problem_declaration(start, body_start)
-            || self.cdt_problem_record_header(start, body_start)
+        if self.cdt_problem_declaration(
+            start,
+            body_start,
+            header.name_start..header.parameters_start - 1,
+        ) || self.cdt_problem_record_header(start, body_start)
             || self.cdt_problem_return_prefix(start, &header)
             || self.cdt_problem_parameters(&header)
             || (self.cdt_failures
@@ -2282,7 +2879,7 @@ impl Parser<'_> {
             )
             .unwrap_or(return_type)
         };
-        let old_variables = self.variables.clone();
+        let variable_scope = self.variables.checkpoint();
         let old_variable_types = self.variable_types.clone();
         let old_variable_closures = self.variable_closures.clone();
         let old_function_full_name = self.function_full_name.clone();
@@ -2381,7 +2978,10 @@ impl Parser<'_> {
             && self.cpp
             && (header.name_start..header.parameters_start).any(|i| self.text(i) == "operator")
         {
-            if definition {
+            // CDT parses `= default` and `= delete` as function definitions.
+            let defaulted = (header.parameters_end + 1..body_start)
+                .any(|i| self.text(i) == "=" && matches!(self.text(i + 1), "default" | "delete"));
+            if definition || defaulted {
                 operator.to_string()
             } else {
                 format!("operator {operator}")
@@ -2424,21 +3024,31 @@ impl Parser<'_> {
                     .map(|(owner, _)| owner.replace("::", "."))
             })
             .flatten();
-        let binding_signature = self.cpp.then(|| {
-            let parameter_types = self
+        let binding_of = |parser: &Self| {
+            let parameter_types = parser
                 .split_ranges(header.parameters_start, header.parameters_end, ",")
                 .into_iter()
                 .filter(|(a, b)| a < b)
-                .map(|(a, b)| self.binding_parameter_type(a, b))
+                .map(|(a, b)| parser.binding_parameter_type(a, b))
                 .filter(|t| t != "void" && t != "...")
                 .collect::<Vec<_>>()
                 .join(",");
             format!(
                 "{}({parameter_types})",
-                self.binding_type(&return_binding_type)
+                parser.binding_type(&return_binding_type)
             )
-        });
-        let duplicate_binding = if definition && self.cpp && !header.name.contains("::") {
+        };
+        let binding_signature = self.cpp.then(|| binding_of(self));
+        let explicit_specialization =
+            self.explicit_specialization_head(start) && self.text(header.name_start + 1) == "<";
+        // Different explicit template arguments can have the same function
+        // signature. Keep both written bodies under CDT's exported name.
+        let check_duplicate =
+            definition && self.cpp && !header.name.contains("::") && !explicit_specialization;
+        let duplicate_binding = if check_duplicate {
+            self.distinct_dependent_types.set(true);
+            let identity_signature = binding_of(self);
+            self.distinct_dependent_types.set(false);
             let mut qualifiers = String::new();
             let mut cursor = header.parameters_end + 1;
             while cursor < body_start {
@@ -2457,9 +3067,9 @@ impl Parser<'_> {
                     cursor += 1;
                 }
             }
-            !self.defined_cpp_methods.insert(format!(
-                "{qualified_name}:{}:{qualifiers}",
-                binding_signature.as_deref().unwrap_or_default()
+            !self.defined_cpp_methods.insert((
+                self.class_specialization,
+                format!("{qualified_name}:{identity_signature}:{qualifiers}"),
             ))
         } else {
             false
@@ -2501,11 +3111,16 @@ impl Parser<'_> {
             name.clone()
         };
         for parameter in &parameters {
-            Rc::make_mut(&mut self.variables).insert(parameter.name.clone());
+            self.variables.insert(&parameter.name);
             Rc::make_mut(&mut self.variable_types)
                 .insert(parameter.name.clone(), parameter.type_name.clone());
         }
-        Rc::make_mut(&mut self.variables).insert(header.name.clone());
+        self.variables.insert(&header.name);
+        // A member body is a complete-class context: CDT resolves fields
+        // declared after it, so `g(field);` stays a call, not a declaration.
+        for (field, _) in &implicit_fields {
+            self.variables.insert(field);
+        }
         self.function_full_name.clone_from(&full_name);
         self.function_fields.clone_from(&implicit_fields);
         let mut suffix = header.parameters_end + 1;
@@ -2523,15 +3138,15 @@ impl Parser<'_> {
         }
         self.function_member_cv = member_cv_qualified;
         if let Some(owner) = &implicit_this {
-            Rc::make_mut(&mut self.variables).insert("this".into());
+            self.variables.insert("this");
             Rc::make_mut(&mut self.variable_types).insert("this".into(), owner.clone());
         }
         if self.constructor_initializers
             && definition
-            && !((header.parameters_end + 1..body_start).any(|i| self.text(i) == ":"))
+            && initializer_colon.is_none()
             && qualified_name.rsplit_once("::").is_some_and(|(owner, _)| {
                 owner.rsplit("::").next() == Some(name.as_str())
-                    && (!self.scalar_constructor_classes.contains(owner)
+                    && (!self.scalar_constructor_classes.contains_key(owner)
                         || !implicit_fields.is_empty())
             })
         {
@@ -2542,20 +3157,33 @@ impl Parser<'_> {
             );
         }
         let constructor_initializers = if definition {
-            if let Some(colon) =
-                (header.parameters_end + 1..body_start).find(|i| self.text(*i) == ":")
-            {
+            if let Some(colon) = initializer_colon {
                 let owner = qualified_name.rsplit_once("::").map(|(owner, _)| owner);
                 let plan = if self.constructor_initializers
-                    && owner.is_some_and(|owner| {
-                        self.scalar_constructor_classes.contains(owner)
-                            && owner.rsplit("::").next() == Some(name.as_str())
-                    }) {
+                    && let Some(owner) =
+                        owner.filter(|owner| owner.rsplit("::").next() == Some(name.as_str()))
+                    && let Some(pointer_members) =
+                        self.scalar_constructor_classes.get(owner).cloned()
+                {
+                    let pointer_parameters = if self.record_depth > 0
+                        && owner == prefix
+                        && !header.name.contains("::")
+                        && !pointer_members.is_empty()
+                    {
+                        self.plain_pointer_parameters(
+                            header.parameters_start,
+                            header.parameters_end,
+                        )
+                    } else {
+                        HashMap::new()
+                    };
                     self.scalar_member_initializers(
                         colon + 1,
                         body_start,
                         &implicit_fields,
                         functions,
+                        &pointer_members,
+                        &pointer_parameters,
                     )
                 } else {
                     None
@@ -2566,13 +3194,9 @@ impl Parser<'_> {
                     }
                     plan
                 } else {
-                    if initializer_guard.is_none() {
-                        self.diagnose(
-                            header.parameters_end + 1,
-                            body_start,
-                            "constructor member-initializer CFG is unsupported",
-                        );
-                    }
+                    // Joern's CFG starts at the body and has no node for a
+                    // member initializer. Only the opt-in profile, whose guard
+                    // diagnostic is still pending here, requires a plan.
                     Vec::new()
                 }
             } else {
@@ -2594,6 +3218,24 @@ impl Parser<'_> {
             })
             .flatten();
         self.asm_problem_recovery = false;
+        let consteval_scope = self.cpp
+            && original_body_end.is_some_and(|end| {
+                self.raw(body_start, end + 1).contains("consteval")
+                    && (body_start + 1..end).any(|at| self.is_consteval_if(at))
+            });
+        let consteval_scope = consteval_scope.then(|| {
+            self.consteval_alias_undo.push(HashMap::new());
+            (self.imports.clone(), self.using_namespaces.len())
+        });
+        let outer_limit = self.limit;
+        // Recovery inside a template body must stop at its closing brace.
+        // Later definitions still belong to the enclosing declaration scope.
+        if self.cpp
+            && self.text(start) == "template"
+            && let Some(close) = original_body_end
+        {
+            self.limit = close + 1;
+        }
         let body = if definition {
             self.statement()
         } else {
@@ -2602,6 +3244,7 @@ impl Parser<'_> {
                 span: self.span(body_start, body_start),
             }
         };
+        self.limit = outer_limit;
         let end = if definition { self.pos } else { body_start + 1 };
         let mut leaked = Vec::new();
         if self.asm_problem_recovery
@@ -2612,7 +3255,13 @@ impl Parser<'_> {
             leaked = self.asm_tail_declarations(end, body_end);
             self.pos = body_end + 1;
         }
-        self.variables = old_variables;
+        if let Some((imports, namespace_count)) = consteval_scope {
+            let aliases = self.consteval_alias_undo.pop().unwrap();
+            self.restore_aliases(aliases);
+            self.imports = imports;
+            self.using_namespaces.truncate(namespace_count);
+        }
+        self.variables.restore(variable_scope);
         self.variable_types = old_variable_types;
         self.variable_closures = old_variable_closures;
         self.function_full_name = old_function_full_name;
@@ -2621,19 +3270,22 @@ impl Parser<'_> {
         self.in_function_body = old_body_context;
         self.current_method = old_method;
         self.lambda_ast_parent = old_ast_parent;
-        Rc::make_mut(&mut self.variables).insert(header.name.clone());
+        self.variables.insert(&header.name);
         for name in leaked {
             self.bind_object(name, prefix);
         }
         // Leading identifiers that CDT skipped are a separate problem node.
-        let mut span = self.span(
-            if recovered_return_type {
-                return_start
-            } else {
-                start
-            },
-            end,
-        );
+        let span_start = if recovered_return_type {
+            return_start
+        } else if self.cpp && definition && self.text(start) == "template" {
+            // CDT wraps the definition in template declarations. Joern
+            // builds the method from the enclosed definition.
+            self.template_definition_start(start, header.name_start)
+                .unwrap_or(start)
+        } else {
+            start
+        };
+        let mut span = self.span(span_start, end);
         if !definition {
             // A declared method takes the position of its declarator, which
             // starts at the pointer operators or group before its name.
@@ -2663,6 +3315,7 @@ impl Parser<'_> {
             implicit_this,
             extern_c,
             lambda_parent: None,
+            class_specialization: self.class_specialization,
             implicit_fields,
             member_cv_qualified,
             lambda: false,
@@ -2677,9 +3330,39 @@ impl Parser<'_> {
         });
     }
 
+    fn template_definition_start(&self, mut start: usize, name_start: usize) -> Option<usize> {
+        while self.text(start) == "template" {
+            if self.text(start + 1) != "<" {
+                return None;
+            }
+            let mut depth = 1;
+            let mut cursor = start + 2;
+            while cursor < name_start && depth > 0 {
+                match self.text(cursor) {
+                    "(" | "[" | "<:" | "{" | "<%" => cursor = self.matching(cursor, name_start)?,
+                    ")" | "]" | ":>" | "}" | "%>" | ";" => return None,
+                    "<" => depth += 1,
+                    ">" => depth -= 1,
+                    ">>" => depth -= 2,
+                    _ => {}
+                }
+                cursor += 1;
+            }
+            if depth != 0 {
+                return None;
+            }
+            start = cursor;
+        }
+        Some(start)
+    }
+
     fn return_specifier_start(&self, start: usize, name_start: usize) -> (usize, bool) {
         let mut cursor = start;
-        if self.text(cursor) == "template"
+        if self.cpp {
+            cursor = self
+                .after_template_heads(start, name_start)
+                .unwrap_or(start);
+        } else if self.text(cursor) == "template"
             && self.text(cursor + 1) == "<"
             && let Some(close) = self.angle_close(cursor + 1, name_start)
         {
@@ -3302,7 +3985,7 @@ impl Parser<'_> {
                     // reached this far.
                     Some(name) if renamed > named && after == name + 1 => {
                         let name = self.text(name).to_string();
-                        Rc::make_mut(&mut self.variables).insert(name.clone());
+                        self.variables.insert(&name);
                         vec![Declaration {
                             type_name: joern_clean_type(
                                 &(start..after - 1)
@@ -3407,6 +4090,16 @@ impl Parser<'_> {
             {
                 // A C++ member-pointer operator owns a qualified scope.
                 cursor += 2;
+            } else if self.cpp
+                && self.text(cursor) == "::"
+                && cursor > start
+                && matches!(self.text(cursor - 1), ">" | ">>")
+                && cursor + 1 < header.name_start
+                && self.tokens[cursor + 1].kind == TokenKind::Identifier
+            {
+                // A member of a template-id names the type, as in
+                // `std::vector<T>::iterator f()`.
+                cursor += 2;
             } else {
                 return true;
             }
@@ -3447,7 +4140,12 @@ impl Parser<'_> {
                 if self.text(i) == "(" {
                     i = self.matching(i, end).map_or(end, |close| close + 1);
                 }
-            } else if matches!(self.text(i), "->" | ":" | "requires") {
+            } else if matches!(self.text(i), "->" | ":" | "requires")
+                || (self.cpp
+                    && self.text(i) == "="
+                    && matches!(self.text(i + 1), "default" | "delete" | "0"))
+            {
+                // A defaulted, deleted or pure function is still a method.
                 return None;
             } else if matches!(self.text(i), "(" | "[") {
                 i = self.matching(i, end).map_or(end, |close| close + 1);
@@ -3460,7 +4158,14 @@ impl Parser<'_> {
         None
     }
 
-    fn cdt_problem_declaration(&self, start: usize, end: usize) -> bool {
+    /// `declarator_name` spans the function's own name. Decompiled C++ spells
+    /// it `ns::F<A>`; by default only a `::` outside it stays a C problem.
+    fn cdt_problem_declaration(
+        &self,
+        start: usize,
+        end: usize,
+        declarator_name: std::ops::Range<usize>,
+    ) -> bool {
         if (start..end).any(|i| self.tokens[i].macro_recovery) {
             return true;
         }
@@ -3493,7 +4198,9 @@ impl Parser<'_> {
                         && self.tokens[specifier_start].span.line == self.tokens[i + 1].span.line
                 })
                 || self.text(i) == "@"
-                || (!self.cpp && self.text(i) == "::")
+                || (!self.cpp
+                    && self.text(i) == "::"
+                    && (self.cdt_failures || !declarator_name.contains(&i)))
                 || (!self.cpp && self.text(i) == "[" && self.text(i + 1) == "[")
                 || (matches!(self.text(i), "__attribute__" | "__attribute")
                     && self.text(i + 1) == "("
@@ -3681,7 +4388,7 @@ impl Parser<'_> {
                         })
                         .collect();
                     let name = self.text(start).to_string();
-                    Rc::make_mut(&mut self.variables).insert(name.clone());
+                    self.variables.insert(&name);
                     self.function_declarations.push(Function {
                         full_name: name.clone(),
                         name,
@@ -3691,6 +4398,7 @@ impl Parser<'_> {
                         extern_c: false,
                         implicit_this: None,
                         lambda_parent: None,
+                        class_specialization: None,
                         implicit_fields: Vec::new(),
                         member_cv_qualified: false,
                         lambda: false,
@@ -3810,12 +4518,32 @@ impl Parser<'_> {
     }
 
     fn remember_class_alias(&mut self, name: &str) {
-        if let Some(undo) = self.class_alias_undo.last_mut() {
+        if let Some(undo) = self
+            .consteval_alias_undo
+            .last_mut()
+            .or_else(|| self.class_alias_undo.last_mut())
+        {
             undo.entry(name.to_string()).or_insert_with(|| AliasUndo {
                 alias: self.type_aliases.get(name).cloned(),
                 was_type: self.types.contains(name),
                 was_explicit: self.explicit_types.contains(name),
             });
+        }
+    }
+
+    fn restore_aliases(&mut self, aliases: HashMap<String, AliasUndo>) {
+        for (name, undo) in aliases {
+            if let Some(alias) = undo.alias {
+                self.type_aliases.insert(name.clone(), alias);
+            } else {
+                self.type_aliases.remove(&name);
+            }
+            if !undo.was_type {
+                self.types.remove(&name);
+            }
+            if !undo.was_explicit {
+                self.explicit_types.remove(&name);
+            }
         }
     }
 
@@ -3828,8 +4556,12 @@ impl Parser<'_> {
                     .get(i + 1)
                     .is_some_and(|t| t.kind == TokenKind::Identifier)
             {
-                self.types.insert(self.text(i + 1).to_string());
-                self.explicit_types.insert(self.text(i + 1).to_string());
+                let name = self.text(i + 1).to_string();
+                if !self.consteval_alias_undo.is_empty() {
+                    self.remember_class_alias(&name);
+                }
+                self.types.insert(name.clone());
+                self.explicit_types.insert(name);
             }
         }
         if self.text(start) == "using" && self.text(start + 2) == "=" {
@@ -3891,7 +4623,7 @@ impl Parser<'_> {
                 });
                 continue;
             }
-            let base_end = self.specifier_end(a, b);
+            let base_end = self.parameter_specifier_end(a, b);
             self.remember_inferred_type(a, base_end);
             let (name_index, suffix) = self.declarator_name(base_end, b);
             let mut name = name_index
@@ -3963,7 +4695,7 @@ impl Parser<'_> {
         if self.text(start) == "..." {
             return "...".into();
         }
-        let base_end = self.specifier_end(start, end);
+        let base_end = self.parameter_specifier_end(start, end);
         let (name, suffix) = self.declarator_name(base_end, end);
         let mut group = base_end;
         while group < end
@@ -4029,7 +4761,7 @@ impl Parser<'_> {
     fn binding_type(&self, raw_type: &str) -> String {
         let mut raw = raw_type.trim().to_string();
         for _ in 0..16 {
-            let split = raw.find(['*', '&', '[', '(']).unwrap_or(raw.len());
+            let split = declarator_split(&raw);
             let base = raw[..split].trim();
             let Some(alias) = self.type_aliases.get(base) else {
                 break;
@@ -4040,14 +4772,46 @@ impl Parser<'_> {
             }
             raw = replaced;
         }
-        let split = raw.find(['*', '&', '[', '(']).unwrap_or(raw.len());
+        let split = declarator_split(&raw);
         let mut base = raw[..split].trim().to_string();
         for keyword in ["struct ", "class ", "union ", "enum ", "const "] {
             if let Some(rest) = base.strip_prefix(keyword) {
                 base = rest.to_string();
             }
         }
-        let class_type = self.cpp.then(|| self.resolve_class_name(&base)).flatten();
+        let dependent_any = !self.distinct_dependent_types.get();
+        let mut template_id = false;
+        if self.cpp
+            && dependent_any
+            && let Some(open) = base.find('<')
+        {
+            // CDT types a template-id with a dependent or unknown argument as
+            // a problem, which Joern exports as `ANY`. Otherwise it prints the
+            // resolved arguments without spaces.
+            let name = base[..open].trim();
+            let known_name = name.contains("::")
+                || self.resolve_class_name(name).is_some()
+                || self.explicit_types.contains(name);
+            let Some((arguments, rest)) = known_name
+                .then(|| self.template_arguments(&base[open..]))
+                .flatten()
+            else {
+                return "ANY".into();
+            };
+            let name = self.resolve_class_name(name).unwrap_or_else(|| name.into());
+            base = format!("{name}<{arguments}>{rest}");
+            template_id = true;
+        }
+        let class_type = (self.cpp && !template_id)
+            .then(|| self.resolve_class_name(&base))
+            .flatten();
+        if let Some(qualified) = &class_type
+            && dependent_any
+            && self.template_classes.contains(qualified)
+        {
+            // A class template's own name is its dependent injected type.
+            return "ANY".into();
+        }
         if let Some(qualified) = &class_type {
             base.clone_from(qualified);
         }
@@ -4062,7 +4826,8 @@ impl Parser<'_> {
             "unsigned long long" => "unsigned long long int".into(),
             _ => base,
         };
-        if !base.split_whitespace().all(|word| self.type_word(word))
+        if !template_id
+            && !base.split_whitespace().all(|word| self.type_word(word))
             && !self.explicit_types.contains(&base)
             && !self.class_scopes.contains(&base)
             && !base.contains("::")
@@ -4083,6 +4848,53 @@ impl Parser<'_> {
             result = format!("{base} {}", raw[split..].trim());
         }
         result.replace("::", ".")
+    }
+
+    /// The binding spellings of the arguments in the template argument list
+    /// that `list` starts with, and the text after it; `None` when an
+    /// argument is dependent or unknown. Literal arguments keep their spelling.
+    fn template_arguments<'s>(&self, list: &'s str) -> Option<(String, &'s str)> {
+        let mut depth = 0usize;
+        let mut argument = String::new();
+        let mut arguments = Vec::new();
+        let mut rest = "";
+        for (index, c) in list.char_indices() {
+            match c {
+                '<' | '(' | '[' => {
+                    if depth > 0 {
+                        argument.push(c);
+                    }
+                    depth += 1;
+                }
+                '>' | ')' | ']' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        arguments.push(std::mem::take(&mut argument));
+                        rest = &list[index + 1..];
+                        break;
+                    }
+                    argument.push(c);
+                }
+                ',' if depth == 1 => arguments.push(std::mem::take(&mut argument)),
+                _ if depth > 0 => argument.push(c),
+                _ => {}
+            }
+        }
+        let arguments = arguments
+            .iter()
+            .map(|argument| {
+                let argument = argument.trim();
+                let argument = argument.strip_prefix("typename ").unwrap_or(argument);
+                if argument.starts_with(|c: char| c.is_ascii_digit() || c == '-')
+                    || matches!(argument, "true" | "false")
+                {
+                    return Some(argument.replace(' ', ""));
+                }
+                let binding = self.binding_type(argument);
+                (!argument.is_empty() && binding != "ANY").then(|| binding.replace(' ', ""))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some((arguments.join(","), rest))
     }
 
     fn resolve_class_name(&self, name: &str) -> Option<String> {
@@ -4185,6 +4997,63 @@ impl Parser<'_> {
         None
     }
 
+    /// `name(args)` at `a..b` whose argument list cannot be a parameter list.
+    fn cpp_direct_initializer(&self, a: usize, b: usize) -> bool {
+        self.tokens
+            .get(a)
+            .is_some_and(|t| t.kind == TokenKind::Identifier)
+            && self.text(a + 1) == "("
+            && self
+                .matching(a + 1, b)
+                .is_some_and(|close| self.cpp_initializer_arguments(a + 2, close))
+    }
+
+    /// Whether a C++ declarator's parenthesized list holds an expression
+    /// that no parameter declaration can spell.
+    fn cpp_initializer_arguments(&self, start: usize, end: usize) -> bool {
+        self.cpp
+            && self
+                .split_ranges(start, end, ",")
+                .into_iter()
+                .any(|(a, b)| a < b && self.cpp_expression_argument(a, b))
+    }
+
+    /// A literal, an expression-only leading token, a known non-type name,
+    /// a call of a non-type, or a top-level operator.
+    fn cpp_expression_argument(&self, a: usize, b: usize) -> bool {
+        const OPERATORS: [&str; 15] = [
+            "?", "==", "!=", "<=", ">=", "||", "&&", "->", ".", "+", "-", "/", "%", "|", "^",
+        ];
+        let first = self.text(a);
+        if self.tokens[a].kind == TokenKind::Literal
+            || matches!(first, "!" | "~" | "-" | "+" | "(" | "this" | "nullptr")
+        {
+            return true;
+        }
+        if self.tokens[a].kind == TokenKind::Identifier
+            && !self.type_word(first)
+            && !qualifier(first)
+            && !self.explicit_types.contains(first)
+            && !self.types.contains(first)
+            && (self.variables.contains(first)
+                || self.object_bindings.contains(first)
+                || self.function_returns.contains_key(first)
+                // `f()` calls a function unless `f` names a type.
+                || (self.text(a + 1) == "(" && self.resolve_class_name(first).is_none()))
+        {
+            return true;
+        }
+        let mut depth = 0usize;
+        (a..b).any(|i| {
+            match self.text(i) {
+                "(" | "[" | "{" | "<" => depth += 1,
+                ")" | "]" | "}" | ">" => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            depth == 0 && OPERATORS.contains(&alternative_operator(self.text(i)))
+        })
+    }
+
     fn specifier_end(&self, start: usize, end: usize) -> usize {
         let mut i = start;
         let mut has_type = false;
@@ -4241,6 +5110,11 @@ impl Parser<'_> {
             if !has_type && (self.tokens[i].kind == TokenKind::Identifier || t == "::") {
                 has_type = true;
                 i += 1;
+                // Leading :: qualifies the first type component itself.
+                if self.cpp && t == "::" && i < end && self.tokens[i].kind == TokenKind::Identifier
+                {
+                    i += 1;
+                }
                 while i + 1 < end && self.text(i) == "::" {
                     i += 2;
                 }
@@ -4250,6 +5124,49 @@ impl Parser<'_> {
                 continue;
             }
             break;
+        }
+        i
+    }
+
+    fn declaration_specifier_end(&self, start: usize, end: usize) -> usize {
+        let base_end = self.specifier_end(start, end);
+        if !self.cpp || !self.in_function_body || base_end == start || base_end >= end {
+            return base_end;
+        }
+        // The ordinary specifier scan stops after the first template-id.
+        // Finish its qualified suffix only in declarations, where a name
+        // like Box<int>::value cannot be mistaken for a cast type.
+        let suffix_start = match (self.text(base_end - 1), self.text(base_end)) {
+            (">" | ">>", "::") => base_end,
+            ("::", _) => base_end - 1,
+            _ => return base_end,
+        };
+        let Some(name) = self.cpp_name(suffix_start, end, false, true) else {
+            return base_end;
+        };
+        let mut cursor = name.end;
+        while cursor < end && qualifier(self.text(cursor)) {
+            cursor += 1;
+        }
+        cursor
+    }
+
+    /// `specifier_end` stops after the first template-id, but a parameter
+    /// like `map<K, V>::iterator it` names a member type through it, and
+    /// `it` is the declarator.
+    fn parameter_specifier_end(&self, start: usize, end: usize) -> usize {
+        let mut i = self.specifier_end(start, end);
+        if !self.cpp || i == start || !matches!(self.text(i - 1), ">" | ">>") {
+            return i;
+        }
+        while i + 1 < end
+            && self.text(i) == "::"
+            && self.tokens[i + 1].kind == TokenKind::Identifier
+        {
+            i += 2;
+            if self.text(i) == "<" {
+                i = self.angle_close(i, end).map_or(i, |close| close + 1);
+            }
         }
         i
     }
@@ -4630,7 +5547,7 @@ impl Parser<'_> {
         if self.declaration_shape_problem(start, end) {
             return Vec::new();
         }
-        let base_end = self.specifier_end(start, end);
+        let base_end = self.declaration_specifier_end(start, end);
         let is_typedef = (start..base_end).any(|i| self.text(i) == "typedef");
         let (_, first_suffix) = self.declarator_name(base_end, end);
         // An ambiguous grouped object declaration does not establish a type
@@ -4643,7 +5560,12 @@ impl Parser<'_> {
             && let Some(&(a, b)) = ranges.first()
         {
             let (name, suffix) = self.declarator_name(a, b);
-            let header = self.function_header(a, b);
+            // `S s(c ? x : y);` cannot declare a function: CDT reads an
+            // object with a direct initializer when an argument is no
+            // parameter declaration.
+            let header = self
+                .function_header(a, b)
+                .filter(|_| !self.cpp_direct_initializer(a, b));
             let function_pointer = self.text(a) == "("
                 && self.text(suffix) == "("
                 && (a..suffix).any(|i| matches!(self.text(i), "*" | "&" | "&&"));
@@ -4668,7 +5590,7 @@ impl Parser<'_> {
                 if let Some(name) = name {
                     let type_name = self.declarator_type(start, base_end, Some(name), b);
                     let name = self.text(name).to_string();
-                    Rc::make_mut(&mut self.variables).insert(name.clone());
+                    self.variables.insert(&name);
                     Rc::make_mut(&mut self.variable_types).insert(name.clone(), type_name.clone());
                     return vec![Declaration {
                         name,
@@ -4730,7 +5652,11 @@ impl Parser<'_> {
                     "(" => {
                         let close = self.matching(i, b).unwrap_or(b.saturating_sub(1));
                         // C++ direct initialization; a pointer declarator's suffix is a type.
-                        if self.cpp && a == name_index && self.function_header(a, b).is_none() {
+                        if self.cpp
+                            && a == name_index
+                            && (self.function_header(a, b).is_none()
+                                || self.cpp_direct_initializer(a, b))
+                        {
                             initializer_start = Some(i + 1);
                         }
                         i = close + 1;
@@ -4759,7 +5685,7 @@ impl Parser<'_> {
             });
             let type_name = self.declarator_type(start, base_end, Some(name_index), b);
             if !is_typedef {
-                Rc::make_mut(&mut self.variables).insert(name.clone());
+                self.variables.insert(&name);
                 Rc::make_mut(&mut self.variable_types).insert(name.clone(), type_name.clone());
                 if let Some(closure) = initializer
                     .as_ref()
@@ -5011,7 +5937,7 @@ impl Parser<'_> {
     }
 
     fn declaration_shape_problem(&self, start: usize, end: usize) -> bool {
-        let base_end = self.specifier_end(start, end);
+        let base_end = self.declaration_specifier_end(start, end);
         for i in start..base_end {
             if matches!(self.text(i), "struct" | "union" | "class" | "enum") {
                 let mut tag = i + 1;
@@ -5221,11 +6147,24 @@ impl Parser<'_> {
         if t == "__extension__" {
             return self.looks_declaration(start + 1, end);
         }
-        if self.cpp {
-            let base_end = self.specifier_end(start, end);
-            if self.text(base_end) == "(" && self.matching(base_end, end) == Some(base_end + 1) {
-                return false;
-            }
+        let cpp_specifier_end = self.cpp.then(|| self.declaration_specifier_end(start, end));
+        if let Some(base_end) = cpp_specifier_end
+            && self.text(base_end) == "("
+            && self.matching(base_end, end) == Some(base_end + 1)
+        {
+            return false;
+        }
+        if self.cpp
+            && start < end
+            && self.tokens[start].kind == TokenKind::Identifier
+            && self.text(start + 1) == "("
+            && self
+                .matching(start + 1, end)
+                .is_some_and(|close| matches!(self.text(close + 1), "." | "->"))
+        {
+            // No declarator is followed by member access: `T(x).f()` uses a
+            // temporary or a call result.
+            return false;
         }
         if start < end
             && self.tokens[start].kind == TokenKind::Identifier
@@ -5275,10 +6214,27 @@ impl Parser<'_> {
             // than grouped object declarators, including after named locals.
             return false;
         }
+        let expression_name_end = if self.cpp {
+            self.cpp_expression_name_end(start, end, false)
+        } else {
+            None
+        };
         if self.cpp {
-            let after = self
-                .cpp_expression_name_end(start, end, false)
-                .unwrap_or(start + 1);
+            let after = expression_name_end.unwrap_or(start + 1);
+            if self.text(after) == "{"
+                && after < end
+                && self.braced_type_name(&self.raw(start, after))
+            {
+                return false;
+            }
+        }
+        if let Some(after) = expression_name_end {
+            // A shift after the expression name cannot start a declarator.
+            // Apply this before consulting inferred type spellings, which may
+            // also name a namespace qualifier or a shadowed ordinary object.
+            if after < end && matches!(self.text(after), "<<" | ">>") {
+                return false;
+            }
             if after > start + 1
                 && matches!(
                     self.text(after),
@@ -5358,14 +6314,17 @@ impl Parser<'_> {
         {
             return true;
         }
-        if start < end && self.tokens[start].kind == TokenKind::Identifier {
-            let mut i = start + 1;
-            while i + 1 < end && self.text(i) == "::" {
-                i += 2;
-            }
-            if self.cpp && self.text(i) == "<" {
-                i = self.angle_close(i, end).map_or(i, |n| n + 1);
-            }
+        if start < end
+            && (self.tokens[start].kind == TokenKind::Identifier
+                || (self.cpp && self.in_function_body && t == "::"))
+        {
+            let i = cpp_specifier_end.unwrap_or_else(|| {
+                let mut i = start + 1;
+                while i + 1 < end && self.text(i) == "::" {
+                    i += 2;
+                }
+                i
+            });
             let mut pointer = i + 1;
             while let Some(after) = self.skip_attribute(pointer, end) {
                 pointer = after;
@@ -5458,6 +6417,7 @@ impl Parser<'_> {
     }
 
     fn statement(&mut self) -> Stmt {
+        let compound_item = std::mem::replace(&mut self.compound_item, false);
         let start = self.pos;
         let empty_initializer = self.text(start + 2) == "=" && self.text(start + 3) == ";";
         if !self.cpp
@@ -5515,12 +6475,13 @@ impl Parser<'_> {
         let kind = match self.peek() {
             "{" | "<%" => {
                 self.pos += 1;
-                let old_variables = self.variables.clone();
+                let variable_scope = self.variables.checkpoint();
                 let old_variable_types = self.variable_types.clone();
                 let old_variable_closures = self.variable_closures.clone();
                 let mut statements = Vec::new();
                 while self.pos < self.limit && !matches!(self.peek(), "}" | "%>") {
                     let before = self.pos;
+                    self.compound_item = true;
                     statements.push(self.statement());
                     if self.pos == before {
                         self.diagnose(before, before + 1, "cannot recover statement");
@@ -5530,7 +6491,7 @@ impl Parser<'_> {
                 if !self.eat("}") && self.pos < self.limit {
                     self.expect("%>");
                 }
-                self.variables = old_variables;
+                self.variables.restore(variable_scope);
                 self.variable_types = old_variable_types;
                 self.variable_closures = old_variable_closures;
                 StmtKind::Block(statements)
@@ -5554,9 +6515,12 @@ impl Parser<'_> {
                 }
                 return self.statement();
             }
+            "if" if self.cpp && self.is_consteval_if(start) => {
+                return self.consteval_if_statement(start);
+            }
             "if" => {
                 self.pos += 1;
-                self.eat("constexpr");
+                let is_constexpr = self.eat("constexpr") && self.cpp;
                 if !self.at("(") {
                     // CDT recovers a missing if-condition across the next
                     // complete statement, without turning it into a condition.
@@ -5628,6 +6592,7 @@ impl Parser<'_> {
                     StmtKind::Problem
                 } else {
                     StmtKind::If {
+                        is_constexpr,
                         condition,
                         consequence,
                         alternative,
@@ -5886,12 +6851,51 @@ impl Parser<'_> {
                 let body = Box::new(self.statement());
                 let mut catches = Vec::new();
                 while self.eat("catch") {
-                    if self.at("(") {
-                        self.pos = self
-                            .matching(self.pos, self.limit)
-                            .map_or(self.pos + 1, |n| n + 1);
-                    }
-                    catches.push(self.statement());
+                    let parameter = if self.at("(") {
+                        let start = self.pos + 1;
+                        if let Some(end) = self.matching(self.pos, self.limit) {
+                            self.pos = end + 1;
+                            if matches!(self.peek(), "{" | "<%") && self.text(start) != "..." {
+                                let mut parameters = self.parameters(start, end);
+                                if parameters.len() == 1 {
+                                    parameters
+                                        .pop()
+                                        .filter(|parameter| !parameter.name.is_empty())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            self.pos = start;
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    let catch_body = if let Some(parameter) = &parameter {
+                        let variable_scope = self.variables.checkpoint();
+                        let types = self.variable_types.clone();
+                        let closures = self.variable_closures.clone();
+                        self.variables.insert(&parameter.name);
+                        Rc::make_mut(&mut self.variable_types)
+                            .insert(parameter.name.clone(), parameter.type_name.clone());
+                        if self.variable_closures.contains_key(&parameter.name) {
+                            Rc::make_mut(&mut self.variable_closures).remove(&parameter.name);
+                        }
+                        let body = self.statement();
+                        self.variables.restore(variable_scope);
+                        self.variable_types = types;
+                        self.variable_closures = closures;
+                        body
+                    } else {
+                        self.statement()
+                    };
+                    catches.push(CatchHandler {
+                        parameter,
+                        body: catch_body,
+                    });
                 }
                 StmtKind::Try { body, catches }
             }
@@ -5948,6 +6952,28 @@ impl Parser<'_> {
                 })
             }
             "" => StmtKind::Empty,
+            _ if !self.cpp
+                && compound_item
+                && self.tokens[self.pos].kind == TokenKind::Identifier
+                && self.text(self.pos + 1) == "::"
+                && !matches!(self.text(self.pos + 2), "}" | "%>" | "") =>
+            {
+                // CDT's C scanner reads `::` as two colons: `ns::f(x);` is the
+                // label `ns`, whose statement CDT cannot parse. Joern emits
+                // no node for it, but a loop around it still closes.
+                let name = self.peek().to_string();
+                let end = self.statement_end(self.pos);
+                let span = self.span(self.pos, end);
+                self.pos = end;
+                self.finish_statement(start);
+                StmtKind::Label {
+                    name,
+                    statement: Box::new(Stmt {
+                        kind: StmtKind::Problem,
+                        span,
+                    }),
+                }
+            }
             _ if self.tokens[self.pos].kind == TokenKind::Identifier
                 && self.text(self.pos + 1) == ":" =>
             {
@@ -6181,9 +7207,48 @@ impl Parser<'_> {
                     }
                     self.finish_statement(start);
                     StmtKind::Problem
+                } else if let Some((open, close)) =
+                    self.cdt_unknown_template_comparison(self.pos, end)
+                {
+                    // CDT cannot bind `N<A> x;` when neither `N` nor `A` names a
+                    // type, and reads the comparison `(N < A) > x` instead.
+                    let name = self.expression_range(self.pos, open);
+                    let argument = self.expression_range(open + 1, close);
+                    let assignment = (close + 2..end).find(|&i| self.text(i) == "=");
+                    let object = self.expression_range(close + 1, assignment.unwrap_or(end));
+                    let less = Expr {
+                        span: self.span(self.pos, close),
+                        kind: ExprKind::Binary {
+                            op: "<".into(),
+                            left: Box::new(name),
+                            right: Box::new(argument),
+                        },
+                    };
+                    let mut expression = Expr {
+                        span: self.span(self.pos, assignment.unwrap_or(end)),
+                        kind: ExprKind::Binary {
+                            op: ">".into(),
+                            left: Box::new(less),
+                            right: Box::new(object),
+                        },
+                    };
+                    if let Some(at) = assignment {
+                        let value = self.expression_range(at + 1, end);
+                        expression = Expr {
+                            span: self.span(start, end),
+                            kind: ExprKind::Binary {
+                                op: "=".into(),
+                                left: Box::new(expression),
+                                right: Box::new(value),
+                            },
+                        };
+                    }
+                    self.pos = end;
+                    self.finish_statement(start);
+                    StmtKind::Expression(expression)
                 } else if self.looks_declaration(self.pos, end)
                     || (attributes_end > self.pos && {
-                        let base_end = self.specifier_end(self.pos, end);
+                        let base_end = self.declaration_specifier_end(self.pos, end);
                         let (name, suffix) = self.declarator_name(base_end, end);
                         self.text(base_end) == "("
                             && suffix == end
@@ -6215,7 +7280,9 @@ impl Parser<'_> {
                     };
                     let mut recovered_declarator = false;
                     let mut suffixes = Vec::new();
-                    for (a, b) in self.split_ranges(self.specifier_end(start, end), end, ",") {
+                    for (a, b) in
+                        self.split_ranges(self.declaration_specifier_end(start, end), end, ",")
+                    {
                         let (_, mut after) = self.declarator_name(a, b);
                         while let Some(next) = self.skip_attribute(after, b) {
                             after = next;
@@ -6293,7 +7360,22 @@ impl Parser<'_> {
                     let expression = self.expression_range(self.pos, colon);
                     self.pos = end;
                     self.finish_statement(start);
-                    StmtKind::Expression(expression)
+                    if self.text(colon) == "::" {
+                        // The statement lacks its semicolon before the second
+                        // colon, which also fails an enclosing control statement.
+                        StmtKind::Sequence(vec![
+                            Stmt {
+                                kind: StmtKind::Problem,
+                                span: expression.span.clone(),
+                            },
+                            Stmt {
+                                span: expression.span.clone(),
+                                kind: StmtKind::Expression(expression),
+                            },
+                        ])
+                    } else {
+                        StmtKind::Expression(expression)
+                    }
                 } else if let Some(suffix) = self.stray_postfix_operator(self.pos, end) {
                     let expression = self.expression_range(self.pos, suffix);
                     self.pos = end;
@@ -6325,6 +7407,7 @@ impl Parser<'_> {
                         second,
                     ])
                 } else {
+                    let diagnostics = self.diagnostics.len();
                     let expression = self.expression(0);
                     if matches!(self.peek(), ")" | "]")
                         && (self.pos..end).all(|i| matches!(self.text(i), ")" | "]"))
@@ -6380,7 +7463,22 @@ impl Parser<'_> {
                         && self.text(self.pos + 1) == "("
                         && matches!(&expression.kind, ExprKind::Binary { op, .. } if op == "=")
                     {
-                        StmtKind::Expression(expression)
+                        if self.cdt_failures {
+                            // CDT's missing semicolon also fails an enclosing
+                            // label or control statement.
+                            StmtKind::Sequence(vec![
+                                Stmt {
+                                    kind: StmtKind::Problem,
+                                    span: expression.span.clone(),
+                                },
+                                Stmt {
+                                    span: expression.span.clone(),
+                                    kind: StmtKind::Expression(expression),
+                                },
+                            ])
+                        } else {
+                            StmtKind::Expression(expression)
+                        }
                     } else if self.pos + 2 == end
                         && self.tokens[self.pos].kind == TokenKind::Identifier
                         && self.tokens[self.pos + 1].kind == TokenKind::Identifier
@@ -6401,6 +7499,17 @@ impl Parser<'_> {
                         && self.tokens[start + 2].kind == TokenKind::Identifier
                     {
                         StmtKind::Declaration(self.declarations_range(start, self.pos))
+                    } else if !self.at(";")
+                        && !matches!(self.peek(), "}" | "")
+                        && self.cdt_failures
+                        && self.unclosed_conditional(start, self.pos)
+                    {
+                        // CDT cannot complete the conditional: the whole
+                        // statement is a problem, recovered without an error.
+                        self.diagnostics.truncate(diagnostics);
+                        self.pos = end;
+                        self.finish_statement(start);
+                        StmtKind::Problem
                     } else if !self.at(";") && !matches!(self.peek(), "}" | "") {
                         let mut expressions = vec![expression];
                         self.diagnose(start, end, "unsupported expression statement syntax");
@@ -6424,6 +7533,79 @@ impl Parser<'_> {
             kind,
             span: self.span(start, self.pos),
         }
+    }
+
+    fn is_consteval_if(&self, start: usize) -> bool {
+        self.text(start) == "if"
+            && (self.text(start + 1) == "consteval"
+                || (matches!(self.text(start + 1), "!" | "not")
+                    && self.text(start + 2) == "consteval"))
+    }
+
+    fn consteval_if_statement(&mut self, start: usize) -> Stmt {
+        let negated = self.text(start + 1) != "consteval";
+        let first = start + 2 + usize::from(negated);
+        let arms = (|| {
+            let first_end = self.compound_statement_end(first)?;
+            let (second, end) = if self.text(first_end) == "else" {
+                let second = first_end + 1;
+                let second_end = self.compound_statement_end(second)?;
+                (Some((second, second_end)), second_end)
+            } else {
+                (None, first_end)
+            };
+            Some((
+                if negated {
+                    Some((first, first_end))
+                } else {
+                    second
+                },
+                end,
+            ))
+        })();
+        let Some((runtime, end)) = arms else {
+            self.pos = self.problem_statement_end(first);
+            self.diagnose(
+                start,
+                self.pos,
+                "consteval if requires complete compound statements",
+            );
+            return self.problem_statement(start, false);
+        };
+        if self.joern_cpp_control_flow {
+            self.pos = self.problem_statement_end(first).min(end);
+            return self.problem_statement(start, false);
+        }
+        let body = runtime.map(|(arm_start, arm_end)| {
+            self.pos = arm_start;
+            let previous_limit = std::mem::replace(&mut self.limit, arm_end);
+            // Isolate type evidence created by the newly recovered compound.
+            // This also prevents local aliases from changing later methods.
+            self.consteval_alias_undo.push(HashMap::new());
+            let imports = self.imports.clone();
+            let namespace_count = self.using_namespaces.len();
+            let outer_recovery = self.asm_problem_recovery;
+            let statement = self.statement();
+            self.asm_problem_recovery = outer_recovery;
+            let aliases = self.consteval_alias_undo.pop().unwrap();
+            self.restore_aliases(aliases);
+            self.imports = imports;
+            self.using_namespaces.truncate(namespace_count);
+            self.limit = previous_limit;
+            Box::new(statement)
+        });
+        self.pos = end;
+        Stmt {
+            kind: StmtKind::ConstevalIf(body),
+            span: self.span(start, end),
+        }
+    }
+
+    fn compound_statement_end(&self, start: usize) -> Option<usize> {
+        if !matches!(self.text(start), "{" | "<%") {
+            return None;
+        }
+        Some(self.matching(start, self.limit)? + 1)
     }
 
     fn statement_end(&self, start: usize) -> usize {
@@ -6512,6 +7694,57 @@ impl Parser<'_> {
         })
     }
 
+    /// Under `joern_cdt_failures`, `N<A> x;` (or `= value`) whose template
+    /// name and single argument are both unknown names: the `<` and `>`.
+    fn cdt_unknown_template_comparison(&self, start: usize, end: usize) -> Option<(usize, usize)> {
+        if !self.cpp || !self.cdt_failures || !self.in_function_body {
+            return None;
+        }
+        let qualified_name = |from: usize| {
+            let mut at = from + usize::from(self.text(from) == "::");
+            self.tokens
+                .get(at)
+                .filter(|t| t.kind == TokenKind::Identifier)?;
+            at += 1;
+            while self.text(at) == "::" && self.tokens.get(at + 1)?.kind == TokenKind::Identifier {
+                at += 2;
+            }
+            Some(at)
+        };
+        let unknown = |from: usize, to: usize| {
+            let name = self.raw(from, to);
+            (from..to).all(|i| {
+                !self.type_word(self.text(i))
+                    && !qualifier(self.text(i))
+                    && !matches!(
+                        self.text(i),
+                        "struct"
+                            | "class"
+                            | "union"
+                            | "enum"
+                            | "typename"
+                            | "template"
+                            | "operator"
+                    )
+            }) && self.resolve_class_name(&name).is_none()
+                && !self.types.contains(&name)
+                && !self.explicit_types.contains(&name)
+                && !self.variables.contains(self.text(from))
+        };
+        let open = qualified_name(start)?;
+        if self.text(open) != "<" || !unknown(start, open) {
+            return None;
+        }
+        let close = qualified_name(open + 1)?;
+        if self.text(close) != ">" || !unknown(open + 1, close) {
+            return None;
+        }
+        let object = close + 1;
+        (self.tokens.get(object)?.kind == TokenKind::Identifier
+            && (object + 1 == end || self.text(object + 1) == "="))
+            .then_some((open, close))
+    }
+
     fn unclosed_conditional_literal(&self, start: usize, end: usize) -> bool {
         let mut pending = 0usize;
         let mut cursor = start;
@@ -6588,7 +7821,7 @@ impl Parser<'_> {
             && self
                 .function_header(start, declaration_end)
                 .is_some_and(|header| {
-                    let base_end = self.specifier_end(start, declaration_end);
+                    let base_end = self.declaration_specifier_end(start, declaration_end);
                     base_end < header.name_start
                         && (base_end..header.name_start).all(|i| {
                             matches!(self.text(i), "*" | "&" | "&&") || qualifier(self.text(i))
@@ -6597,7 +7830,7 @@ impl Parser<'_> {
         let condition_declaration = self.cpp
             && (recovered_prototype
                 || (self.looks_declaration(start, declaration_end) && {
-                    let base_end = self.specifier_end(start, declaration_end);
+                    let base_end = self.declaration_specifier_end(start, declaration_end);
                     let (_, after_name) = self.declarator_name(base_end, declaration_end);
                     matches!(self.text(after_name), "=" | "{")
                 }));
@@ -6662,7 +7895,7 @@ impl Parser<'_> {
             {
                 let saved_scope = (clauses.len() == 2).then(|| {
                     (
-                        self.variables.clone(),
+                        self.variables.checkpoint(),
                         self.variable_types.clone(),
                         self.variable_closures.clone(),
                     )
@@ -6698,8 +7931,8 @@ impl Parser<'_> {
                 self.pos = end;
                 self.expect(")");
                 let body = Box::new(self.statement());
-                if let Some((variables, types, closures)) = saved_scope {
-                    self.variables = variables;
+                if let Some((variable_scope, types, closures)) = saved_scope {
+                    self.variables.restore(variable_scope);
                     self.variable_types = types;
                     self.variable_closures = closures;
                 }
@@ -6731,7 +7964,7 @@ impl Parser<'_> {
                 || self.unpaired_expression_colon(a, b).is_some()
                 || self.star_literal_problem(a, b)
                 || if declaration {
-                    let base = self.specifier_end(a, b);
+                    let base = self.declaration_specifier_end(a, b);
                     let (_, after) = self.declarator_name(base, b);
                     self.declaration_shape_problem(a, b)
                         || self.declaration_expression_problem(a, b)
@@ -6856,6 +8089,25 @@ impl Parser<'_> {
         expression
     }
 
+    /// End of the placement list in `new (args) T`. A binary operator
+    /// after the closing parenthesis does not begin an allocated type.
+    fn cpp_new_placement_end(&self, start: usize, end: usize) -> Option<usize> {
+        if !self.cpp
+            || self.text(start) != "new"
+            || self.text(start + 1) != "("
+            || self.text(start.saturating_sub(1)) == "operator"
+        {
+            return None;
+        }
+        let close = self.matching(start + 1, end)?;
+        let next = close + 1;
+        (close > start + 2
+            && next < end
+            && (self.tokens[next].kind == TokenKind::Identifier || self.text(next) == "::")
+            && alternative_operator(self.text(next)) == self.text(next))
+        .then_some(close)
+    }
+
     fn detached_identifier_suffix(&self, start: usize, end: usize) -> Option<usize> {
         let mut cursor = start;
         while cursor < end {
@@ -6885,6 +8137,10 @@ impl Parser<'_> {
         if self.text(end.saturating_sub(1)) == ")" {
             let mut cursor = start;
             while cursor < end {
+                if let Some(close) = self.cpp_new_placement_end(cursor, end) {
+                    cursor = close + 2;
+                    continue;
+                }
                 if cursor > start
                     && self.tokens[cursor].kind == TokenKind::Identifier
                     && matches!(self.text(cursor - 1), ")" | "]")
@@ -7101,17 +8357,64 @@ impl Parser<'_> {
         }
         let old_limit = self.limit;
         self.limit = tokens.len();
+        let previous_ends = std::mem::replace(
+            &mut self.delimiter_ends,
+            delimiter_ends(self.source, &tokens),
+        );
         let previous_tokens = std::mem::replace(&mut self.tokens, tokens);
         self.pos = 0;
         let statement = self.statement();
         self.tokens = previous_tokens;
+        self.delimiter_ends = previous_ends;
         self.limit = old_limit;
         self.pos = after;
         statement
     }
 
+    /// Whether `start..end` ends with a complete operand: a name, literal,
+    /// subscript or call, but not a cast that still lacks its operand.
+    fn c_operand_ends_at(&self, start: usize, end: usize) -> bool {
+        let last = end - 1;
+        match self.text(last) {
+            "]" => true,
+            ")" => (start..last)
+                .rev()
+                .find(|&open| self.text(open) == "(" && self.matching(open, end) == Some(last))
+                .is_some_and(|open| !self.is_type_range(open + 1, last)),
+            _ => matches!(
+                self.tokens[last].kind,
+                TokenKind::Identifier | TokenKind::Literal
+            ),
+        }
+    }
+
+    /// Whether `start..end` has a `?` outside groups with no `:` after it.
+    fn unclosed_conditional(&self, start: usize, end: usize) -> bool {
+        let mut open = 0usize;
+        let mut i = start;
+        while i < end {
+            match self.text(i) {
+                "(" | "[" | "{" | "<%" | "<:" => {
+                    if let Some(close) = self.matching(i, end) {
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                "?" => open += 1,
+                ":" => open = open.saturating_sub(1),
+                _ => {}
+            }
+            i += 1;
+        }
+        open > 0
+    }
+
     fn unpaired_expression_colon(&self, start: usize, end: usize) -> Option<usize> {
-        if !(start..end).any(|i| self.text(i) == ":") {
+        // CDT's C scanner reads `::` as two colons. Its expression ends at
+        // the first one after a complete operand, unless that one follows a
+        // leading label name.
+        let c_scope = !self.cpp && self.cdt_failures;
+        if !(start..end).any(|i| self.text(i) == ":" || (c_scope && self.text(i) == "::")) {
             return None;
         }
         let mut conditionals = 0usize;
@@ -7125,6 +8428,13 @@ impl Parser<'_> {
                     }
                 }
                 "?" => conditionals += 1,
+                "::" if c_scope
+                    && conditionals == 0
+                    && i > start + 1
+                    && self.c_operand_ends_at(start, i) =>
+                {
+                    return Some(i);
+                }
                 ":" if conditionals == 0 => return Some(i),
                 ":" => conditionals -= 1,
                 _ => {}
@@ -7156,9 +8466,16 @@ impl Parser<'_> {
         let mut delimiters = (start..end)
             .any(|token| self.text(token) == ":")
             .then(|| vec![("", 0usize)]);
+        let mut template_logical_or = None;
         while i < end {
             if let Some(after) = self.lambda_end(i, end) {
-                i = after;
+                // An empty argument list can follow the lambda's body.
+                // Leave other parentheses subject to the normal scan.
+                i = if after + 1 < end && self.text(after) == "(" && self.text(after + 1) == ")" {
+                    after + 2
+                } else {
+                    after
+                };
                 continue;
             }
             // An operator-function-id (and its template arguments) is one
@@ -7177,6 +8494,18 @@ impl Parser<'_> {
                         0
                     };
                 continue;
+            }
+            if self.cpp
+                && self.text(i) == "::"
+                && self.text(i + 2) == "<"
+                && template_logical_or.is_none_or(|after| after <= i)
+                && let Some(after) = self.cpp_expression_name_end(i, end, false)
+                && matches!(self.text(after - 1), ">" | ">>")
+                && alternative_operator(self.text(after)) == "||"
+            {
+                // The template closer is part of the left operand. It is
+                // not a comparison operator missing its right operand.
+                template_logical_or = Some(after);
             }
             if matches!(self.text(i), "@" | "#" | "##")
                 || (!self.cpp
@@ -7213,10 +8542,14 @@ impl Parser<'_> {
             }
             if text == "(" && self.text(i + 1) == ")" {
                 let previous = i.checked_sub(1).map(|index| self.text(index));
+                // A C++ template-id can name a type: `T<int>()` is a temporary.
                 let callable = i > start
                     && (self.tokens[i - 1].kind == TokenKind::Identifier
                         || self.numeric_callee(i - 1)
-                        || matches!(previous, Some(")" | "]")))
+                        || matches!(previous, Some(")" | "]"))
+                        || (self.cpp
+                            && matches!(previous, Some(">" | ">>"))
+                            && self.template_id_end(start, i)))
                     && !matches!(
                         previous,
                         Some(
@@ -7241,6 +8574,7 @@ impl Parser<'_> {
             };
             let infix_only = binary_precedence(operator).is_some()
                 && !matches!(operator, "," | "+" | "-" | "*" | "&" | "&&" | "...")
+                && template_logical_or != Some(i)
                 && !(self.cpp && matches!(operator, ">" | ">>"));
             if (operator == "?" || infix_only)
                 && (i == start
@@ -7394,6 +8728,7 @@ impl Parser<'_> {
                     | "noexcept"
             )
             || self.skip_attribute(start, self.limit).is_some()
+            || self.cpp_new_placement_end(start, self.limit).is_some()
         {
             return None;
         }
@@ -7585,6 +8920,20 @@ impl Parser<'_> {
         while i < end {
             if let Some(after) = self.lambda_end(i, end) {
                 i = after;
+                if i < end && self.text(i) == "(" {
+                    let Some(close) = self.matching(i, end) else {
+                        return true;
+                    };
+                    if close > i + 1
+                        && self
+                            .split_ranges(i + 1, close, ",")
+                            .into_iter()
+                            .any(|(a, b)| self.call_argument_problem(a, b))
+                    {
+                        return true;
+                    }
+                    i = close + 1;
+                }
                 continue;
             }
             if self.cpp
@@ -7756,7 +9105,11 @@ impl Parser<'_> {
                 && (i == start
                     || (self.tokens[i - 1].kind != TokenKind::Identifier
                         && !self.numeric_callee(i - 1)
-                        && !matches!(self.text(i - 1), ")" | "]")))
+                        && !matches!(self.text(i - 1), ")" | "]")
+                        // `T<int>(...)` constructs a temporary of a template-id.
+                        && !(self.cpp
+                            && matches!(self.text(i - 1), ">" | ">>")
+                            && self.template_id_end(start, i))))
             {
                 let type_id = self.is_type_range(i + 1, close);
                 if (!type_id && self.call_argument_problem(i, close + 1))
@@ -7851,6 +9204,47 @@ impl Parser<'_> {
             .flatten()
     }
 
+    fn cpp_qualified_pointer_template_argument(
+        &self,
+        start: usize,
+        star: usize,
+        end: usize,
+    ) -> bool {
+        if !self.cpp || self.text(star) != "*" || self.text(star + 1) != "," {
+            return false;
+        }
+        // A trailing star before a comma can end a type-id in a qualified
+        // template owner. The expression parser must also recognize the
+        // complete qualified callee within the same expression range.
+        for open in (start + 1..star).rev() {
+            if self.text(open) != "<" || self.tokens[open - 1].kind != TokenKind::Identifier {
+                continue;
+            }
+            let Some(close) = self.angle_close(open, end) else {
+                continue;
+            };
+            if close <= star + 1 || self.text(close + 1) != "::" {
+                continue;
+            }
+            let owner = open - 1 - usize::from(open >= start + 2 && self.text(open - 2) == "::");
+            if !self
+                .cpp_expression_name_end(owner, end, false)
+                .is_some_and(|after| after > close + 2 && after < end && self.text(after) == "(")
+            {
+                continue;
+            }
+            return self
+                .split_ranges(open + 1, close, ",")
+                .into_iter()
+                .any(|(a, b)| {
+                    b == star + 1
+                        && !self.variables.contains(self.text(a))
+                        && self.is_type_range(a, b)
+                });
+        }
+        false
+    }
+
     fn call_argument_problem(&self, mut start: usize, mut end: usize) -> bool {
         let mut statement_expression = false;
         while self.text(start) == "(" && self.matching(start, end) == Some(end.saturating_sub(1)) {
@@ -7890,8 +9284,12 @@ impl Parser<'_> {
                 return true;
             }
         }
+        let mut placement_types = Vec::new();
         let mut i = start;
         while i < end {
+            if let Some(close) = self.cpp_new_placement_end(i, end) {
+                placement_types.push(close + 1);
+            }
             if self.text(i) == "," && matches!(self.text(i.saturating_sub(1)), "(" | "[") {
                 // A comma needs a left operand. CDT replaces its complete
                 // containing condition rather than retaining partial calls.
@@ -7924,6 +9322,7 @@ impl Parser<'_> {
                     | "||"
                     | "^"
             ) && (i + 1 == end || matches!(self.text(i + 1), "," | ")" | "]"))
+                && !self.cpp_qualified_pointer_template_argument(start, i, end)
             {
                 return true;
             }
@@ -8008,6 +9407,7 @@ impl Parser<'_> {
                 && self.tokens[i].kind == TokenKind::Identifier
                 && matches!(self.text(i - 1), ")" | "]")
                 && !self.cast_group_ends_at(start, i - 1, end)
+                && !placement_types.contains(&i)
                 && (!self.cpp || alternative_operator(self.text(i)) == self.text(i))
             {
                 // An absent operator inside an argument or grouped operand
@@ -8082,7 +9482,7 @@ impl Parser<'_> {
         if self.cpp && self.unpaired_expression_colon(start, end).is_some() {
             return true;
         }
-        let base_end = self.specifier_end(start, end);
+        let base_end = self.declaration_specifier_end(start, end);
         for (a, b) in self.split_ranges(base_end, end, ",") {
             let (_, mut i) = self.declarator_name(a, b);
             while i < b {
@@ -8225,11 +9625,119 @@ impl Parser<'_> {
             .map(|name| name.end)
     }
 
+    fn braced_type_name(&self, name: &str) -> bool {
+        self.explicit_types.contains(name)
+            && !self.variable_types.contains_key(name)
+            && (!self.supplied_type_names.contains(name) || !self.variables.contains(name))
+    }
+
+    fn expression_template_close(&self, start: usize, end: usize) -> Option<usize> {
+        // A speculative template-id cannot reach a '>' beyond the current
+        // expression. Balanced groups can contain their own operators.
+        let mut depth = 1;
+        let mut cursor = start + 1;
+        while cursor < end {
+            match self.text(cursor) {
+                "(" | "[" | "<:" | "{" | "<%" => {
+                    cursor = self.matching(cursor, end)? + 1;
+                    continue;
+                }
+                ")" | "]" | ":>" | "}" | "%>" | ";" => return None,
+                "<" => depth += 1,
+                ">" => depth -= 1,
+                ">>" if depth >= 2 => depth -= 2,
+                ">>" => return None,
+                _ => {}
+            }
+            if depth == 0 {
+                return Some(cursor);
+            }
+            cursor += 1;
+        }
+        None
+    }
+
+    fn template_subscript_follows(&self, open: usize, close: usize, end: usize) -> bool {
+        let bracket = close + 1;
+        if bracket >= end || self.text(bracket) != "[" {
+            return false;
+        }
+        let Some(index_end) = self.matching(bracket, end).filter(|&i| i > bracket + 1) else {
+            return false;
+        };
+        let next = alternative_operator(self.text(index_end + 1));
+        // A lambda capture can follow the comparison operator '>'. Only
+        // accept continuations that rule out a lambda declarator or body.
+        if !(matches!(
+            next,
+            "" | ")" | "]" | ":>" | "," | ";" | "." | "++" | "--" | "?" | ":"
+        ) || next == "[" && self.text(index_end + 2) != "["
+            || next != "<" && binary_precedence(next).is_some())
+        {
+            return false;
+        }
+        let mut cursor = open + 1;
+        while cursor < close {
+            match self.text(cursor) {
+                "(" | "[" | "<:" | "{" | "<%" => {
+                    let Some(end) = self.matching(cursor, close) else {
+                        return false;
+                    };
+                    cursor = end + 1;
+                }
+                ")" | "]" | ":>" | "}" | "%>" | ";" => return false,
+                _ => cursor += 1,
+            }
+        }
+        true
+    }
+
+    fn terminal_template_arguments(&self, open: usize, close: usize, end: usize) -> bool {
+        // A terminal '>' has no right operand. Use this evidence only within
+        // a complete expression range and keep nested groups inside it.
+        if close + 1 != end || !matches!(self.text(end), ";" | ")" | "]" | "," | "}") {
+            return false;
+        }
+        let mut cursor = open + 1;
+        let mut depth = 1;
+        while cursor <= close {
+            match self.text(cursor) {
+                "(" | "[" | "<:" | "{" | "<%" => {
+                    let Some(group_end) = self.matching(cursor, close) else {
+                        return false;
+                    };
+                    cursor = group_end + 1;
+                    continue;
+                }
+                ")" | "]" | ":>" | "}" | "%>" | ";" => return false,
+                "<" => depth += 1,
+                ">" => depth -= 1,
+                ">>" => depth -= 2,
+                _ => {}
+            }
+            if depth <= 0 {
+                return cursor == close && depth == 0;
+            }
+            cursor += 1;
+        }
+        false
+    }
+
     fn cpp_expression_name(
         &self,
         start: usize,
         end: usize,
         member: bool,
+    ) -> Option<CppExpressionName> {
+        self.cpp_name(start, end, member, false)
+    }
+
+    fn cpp_name(
+        &self,
+        start: usize,
+        end: usize,
+        member: bool,
+        type_context: bool,
     ) -> Option<CppExpressionName> {
         if !self.cpp {
             return None;
@@ -8249,6 +9757,9 @@ impl Parser<'_> {
             }
             let component = cursor;
             if self.text(cursor) == "operator" {
+                if type_context {
+                    return None;
+                }
                 cursor += 1;
                 match self.text(cursor) {
                     "[" if self.text(cursor + 1) == "]" => cursor += 2,
@@ -8266,7 +9777,7 @@ impl Parser<'_> {
                     _ => return None,
                 }
                 if self.text(cursor) == "<"
-                    && let Some(close) = self.angle_close(cursor, end)
+                    && let Some(close) = self.expression_template_close(cursor, end)
                     && self.text(close + 1) == "("
                 {
                     cursor = close + 1;
@@ -8274,12 +9785,25 @@ impl Parser<'_> {
             } else {
                 cursor += 1;
                 if self.text(cursor) == "<"
-                    && (member
+                    && (type_context
+                        || member
                         || component > start
                         || !self.variables.contains(self.text(component))
                         || self.function_returns.contains_key(self.text(component)))
-                    && let Some(close) = self.angle_close(cursor, end)
-                    && matches!(self.text(close + 1), "::" | "(")
+                    // Declaration types keep their own template scan; expression
+                    // lookahead stays bounded to the current expression.
+                    && let Some(close) = if type_context {
+                        self.angle_close(cursor, end)
+                    } else {
+                        self.expression_template_close(cursor, end)
+                    }
+                    && (type_context
+                        || matches!(self.text(close + 1), "::" | "(")
+                        || (component > start
+                            && self.text(component - 1) == "::"
+                            && (self.template_subscript_follows(cursor, close, end)
+                                || self.terminal_template_arguments(cursor, close, end)
+                                || self.logical_template_operand(start, cursor, close, end))))
                 {
                     cursor = close + 1;
                 }
@@ -8295,6 +9819,75 @@ impl Parser<'_> {
                 cursor += 1;
             }
         }
+    }
+
+    /// `braced_type_name`, extended to supplied qualified names whose
+    /// spelling contains trivia between the identifier tokens.
+    fn braced_expression_type_name(&self, name: &str, start: usize) -> bool {
+        if self.explicit_types.contains(name) {
+            return self.braced_type_name(name);
+        }
+        if self.supplied_type_names.is_empty() || !name.contains("::") {
+            return false;
+        }
+        // Compare the supplied type with its identifier tokens. Keep the
+        // original spelling on the expression for graph code and source spans.
+        let first = start + usize::from(self.text(start) == "::");
+        let components = &self.tokens[first..self.pos];
+        if components.iter().enumerate().any(|(index, token)| {
+            if index % 2 == 0 {
+                token.kind != TokenKind::Identifier
+            } else {
+                self.text(first + index) != "::"
+            }
+        }) {
+            return false;
+        }
+        let canonical = (start..self.pos)
+            .map(|index| self.text(index))
+            .collect::<String>();
+        self.supplied_type_names.contains(&canonical) && !self.variables.contains(&canonical)
+    }
+
+    fn logical_template_operand(
+        &self,
+        start: usize,
+        open: usize,
+        close: usize,
+        end: usize,
+    ) -> bool {
+        let next = alternative_operator(self.text(close + 1));
+        let left = close + 1 < end && matches!(next, "&&" | "||");
+        // A right operand can end at a delimiter inside the parser's
+        // current range, for example at the semicolon of a return.
+        let right = start > 0
+            && matches!(alternative_operator(self.text(start - 1)), "&&" | "||")
+            && matches!(next, ";" | ")" | "]" | ":>" | "," | "}");
+        if !left && !right {
+            return false;
+        }
+        let mut cursor = open + 1;
+        let mut depth = 1;
+        while cursor <= close {
+            match self.text(cursor) {
+                "(" | "[" | "<:" | "{" | "<%" => {
+                    let Some(group_end) = self.matching(cursor, close) else {
+                        return false;
+                    };
+                    cursor = group_end;
+                }
+                ")" | "]" | ":>" | "}" | "%>" | ";" => return false,
+                "<" => depth += 1,
+                ">" => depth -= 1,
+                ">>" => depth -= 2,
+                _ => {}
+            }
+            if depth <= 0 {
+                return cursor == close && depth == 0;
+            }
+            cursor += 1;
+        }
+        false
     }
 
     fn expression(&mut self, minimum: u8) -> Expr {
@@ -8318,8 +9911,12 @@ impl Parser<'_> {
             if self.cpp
                 && minimum <= 15
                 && op == "{"
-                && matches!(&left.kind, ExprKind::Identifier(name) if self.explicit_types.contains(name)
-                        && (!self.supplied_type_names.contains(name) || !self.variables.contains(name)))
+                && matches!(&left.kind, ExprKind::Identifier(name) if self.braced_expression_type_name(name, start)
+                        // Header-stripped sources lack many type declarations.
+                        // Inside an expression, or when qualified, `T{...}`
+                        // can only be a braced temporary.
+                        || (!self.variables.contains(name) && (minimum >= 1 || name.contains("::"))))
+                && self.matching(self.pos, self.limit).is_some()
             {
                 let initializer = self.prefix();
                 left = Expr {
@@ -8474,6 +10071,16 @@ impl Parser<'_> {
                 };
                 continue;
             }
+            // A C++ pack expansion `f(seq)...` ends its element; it has no
+            // right operand, unlike the GNU range `a ... b`.
+            if self.cpp
+                && op == "..."
+                && matches!(self.text(self.pos + 1), "}" | "," | ")" | ">" | ">>" | ";")
+            {
+                self.pos += 1;
+                left.span = self.span(start, self.pos);
+                continue;
+            }
             let Some((precedence, right_associative)) = binary_precedence(&op) else {
                 break;
             };
@@ -8558,23 +10165,30 @@ impl Parser<'_> {
         let limit = tokens.len();
         let mut parser = Parser {
             source: replacement,
+            delimiter_ends: delimiter_ends(replacement, &tokens),
             tokens,
             pos: 0,
             limit,
             cpp: self.cpp,
             cdt_failures: self.cdt_failures,
+            joern_cpp_control_flow: self.joern_cpp_control_flow,
+            consteval_alias_undo: Vec::new(),
             diagnostics,
             types: self.types.clone(),
             explicit_types: self.explicit_types.clone(),
             supplied_type_names: self.supplied_type_names.clone(),
             type_aliases: self.type_aliases.clone(),
             class_alias_undo: Vec::new(),
-            variables: self.variables.clone(),
+            variables: self.variables.fork(),
             imports: self.imports.clone(),
             extern_c: self.extern_c,
             extern_c_names: self.extern_c_names.clone(),
             class_scopes: self.class_scopes.clone(),
+            primary_class_templates: self.primary_class_templates.clone(),
+            template_classes: self.template_classes.clone(),
+            distinct_dependent_types: Cell::new(false),
             asm_problem_recovery: false,
+            compound_item: false,
             in_function_body: self.in_function_body,
             function_declarations: Vec::new(),
             variable_types: self.variable_types.clone(),
@@ -8600,6 +10214,7 @@ impl Parser<'_> {
             current_method: self.current_method.clone(),
             lambda_counter: self.lambda_counter,
             defined_cpp_methods: self.defined_cpp_methods.clone(),
+            class_specialization: self.class_specialization,
             lambda_ast_parent: self.lambda_ast_parent.clone(),
             retained_macro_invocations: Vec::new(),
             retained_macro_call_ends: HashSet::new(),
@@ -8725,15 +10340,15 @@ impl Parser<'_> {
                 span: self.span(start, self.pos),
             };
         }
-        let old_variables = self.variables.clone();
+        let variable_scope = self.variables.checkpoint();
         for parameter in &parameters {
-            Rc::make_mut(&mut self.variables).insert(parameter.name.clone());
+            self.variables.insert(&parameter.name);
         }
         let parent = self.current_method.clone();
         let old_method = std::mem::replace(&mut self.current_method, full_name.clone());
         let body = self.statement();
         self.current_method = old_method;
-        self.variables = old_variables;
+        self.variables.restore(variable_scope);
         let return_type = declared_return.unwrap_or_else(|| "ANY".into());
         let signature = format!(
             "{}({})",
@@ -8778,6 +10393,7 @@ impl Parser<'_> {
             signature,
             extern_c: false,
             lambda_parent: Some(parent),
+            class_specialization: self.class_specialization,
             implicit_this: None,
             implicit_fields: self.function_fields.clone(),
             member_cv_qualified: self.function_member_cv,
@@ -9066,11 +10682,30 @@ impl Parser<'_> {
             }
             "new" if self.cpp => {
                 self.pos += 1;
+                let mut placement = Vec::new();
+                if let Some(close) = self.cpp_new_placement_end(start, self.limit) {
+                    self.pos += 1;
+                    while self.pos < close {
+                        placement.push(self.expression(1));
+                        if !self.eat(",") {
+                            break;
+                        }
+                        if self.pos == close {
+                            self.diagnose(close, close, "missing placement new argument");
+                            break;
+                        }
+                    }
+                    self.expect(")");
+                }
                 let type_start = self.pos;
-                self.pos = self.specifier_end(self.pos, self.limit);
+                let specifier_start =
+                    type_start + usize::from(!placement.is_empty() && self.at("::"));
+                self.pos = self.specifier_end(specifier_start, self.limit);
                 let type_end = self.pos;
                 while self.eat("*") {}
-                let type_name = self.clean_type(type_start, type_end).replace("::", ".");
+                let type_name = self
+                    .clean_type(specifier_start, type_end)
+                    .replace("::", ".");
                 let mut arguments = vec![Expr {
                     kind: ExprKind::TypeSpecifier {
                         code: self.raw(type_start, type_end),
@@ -9082,6 +10717,7 @@ impl Parser<'_> {
                     arguments.push(self.expression(0));
                     self.expect("]");
                 }
+                arguments.append(&mut placement);
                 if self.eat("(") {
                     while self.pos < self.limit && !self.at(")") {
                         arguments.push(self.expression(1));
@@ -9425,7 +11061,16 @@ impl Parser<'_> {
                     "struct" | "class" | "union" | "enum" | "typeof" | "__typeof__" | "decltype"
                 )
             {
-                self.types.insert(self.text(i).to_string());
+                // In `ns::T x`, `ns` names a scope, not a type: as a type it
+                // would turn a later `ns::object << value;` into a declaration.
+                if self.cpp && self.text(i + 1) == "::" {
+                    break;
+                }
+                let name = self.text(i).to_string();
+                if !self.consteval_alias_undo.is_empty() {
+                    self.remember_class_alias(&name);
+                }
+                self.types.insert(name);
                 break;
             }
             i += 1;
@@ -9655,6 +11300,7 @@ fn infer_return_types(
         }
         StmtKind::While { body, .. }
         | StmtKind::DoWhile { body, .. }
+        | StmtKind::ConstevalIf(Some(body))
         | StmtKind::Switch { body, .. }
         | StmtKind::For { body, .. }
         | StmtKind::RangeFor { body, .. }
@@ -9676,13 +11322,13 @@ fn infer_return_types(
                 returns,
             );
             for catch in catches {
-                infer_return_types(
-                    catch,
-                    &mut types.clone(),
-                    &mut closures.clone(),
-                    functions,
-                    returns,
-                );
+                let mut types = types.clone();
+                let mut closures = closures.clone();
+                if let Some(parameter) = &catch.parameter {
+                    types.insert(parameter.name.clone(), parameter.type_name.clone());
+                    closures.remove(&parameter.name);
+                }
+                infer_return_types(&catch.body, &mut types, &mut closures, functions, returns);
             }
         }
         _ => (),
@@ -9977,6 +11623,7 @@ fn generated_statement(statement: &mut Stmt, source: &str, span: &Span) {
             condition,
             consequence,
             alternative,
+            ..
         } => {
             generated_expression(condition, source, span);
             generated_statement(consequence, source, span);
@@ -10022,11 +11669,16 @@ fn generated_statement(statement: &mut Stmt, source: &str, span: &Span) {
                 generated_expression(expression, source, span);
             }
         }
-        StmtKind::Label { statement, .. } => generated_statement(statement, source, span),
+        StmtKind::Label { statement, .. } | StmtKind::ConstevalIf(Some(statement)) => {
+            generated_statement(statement, source, span)
+        }
         StmtKind::Try { body, catches } => {
             generated_statement(body, source, span);
-            for statement in catches {
-                generated_statement(statement, source, span);
+            for catch in catches {
+                if let Some(parameter) = &mut catch.parameter {
+                    parameter.span = span.clone();
+                }
+                generated_statement(&mut catch.body, source, span);
             }
         }
         StmtKind::Unknown(expressions) => {
@@ -10431,6 +12083,21 @@ fn alternative_operator(op: &str) -> &str {
     }
 }
 
+/// End of a declared type's base: the first pointer, reference, array or
+/// function declarator outside template arguments.
+fn declarator_split(raw: &str) -> usize {
+    let mut depth = 0usize;
+    for (index, c) in raw.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            '*' | '&' | '[' | '(' if depth == 0 => return index,
+            _ => {}
+        }
+    }
+    raw.len()
+}
+
 #[cfg(test)]
 mod declaration_tests {
     use super::*;
@@ -10832,6 +12499,67 @@ mod declaration_tests {
         }
         let unit = parse("int operator(int n) { return n; }", false);
         assert_eq!(unit.functions[0].name, "operator");
+    }
+
+    #[test]
+    fn cdt_c_operator_is_an_ordinary_name() {
+        let cdt = |source| {
+            parse_with(
+                source,
+                false,
+                true,
+                &Options {
+                    joern_cdt_failures: true,
+                    ..Options::default()
+                },
+            )
+        };
+        let source = "unsigned int operator()(unsigned long *a, unsigned long b) { return b; }";
+        assert_eq!(parse(source, false).functions[0].name, "operator()");
+        let unit = cdt(source);
+        assert!(unit.diagnostics.is_empty(), "{:?}", unit.diagnostics);
+        assert_eq!(unit.functions[0].name, "operator");
+        assert!(!matches!(unit.functions[0].body.kind, StmtKind::Block(_)));
+        let unit = cdt("int operator(int n) { return n; }");
+        assert_eq!(unit.functions[0].name, "operator");
+        assert!(matches!(unit.functions[0].body.kind, StmtKind::Block(_)));
+    }
+
+    #[test]
+    fn cdt_c_operator_statements_are_problems() {
+        let source = "void f(int c) { long *p; p = c ? (long *)operator new() : 0; L: p = operator new(8); }";
+        // Since PR #53, default C parsing fuses `operator new` before `(`
+        // into one name, so both statements are ordinary calls.
+        let unit = parse(source, false);
+        assert!(unit.diagnostics.is_empty(), "{:?}", unit.diagnostics);
+        let StmtKind::Block(body) = &unit.functions[0].body.kind else {
+            panic!()
+        };
+        assert!(matches!(body[1].kind, StmtKind::Expression(_)));
+        let StmtKind::Label { statement, .. } = &body[2].kind else {
+            panic!()
+        };
+        assert!(matches!(statement.kind, StmtKind::Expression(_)));
+        // CDT fails the unclosed conditional, and the assignment lacking its
+        // semicolon before `new(` drops the enclosing label.
+        let unit = parse_with(
+            source,
+            false,
+            true,
+            &Options {
+                joern_cdt_failures: true,
+                ..Options::default()
+            },
+        );
+        assert!(unit.diagnostics.is_empty(), "{:?}", unit.diagnostics);
+        let StmtKind::Block(body) = &unit.functions[0].body.kind else {
+            panic!()
+        };
+        assert!(matches!(body[1].kind, StmtKind::Problem));
+        assert!(matches!(
+            &body[2].kind,
+            StmtKind::Sequence(parts) if matches!(parts[0].kind, StmtKind::Problem)
+        ));
     }
 
     #[test]
@@ -11991,6 +13719,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn variable_name_checkpoints_restore_nested_scopes_and_isolate_macro_parsers() {
+        let mut names = VariableNames::default();
+        names.insert("global");
+        let outer = names.checkpoint();
+        names.insert("local");
+        let inner = names.checkpoint();
+        names.insert("global");
+        names.insert("local");
+        names.insert("nested");
+        let mut expansion = names.fork();
+        expansion.insert("macro_local");
+
+        names.restore(inner);
+        assert!(names.contains("global"));
+        assert!(names.contains("local"));
+        assert!(!names.contains("nested"));
+        assert!(!names.contains("macro_local"));
+        assert!(expansion.contains("nested"));
+        expansion.restore(0);
+        assert!(expansion.contains("nested"));
+        assert!(!expansion.contains("macro_local"));
+
+        names.restore(outer);
+        assert!(names.contains("global"));
+        assert!(!names.contains("local"));
+    }
+
+    #[test]
+    fn delimiter_index_keeps_only_balanced_groups() {
+        let source = "( [ ( ) } ) <% <: :> %> [ ( ] )";
+        let (tokens, _) = lex_preprocessed(source, true);
+        let missing = usize::MAX;
+        assert_eq!(
+            delimiter_ends(source, &tokens),
+            [
+                missing, missing, 3, missing, missing, missing, 9, 8, missing, missing, missing,
+                missing, missing, missing
+            ]
+        );
+    }
+
+    #[test]
     fn named_pointer_and_reference_ambiguities_follow_cdt_bindings() {
         let source =
             include_str!("../tests/fixtures/declaration-recovery/logical_declaration_boundaries.c");
@@ -12359,5 +14129,58 @@ mod tests {
         );
         assert!(!unit.diagnostics.is_empty());
         assert_eq!(unit.functions.len(), 1);
+    }
+
+    #[test]
+    fn c_scope_colons_follow_cdt_c_scanner() {
+        let source = "void f(int n) { int r; r = (int)ns::step(n); while (k()) { ns::step(n); } }";
+        let statements = |unit: &TranslationUnit| {
+            let StmtKind::Block(body) = &unit.functions[0].body.kind else {
+                panic!()
+            };
+            body.clone()
+        };
+        let unit = parse_with(
+            source,
+            false,
+            true,
+            &Options {
+                joern_cdt_failures: true,
+                ..Options::default()
+            },
+        );
+        assert!(unit.diagnostics.is_empty(), "{:?}", unit.diagnostics);
+        let body = statements(&unit);
+        // `r = (int)ns` lacks its semicolon before the second colon.
+        let StmtKind::Sequence(parts) = &body[1].kind else {
+            panic!("{:?}", body[1])
+        };
+        assert!(matches!(parts[0].kind, StmtKind::Problem));
+        assert!(matches!(&parts[1].kind,
+            StmtKind::Expression(Expr { kind: ExprKind::Binary { op, .. }, .. }) if op == "="));
+        // A compound item `ns::step(n);` is the label `ns` with a problem.
+        let StmtKind::While {
+            body: loop_body, ..
+        } = &body[2].kind
+        else {
+            panic!("{:?}", body[2])
+        };
+        let StmtKind::Block(items) = &loop_body.kind else {
+            panic!()
+        };
+        assert!(matches!(&items[0].kind, StmtKind::Label { name, statement }
+            if name == "ns" && matches!(statement.kind, StmtKind::Problem)));
+        // C++ reads `::` as a scope operator.
+        let unit = parse_with(
+            source,
+            true,
+            true,
+            &Options {
+                joern_cdt_failures: true,
+                ..Options::default()
+            },
+        );
+        let body = statements(&unit);
+        assert!(matches!(&body[1].kind, StmtKind::Expression(_)));
     }
 }

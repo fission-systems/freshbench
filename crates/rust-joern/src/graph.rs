@@ -88,17 +88,32 @@ pub struct FunctionGraph {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DiagnosticSpan {
+    /// Inclusive byte offset in the input passed to this analysis.
+    pub start_byte: usize,
+    /// Exclusive byte offset. Equal to start_byte for a point diagnostic.
+    pub end_byte: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub filename: String,
     pub line: usize,
     pub column: usize,
     pub severity: String,
     pub message: String,
+    /// Source extent reported by the producer, when requested and known.
+    /// This range can be smaller than the area affected by recovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<DiagnosticSpan>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Analysis {
     pub schema_version: u32,
+    /// Whether diagnostic span reporting was requested for this analysis.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub diagnostic_spans: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cpp_constructor_initializers: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -115,6 +130,8 @@ pub struct Options {
     pub data_flow: bool,
     pub reaching_definitions: bool,
     pub strict: bool,
+    /// Include the input byte ranges known for diagnostics.
+    pub diagnostic_spans: bool,
     /// Experimental CFG-only scalar initialization, requiring a complete source class.
     pub cpp_constructor_initializers: bool,
     /// Caller-proved, visible C++ type names for an isolated source slice.
@@ -132,8 +149,9 @@ pub struct Options {
     /// parse, after which Joern 4.0.150 has no method for the definition or
     /// no nodes for the expression. By default that code is still analyzed.
     pub joern_cdt_failures: bool,
-    /// Lower C++ `noexcept` operands, block-scope `static_assert` and
-    /// range-based `for` as Joern 4.0.150 does, for original-reference parity.
+    /// Lower C++ `noexcept` operands, block-scope `static_assert`, range-based
+    /// `for`, `if constexpr` and consteval if as Joern 4.0.150 does for
+    /// reference parity.
     /// By default they follow C++ evaluation.
     pub joern_cpp_control_flow: bool,
 }

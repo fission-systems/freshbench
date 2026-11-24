@@ -19,9 +19,13 @@ FreshBench's metric families follow [DecBench](https://github.com/Noelo-Lab/decb
 (Noelo-Lab): control-flow graph edit distance against the source, type recovery
 against DWARF, recompilation byte match, and a Union of perfect scores.
 FreshBench v1 was built on DecBench and its rust-joern CFG parser. v2 uses no
-DecBench or rust-joern code. Its CFG definition, GED computation, and
-ground-truth path are its own, documented below and in the source. Its scores
-are therefore not DecBench scores. See `NOTICE`.
+DecBench code. Its own CFG definition, GED computation, type and
+recompilation scoring, and ground-truth path are documented below and in the
+source. For the second CFG family it vendors
+[rust-joern](https://github.com/Noelo-Lab/rust-joern) (Apache-2.0,
+`crates/rust-joern/`, upstream main plus the open pull requests #21-#68; see
+`VENDORED.md`), but scores its graphs with FreshBench's GED. Its scores are
+therefore not DecBench scores. See `NOTICE`.
 
 ## What is measured, and what is not
 
@@ -31,13 +35,16 @@ signal against the binary.**
 | metric | compares | perfect |
 |---|---|---|
 | GED | the output's CFG vs the source function's CFG, both built by FreshBench's one CFG builder (`cfg.rs`) | 0 |
+| Joern GED | the same comparison on Joern's basic-block CFG (vendored rust-joern, `joern.rs`), scored with the same GED engine | 0 |
+| types | return and parameter type classes (`int<N>`, `float<N>`, bool, ptr, array, struct, void) vs DWARF (`types.rs`, `dwarf.rs`); locals as coverage only | arity, every parameter and the return right |
+| recompile | the output, with a type prelude and declarations added from compiler diagnostics (at most 5 rounds), built by the binary's own compiler and flags; its disassembly vs the original's (`recompile.rs`) | instruction-identical |
+| Union | any of GED, Joern GED, types or recompile perfect | |
 | size bands | every table split by source CFG nodes: <6, 6-20, 21-50, 51-100, >100 | |
 | normalized GED | GED / (source nodes + edges) | 0 |
 | call sites | direct call instructions in the unstripped binary vs calls printed (`callsites.rs`) | nothing missing, nothing extra |
 | shape tags | over/under-noded, extra goto/return/ternary/calls, lost `&&`/`||`, lost switch (`taxonomy.rs`) | |
 
-Planned: type recovery against DWARF, with coverage and accuracy reported
-apart, and recompilation.
+Recompilation runs only inside the build image, which has the compilers.
 
 **Not measured: correctness.** GED sees only graph shape. A function that
 prints the wrong constant, the wrong argument or an invented call can score
@@ -71,8 +78,11 @@ worse one is not evidence that it is wrong.
   `freshbench determinism` checks that no (function, output hash) pair has two
   scores.
 
-* **Score cache.** A score is keyed by (scorer, budget, function, source
-  definition fingerprint, output hash). The same source function and the same
+* **Score cache.** A score is keyed by (scorer, metrics revision, budget,
+  function, source definition fingerprint and DWARF signature, output hash).
+  The metrics revision changes whenever a CFG builder or the vendored
+  rust-joern changes, so a cache never returns a score from an older
+  definition. The same source function and the same
   output text are scored once, across builds, tools and runs.
   `rescore --cache FILE` keeps the cache between runs.
 
@@ -149,7 +159,8 @@ Git LFS is not used.
 
 | path | what |
 |---|---|
-| `crates/freshbench/` | the scorer and CLI (Rust): `csyntax`, `cfg`, `ged`, `score`, `dataset`, `taxonomy`, `headroom`, `bands`, `callsites`, `manifest`, `rows` |
+| `crates/freshbench/` | the scorer and CLI (Rust): `csyntax`, `cfg`, `ged`, `joern`, `types`, `dwarf`, `recompile`, `score`, `dataset`, `prepare`, `adapters`, `report`, `taxonomy`, `headroom`, `bands`, `callsites`, `manifest`, `rows` |
+| `crates/rust-joern/` | vendored rust-joern (Apache-2.0), see its `VENDORED.md` |
 | `build/` | build images (`Dockerfile` = v1 x86-64, `Dockerfile.cross` = v2 cross toolchains), compiler wrapper `fbcc.py`, `build_project.py` |
 | `ci/`, `.github/workflows/` | pins, corpus qualification per architecture, image builds, tests |
 | `selection/` | candidate enumeration and corpus lists (`corpus100.json`, `m1/`) |
