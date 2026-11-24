@@ -6,7 +6,12 @@
 //!   existence proof that the source's shape is recoverable from the same
 //!   stripped binary;
 //! * gap: T's GED minus `best_other` when T scored and is farther;
-//! * uncovered: T has no score where another tool scored.
+//! * uncovered: T has no score where another tool scored;
+//! * proven gap: T's GED *lower bound* minus `best_other` (an upper bound).
+//!   GED values from a budget-limited search are upper bounds, so `gap` can
+//!   overstate a difference; a proven gap cannot. A row with `gap > 0` and no
+//!   proven gap is inconclusive, and a reachable row is proven only when T's
+//!   lower bound is above 0.
 //!
 //! Rows are grouped by size band, outcome and tag. A row with several tags
 //! counts under each (tag totals overlap). Examples are worst first, ties broken
@@ -34,6 +39,12 @@ pub struct Group {
     pub reachable: u64,
     pub gap: f64,
     pub uncovered: u64,
+    /// sum of max(0, T's lower bound - best other)
+    pub proven_gap: f64,
+    /// rows with a proven gap
+    pub proven_rows: u64,
+    /// rows with gap > 0 but no proven gap (the bounds overlap)
+    pub inconclusive_rows: u64,
     pub examples: Vec<Example>,
 }
 
@@ -42,16 +53,21 @@ struct Acc {
 }
 
 impl Group {
+    #[allow(clippy::too_many_arguments)]
     fn add(
         &mut self,
         perfect: bool,
         reachable: bool,
         gap: f64,
+        proven: f64,
         uncovered: bool,
         rid: &str,
         acc: &Acc,
     ) {
         self.rows += 1;
+        self.proven_gap += proven;
+        self.proven_rows += u64::from(proven > 0.0);
+        self.inconclusive_rows += u64::from(gap > 0.0 && proven == 0.0);
         self.perfect += u64::from(perfect);
         self.reachable += u64::from(reachable);
         self.gap += gap;
@@ -144,11 +160,19 @@ pub fn compute(
         let perfect = my == Some(0.0);
         let reachable = best_other == Some(0.0) && !perfect;
         let uncovered = my.is_none() && best_other.is_some();
-        let mut gap = 0.0;
+        let (mut gap, mut proven) = (0.0, 0.0);
         if let (Some(m), Some(b)) = (my, best_other) {
             if m > b {
                 gap = m - b;
             }
+            let lb = mine.ged.as_ref().map_or(0.0, |g| {
+                if g.exact {
+                    g.value
+                } else {
+                    g.lower_bound.unwrap_or(0.0)
+                }
+            });
+            proven = (lb - b).max(0.0);
             common += 1;
             tool_common += m;
             vbest += m.min(b);
@@ -158,21 +182,21 @@ pub fn compute(
                 .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
         });
         let rid = key.to_string();
-        overall.add(perfect, reachable, gap, uncovered, &rid, &acc);
+        overall.add(perfect, reachable, gap, proven, uncovered, &rid, &acc);
         by_band
             .entry(bands::band(sn).to_string())
             .or_default()
-            .add(perfect, reachable, gap, uncovered, &rid, &acc);
+            .add(perfect, reachable, gap, proven, uncovered, &rid, &acc);
         by_outcome
             .entry(outcome_label(mine).to_string())
             .or_default()
-            .add(perfect, reachable, gap, uncovered, &rid, &acc);
+            .add(perfect, reachable, gap, proven, uncovered, &rid, &acc);
         let row_tags = tags.and_then(|t| t.get(key)).unwrap_or(&mine.tags);
         for t in row_tags {
             by_tag
                 .entry(t.clone())
                 .or_default()
-                .add(perfect, reachable, gap, uncovered, &rid, &acc);
+                .add(perfect, reachable, gap, proven, uncovered, &rid, &acc);
         }
     }
     overall.finish(keep);
@@ -273,6 +297,7 @@ mod tests {
             tags: vec![],
             scorer: String::new(),
             failure: None,
+            source: None,
         }
     }
 
@@ -350,6 +375,31 @@ mod tests {
                 reachable: true
             }
         );
+    }
+
+    #[test]
+    fn proven_gaps_use_the_lower_bound() {
+        let mut t = Table::new();
+        let mut put = |f: &str, tool: &str, value: f64, exact: bool, lb: f64| {
+            let mut r = row(f, tool, Outcome::Scored, Some(value), 10);
+            let g = r.ged.as_mut().unwrap();
+            g.exact = exact;
+            g.lower_bound = Some(lb);
+            t.entry(r.key.clone()).or_default().insert(tool.into(), r);
+        };
+        // upper 12, lower 10 against 4: proven 6 of the 8
+        put("p", "me", 12.0, false, 10.0);
+        put("p", "x", 4.0, true, 4.0);
+        // upper 12, lower 3 against 4: the bounds overlap
+        put("q", "me", 12.0, false, 3.0);
+        put("q", "x", 4.0, true, 4.0);
+        // exact 7 against 4: proven 3
+        put("r", "me", 7.0, true, 7.0);
+        put("r", "x", 4.0, false, 1.0);
+        let o = compute(&t, "me", None, 5).overall;
+        assert_eq!(o.gap, 8.0 + 8.0 + 3.0);
+        assert_eq!(o.proven_gap, 6.0 + 3.0);
+        assert_eq!((o.proven_rows, o.inconclusive_rows), (2, 1));
     }
 
     #[test]
