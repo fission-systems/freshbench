@@ -15,6 +15,7 @@ pub mod dataset;
 pub mod ged;
 pub mod headroom;
 pub mod manifest;
+pub mod prepare;
 pub mod rows;
 pub mod score;
 pub mod taxonomy;

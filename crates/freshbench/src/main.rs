@@ -51,6 +51,19 @@ enum Cmd {
         #[arg(long, default_value_t = freshbench::ged::DEFAULT_BUDGET)]
         budget: u64,
     },
+    /// Eligible functions of one build directory (build.json, tu_log.jsonl, i/, bin/).
+    Eligible {
+        build_dir: PathBuf,
+        #[arg(long)]
+        project: String,
+        #[arg(long, value_delimiter = ',')]
+        submodules: Vec<String>,
+        /// JSON list of token fingerprints to exclude
+        #[arg(long)]
+        exclude: Option<PathBuf>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
     /// Improvement targets of one tool against the others on the same rows.
     Gaps {
         root: PathBuf,
@@ -182,6 +195,25 @@ fn run() -> Result<ExitCode> {
                 }
             }
             eprintln!("{tool}: {} rows {counts:?}", rows.len());
+        }
+        Cmd::Eligible {
+            build_dir,
+            project,
+            submodules,
+            exclude,
+            json,
+        } => {
+            let r = freshbench::prepare::analyse_build_dir(
+                &build_dir,
+                &project,
+                &submodules,
+                exclude.as_deref(),
+            )?;
+            if let Some(p) = json {
+                std::fs::write(&p, serde_json::to_vec_pretty(&r)?)?;
+            }
+            eprintln!("{}", serde_json::to_string(&r.stats)?);
+            println!("eligible {}", r.eligible.len());
         }
         Cmd::Cfg { file, function } => {
             let t = read(&file)?;
