@@ -117,9 +117,19 @@ enum Cmd {
         binary_timeout_s: u64,
         #[arg(long, default_value_t = 300)]
         function_timeout_s: u64,
-        /// only builds whose name matches exactly (comma list)
+        /// only these arch-qualified builds (`gcc-O0`, `aarch64-gcc-O0`; comma list)
         #[arg(long, value_delimiter = ',')]
         builds: Vec<String>,
+    },
+    /// Merge a prepared tree (`prepare --out`) into a corpus root with
+    /// arch-qualified builds: binaries/ stripped/ truth/ sources/<arch>/ projects/.
+    Assemble {
+        prepared: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// the project's license files (copied to projects/<project>/)
+        #[arg(long)]
+        license: Option<PathBuf>,
     },
     /// Static results site (index.html, gaps-<tool>.html, summary.json) from result rows.
     Report {
@@ -426,22 +436,13 @@ fn run() -> Result<ExitCode> {
                     command: adapter,
                 }
             };
-            let mut dirs = Vec::new();
-            for e in std::fs::read_dir(&root)? {
-                let e = e?;
-                if e.path().join("manifest.json").exists() {
-                    dirs.push(e.path());
-                }
-            }
-            dirs.sort();
             let (mut ok, mut failed) = (0u64, 0u64);
-            for d in dirs {
-                let build = d.file_name().unwrap().to_string_lossy().into_owned();
-                if !builds.is_empty() && !builds.contains(&build) {
+            for u in freshbench::corpus::units(&root)? {
+                // --builds takes arch-qualified build names (`gcc-O0`, `aarch64-gcc-O0`)
+                if !builds.is_empty() && !builds.contains(&u.build) {
                     continue;
                 }
-                let pb: freshbench::prepare::PreparedBuild =
-                    serde_json::from_slice(&std::fs::read(d.join("manifest.json"))?)?;
+                let pb = &u.targets;
                 let mut recs = Vec::new();
                 for (bin, b) in &pb.binaries {
                     // Thumb functions are requested as address | 1 (the ELF for ARM convention)
@@ -452,7 +453,7 @@ fn run() -> Result<ExitCode> {
                         .collect();
                     let r = adapters::decompile_binary(
                         &t,
-                        &d.join("stripped").join(bin),
+                        &root.join(&u.stripped).join(bin),
                         bin,
                         &funcs,
                         Duration::from_secs(binary_timeout_s),
@@ -467,16 +468,30 @@ fn run() -> Result<ExitCode> {
                     }
                     recs.extend(r);
                 }
+                // results are keyed by the arch-qualified build, so rows of a
+                // non-x86-64 build never read back as x86-64
                 let out = root
                     .join("results")
                     .join(t.name())
-                    .join(&build)
+                    .join(&u.build)
                     .join(&pb.project)
                     .join("records.jsonl.gz");
                 adapters::write_records(&out, &recs)?;
-                eprintln!("{build}: {} functions", recs.len());
+                eprintln!("{}/{}: {} functions", u.build, pb.project, recs.len());
             }
             eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
+        }
+        Cmd::Assemble {
+            prepared,
+            out,
+            license,
+        } => {
+            let n = freshbench::corpus::assemble(&prepared, license.as_deref(), &out)?;
+            eprintln!(
+                "{}: {n} files written to {}",
+                prepared.display(),
+                out.display()
+            );
         }
         Cmd::Report {
             root,
@@ -666,6 +681,21 @@ fn run() -> Result<ExitCode> {
                             prov.projects
                                 .insert(k.clone(), serde_json::from_value(x.clone())?);
                         }
+                    }
+                }
+                // binaries of an assembled corpus carry their build's exact
+                // compiler version line and flags
+                if root.join("truth").is_dir() {
+                    for u in freshbench::corpus::units(&root)? {
+                        let t = &u.targets;
+                        let e = prov
+                            .builds
+                            .entry((t.project.clone(), u.build.clone()))
+                            .or_default();
+                        e.entry("compiler_version".into())
+                            .or_insert_with(|| t.compiler_version.clone().into());
+                        e.entry("flags".into())
+                            .or_insert_with(|| t.flags.clone().into());
                     }
                 }
                 let entries = manifest::build(&root, &prov)?;

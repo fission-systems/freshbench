@@ -59,8 +59,8 @@ struct FInfo {
     source_path: Option<String>,
 }
 
-/// Targets of a dataset tree (`configs/full/manifest.json`) or of a prepared
-/// tree (`<build>/manifest.json` written by `freshbench prepare`).
+/// Targets of a v1 dataset tree (`configs/full/manifest.json`), an assembled
+/// corpus (`truth/`) or a prepared tree (`<cfg>/manifest.json`); see `corpus`.
 pub fn targets(root: &Path) -> Result<Vec<Target>> {
     let p = root.join("configs").join("full").join("manifest.json");
     if !p.exists() {
@@ -116,29 +116,25 @@ fn resolve_source(root: &Path, project: &str, sp: &str) -> String {
 
 fn prepared_targets(root: &Path) -> Result<Vec<Target>> {
     let mut out = BTreeMap::new();
-    for build in sorted_dir(root)? {
-        let mp = root.join(&build).join("manifest.json");
-        if !mp.exists() {
-            continue;
-        }
-        let pb: crate::prepare::PreparedBuild = serde_json::from_slice(&std::fs::read(&mp)?)?;
-        for (bin, b) in pb.binaries {
-            for f in b.functions {
+    for u in crate::corpus::units(root)? {
+        let pb = &u.targets;
+        for (bin, b) in &pb.binaries {
+            for f in &b.functions {
                 let key = RowKey {
                     project: pb.project.clone(),
                     arch: pb.arch.clone(),
                     compiler: pb.compiler.clone(),
                     config: pb.config.clone(),
                     binary: bin.clone(),
-                    function: f.name,
+                    function: f.name.clone(),
                 };
                 out.insert(
                     key.clone(),
                     Target {
                         key,
                         address: Some(f.address),
-                        source_path: f.source_path,
-                        binary_path: Some(format!("{build}/binaries/{bin}")),
+                        source_path: f.source_path.clone(),
+                        binary_path: Some(format!("{}/{bin}", u.binaries)),
                         flags: pb.flags.clone(),
                     },
                 );

@@ -76,6 +76,11 @@ pub fn classify(rel: &str) -> Entry {
         ..Default::default()
     };
     match kind {
+        // an assembled corpus keeps TUs per arch: sources/<arch>/<project>/...
+        "source" if parts.len() > 3 && crate::rows::ARCHES.contains(&parts[1]) => {
+            e.arch = Some(parts[1].to_string());
+            e.project = Some(parts[2].to_string());
+        }
         "binary" | "stripped" | "source" | "ground_truth" if parts.len() > 2 => {
             if let Ok((a, c, o)) = split_build(parts[1]) {
                 e.arch = Some(a);
@@ -304,6 +309,11 @@ mod tests {
             Some("x86_64")
         );
         assert_eq!(classify("truth/gcc-O0/p/x.json").kind, "ground_truth");
+        let s = classify("sources/aarch64/p/ab.main.c");
+        assert_eq!(
+            (s.kind.as_str(), s.arch.as_deref(), s.project.as_deref()),
+            ("source", Some("aarch64"), Some("p"))
+        );
         assert_eq!(classify("projects/p/LICENSE").project.as_deref(), Some("p"));
         assert_eq!(classify("weird/file").kind, "other");
     }
