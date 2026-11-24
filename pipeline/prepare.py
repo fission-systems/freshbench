@@ -21,8 +21,10 @@ A function is ELIGIBLE in a build when all of these hold:
   * rust-joern (DecBench's extract_cfgs_from_source) yields a CFG for the name;
   * the name is not in DecBench's SKIP_NAMES and occurs at one address only in
     its binary;
-  * DW_AT_low_pc lies inside an executable section (a function the linker
-    discarded with --gc-sections keeps its DWARF with low_pc 0).
+  * DW_AT_low_pc lies inside an executable section that holds bytes in the file
+    (a function the linker discarded with --gc-sections keeps its DWARF with
+    low_pc 0, and a separate debug-info file, `objcopy --only-keep-debug`, keeps
+    `.text` as SHT_NOBITS: no code to decompile).
 Selection: eligible functions ordered by
   sha256("freshbench-v1/<project>/<source path>/<name>"), first N (default 300)
   per build. A project qualifies when both O0 builds have >= N eligible.
@@ -177,7 +179,7 @@ def analyse_build(bdir: Path, compiler: str, config: str, submodules: list[str],
         with open(path, "rb") as fh:
             exec_ranges = [(s["sh_addr"], s["sh_addr"] + s["sh_size"])
                            for s in ELFFile(fh).iter_sections()
-                           if s["sh_flags"] & 0x4 and s["sh_size"]]
+                           if s["sh_flags"] & 0x4 and s["sh_size"] and s["sh_type"] != "SHT_NOBITS"]
         for cu in dw.iter_CUs():
             top = cu.get_top_DIE()
             lang = top.attributes.get("DW_AT_language")
