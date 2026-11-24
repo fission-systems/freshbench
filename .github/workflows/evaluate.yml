@@ -1,0 +1,86 @@
+name: evaluate
+# v2: decompile prepared builds with one tool and score them with FreshBench's
+# own metrics (Rust; no DecBench). Inputs come from a qualify-arch run.
+on:
+  workflow_dispatch:
+    inputs:
+      qualify_run: { description: "qualify-arch run id holding qual-<slug>-<arch> artifacts", required: true }
+      projects: { description: "JSON list of slugs (owner__repo)", required: true }
+      arch: { description: "x86_64 | i686 | aarch64 | armv7", required: true }
+      tools: { description: "JSON list", default: '["fission","ghidra","angr","kuna","borer"]' }
+      fission_ref: { description: "git ref of Fission (default: FISSION_SHA in ci/pins.env)", default: "" }
+      max_parallel: { description: "concurrent jobs", default: "12" }
+permissions: { contents: read, actions: read }
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs: { fission_sha: "${{ steps.ref.outputs.sha }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ hashFiles('Cargo.lock') }}
+      - run: cargo build --release --locked -p freshbench
+      - id: ref
+        run: |
+          source ci/pins.env
+          ref='${{ inputs.fission_ref }}'
+          if [ -n "$ref" ]; then sha=$(git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; else sha="$FISSION_SHA"; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"; echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: fc
+        with: { path: fission-bin, key: "fission-cli-${{ steps.ref.outputs.sha }}" }
+      - if: contains(inputs.tools, 'fission') && steps.fc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
+          (cd fsrc && cargo build -p fission-cli --release --locked)
+          mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/ && cp -r fsrc/utils fission-bin/utils
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bins
+          path: |
+            target/release/freshbench
+            fission-bin
+  run:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      matrix:
+        project: ${{ fromJSON(inputs.projects) }}
+        tool: ${{ fromJSON(inputs.tools) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-java@v4
+        if: matrix.tool == 'ghidra'
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/download-artifact@v4
+        with: { name: bins, path: "${{ runner.temp }}/bins" }
+      - uses: actions/download-artifact@v4
+        with: { name: "qual-${{ matrix.project }}-${{ inputs.arch }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+      - run: ci/setup_tool_v2.sh ${{ matrix.tool }}
+      - name: decompile and score
+        run: |
+          B="$RUNNER_TEMP/bins"; chmod +x "$B/target/release/freshbench" "$B/fission-bin/fission_cli" 2>/dev/null || true
+          FB="$B/target/release/freshbench"
+          mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
+          R="$RUNNER_TEMP/w/prep"
+          if [ '${{ matrix.tool }}' = fission ]; then
+            "$FB" decompile "$R" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+          else
+            "$FB" decompile "$R" --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+          fi
+          "$FB" rescore "$R" --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
+          mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "eval-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}", path: "${{ runner.temp }}/up", retention-days: 90 }

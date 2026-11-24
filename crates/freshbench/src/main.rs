@@ -390,10 +390,11 @@ fn run() -> Result<ExitCode> {
                     serde_json::from_slice(&std::fs::read(d.join("manifest.json"))?)?;
                 let mut recs = Vec::new();
                 for (bin, b) in &pb.binaries {
+                    // Thumb functions are requested as address | 1 (the ELF for ARM convention)
                     let funcs: BTreeMap<u64, String> = b
                         .functions
                         .iter()
-                        .map(|f| (f.address, f.name.clone()))
+                        .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
                         .collect();
                     let r = adapters::decompile_binary(
                         &t,

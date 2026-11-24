@@ -576,6 +576,37 @@ pub fn read_tus(build_dir: &Path) -> Result<BTreeMap<String, BTreeMap<String, Pa
     Ok(out)
 }
 
+/// ARM only: is the code at `addr` Thumb? Decided by the last ARM mapping symbol
+/// (`$t` Thumb, `$a` ARM, `$d` data) at or before it - the ELF for ARM convention,
+/// independent of how a reader treats bit 0 of function symbols.
+pub fn thumb_starts(data: &[u8]) -> Result<Option<Vec<(u64, bool)>>> {
+    use object::ObjectSymbol;
+    let f = object::File::parse(data)?;
+    if f.architecture() != object::Architecture::Arm {
+        return Ok(None);
+    }
+    let mut marks: Vec<(u64, bool)> = f
+        .symbols()
+        .filter_map(|s| {
+            let n = s.name().ok()?;
+            match n.get(..2)? {
+                "$t" => Some((s.address() & !1, true)),
+                "$a" | "$d" => Some((s.address() & !1, false)),
+                _ => None,
+            }
+        })
+        .collect();
+    marks.sort();
+    Ok(Some(marks))
+}
+
+pub fn is_thumb(marks: &[(u64, bool)], addr: u64) -> bool {
+    match marks.partition_point(|(a, _)| *a <= addr) {
+        0 => false,
+        i => marks[i - 1].1,
+    }
+}
+
 /// Check that stripping kept every code byte and removed symbols and debug info.
 pub fn verify_strip(original: &[u8], stripped: &[u8]) -> Result<()> {
     let (a, b) = (
@@ -694,6 +725,9 @@ pub struct SelectedFunction {
     pub address: u64,
     pub high_pc: Option<u64>,
     pub selection_key: String,
+    /// ARM: the function is Thumb code; tools are asked for `address | 1`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub thumb: bool,
     pub tu_sha256: String,
     /// dataset-relative path of the TU text (`sources/<project>/<tu16>.<stem>.c`)
     pub source_path: String,
@@ -836,6 +870,7 @@ pub fn prepare(
                 }
                 let stripped = std::fs::read(&dst)?;
                 verify_strip(&data, &stripped).with_context(|| format!("{key}/{bin}"))?;
+                let marks = thumb_starts(&data)?;
                 let mut fs = Vec::new();
                 for (k, _, c) in funcs {
                     let stem = Path::new(&c.source)
@@ -856,6 +891,7 @@ pub fn prepare(
                         address: c.address,
                         high_pc: c.high_pc,
                         selection_key: k.clone(),
+                        thumb: marks.as_deref().is_some_and(|m| is_thumb(m, c.address)),
                         tu_sha256: c.tu_sha256.clone(),
                         source_path: rel,
                     });
@@ -1010,6 +1046,17 @@ mod tests {
         let r2 = analyse_binary(&data, &cx2, &mut TuCache::new()).unwrap();
         assert!(r2.rows.is_empty());
         assert_eq!(r2.stats["x_excluded_corpus_overlap"], 3);
+    }
+
+    #[test]
+    fn thumb_mapping_symbols() {
+        let m = vec![(0x100, false), (0x200, true), (0x300, false), (0x400, true)];
+        assert!(!is_thumb(&m, 0x50));
+        assert!(!is_thumb(&m, 0x100));
+        assert!(is_thumb(&m, 0x200));
+        assert!(is_thumb(&m, 0x2fe));
+        assert!(!is_thumb(&m, 0x300));
+        assert!(is_thumb(&m, 0x5000));
     }
 
     #[test]
