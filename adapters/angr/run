@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""angr adapter (see adapters/README.md). Needs a Python with angr."""
+import argparse
+import json
+import logging
+
+import angr
+
+ap = argparse.ArgumentParser()
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=True)
+a = ap.parse_args()
+logging.disable(logging.WARNING)
+reqs = [l.strip() for l in open(a.addresses) if l.strip()]
+with open(a.binary, "rb") as f:
+    hdr = f.read(18)
+is_dyn = hdr[16] == 3  # ET_DYN: load at the ELF addresses so no translation is needed
+opts = {"base_addr": int(a.elf_base, 16)} if is_dyn else {}
+p = angr.Project(a.binary, auto_load_libs=False, main_opts=opts)
+starts = [int(r, 16) for r in reqs]  # Thumb keeps bit 0, as angr expects
+cfg = p.analyses.CFGFast(normalize=True, data_references=True, function_starts=starts)
+with open(a.out, "w") as out:
+    for r, addr in zip(reqs, starts):
+        code = err = None
+        try:
+            fn = cfg.kb.functions.function(addr=addr)
+            if fn is None and addr & 1:
+                fn = cfg.kb.functions.function(addr=addr & ~1)
+            if fn is None:
+                err = "no function at address"
+            else:
+                d = p.analyses.Decompiler(fn, cfg=cfg.model)
+                code = d.codegen.text if d.codegen is not None else None
+                if code is None:
+                    err = "decompiler produced no code"
+        except Exception as e:  # noqa: BLE001 - recorded per function
+            err = f"{type(e).__name__}: {e}"[:500]
+        out.write(json.dumps({"address": r, "code": code, "error": err}) + "\n")
