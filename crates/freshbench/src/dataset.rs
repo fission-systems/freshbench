@@ -23,6 +23,8 @@ pub struct Target {
     pub key: RowKey,
     pub address: Option<u64>,
     pub source_path: String,
+    /// unstripped binary, relative to the root (type ground truth)
+    pub binary_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +40,8 @@ struct Bin {
     binary: String,
     #[serde(default)]
     arch: Option<String>,
+    #[serde(default)]
+    binary_path: Option<String>,
     #[serde(default)]
     function_info: Vec<FInfo>,
 }
@@ -80,6 +84,7 @@ pub fn targets(root: &Path) -> Result<Vec<Target>> {
                         key,
                         address: f.address,
                         source_path: sp,
+                        binary_path: b.binary_path.clone(),
                     },
                 );
             }
@@ -128,6 +133,7 @@ fn prepared_targets(root: &Path) -> Result<Vec<Target>> {
                         key,
                         address: Some(f.address),
                         source_path: f.source_path,
+                        binary_path: Some(format!("{build}/binaries/{bin}")),
                     },
                 );
             }
@@ -207,11 +213,13 @@ pub struct Cached {
     pub ged: Option<GedScore>,
     #[serde(default)]
     pub joern_ged: Option<GedScore>,
+    #[serde(default)]
+    pub types: Option<crate::types::TypeScore>,
     pub tags: Vec<String>,
 }
 
 /// Bumped whenever a metric's definition changes, so cached scores are not reused across definitions.
-pub const METRICS_REV: &str = "fbcfg1+joern1";
+pub const METRICS_REV: &str = "fbcfg1+joern1+types1";
 
 /// Content-addressed scores: the key is sha256(scorer | budget | function name |
 /// source definition fingerprint | output sha256), so the same source function
@@ -322,9 +330,10 @@ pub fn rescore(
         .into_iter()
         .take(limit_tus.unwrap_or(usize::MAX))
         .collect();
+    let sigs = SignatureCache::default();
     let mut rows: Vec<Row> = groups
         .par_iter()
-        .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache))
+        .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache, &sigs))
         .collect();
     rows.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(rows)
@@ -332,6 +341,37 @@ pub fn rescore(
 
 type SourceFn = (cfg::Graph, csyntax::Features, String);
 
+/// DWARF signatures per unstripped binary, read once.
+#[derive(Default)]
+pub struct SignatureCache {
+    map: std::sync::Mutex<HashMap<String, std::sync::Arc<HashMap<u64, crate::types::Signature>>>>,
+}
+
+impl SignatureCache {
+    pub fn get(&self, root: &Path, rel: &str, address: u64) -> Option<crate::types::Signature> {
+        let existing = self.map.lock().unwrap().get(rel).cloned();
+        let m = match existing {
+            Some(m) => m,
+            None => {
+                let m = std::sync::Arc::new(
+                    std::fs::read(root.join(rel))
+                        .ok()
+                        .and_then(|d| crate::dwarf::signatures(&d).ok())
+                        .unwrap_or_default(),
+                );
+                self.map
+                    .lock()
+                    .unwrap()
+                    .entry(rel.to_string())
+                    .or_insert(m)
+                    .clone()
+            }
+        };
+        m.get(&address).cloned()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn score_tu(
     root: &Path,
     sp: &str,
@@ -340,6 +380,7 @@ fn score_tu(
     tool: &str,
     budget: u64,
     cache: &ScoreCache,
+    sigs: &SignatureCache,
 ) -> Vec<Row> {
     let tu = std::fs::read(root.join(sp))
         .map(|b| String::from_utf8_lossy(&b).into_owned())
@@ -364,6 +405,7 @@ fn score_tu(
             code_sha256: None,
             ged: None,
             joern_ged: None,
+            types: None,
             tags: vec![],
             scorer: score::SCORER.to_string(),
         };
@@ -388,12 +430,37 @@ fn score_tu(
             out.push(row);
             continue;
         };
-        let key = ScoreCache::key(budget, &t.key.function, src_fp, &out_sha);
+        let truth = match (&t.binary_path, t.address) {
+            (Some(b), Some(a)) => sigs.get(root, b, a),
+            _ => None,
+        };
+        let truth_id = truth
+            .as_ref()
+            .map(|s| {
+                manifest::sha256_bytes(serde_json::to_string(s).unwrap_or_default().as_bytes())
+            })
+            .unwrap_or_default();
+        let key = ScoreCache::key(
+            budget,
+            &t.key.function,
+            &format!("{src_fp}|{truth_id}"),
+            &out_sha,
+        );
         let c = match cache.get(&key) {
             Some(c) => c,
             None => {
                 let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
-                let c = score_output(sg, sf, jg, text, &t.key.function, budget);
+                let dm = crate::types::DataModel::for_arch(&t.key.arch);
+                let c = score_output(
+                    sg,
+                    sf,
+                    jg,
+                    truth.as_ref(),
+                    dm,
+                    text,
+                    &t.key.function,
+                    budget,
+                );
                 cache.put(key, c.clone());
                 c
             }
@@ -401,6 +468,7 @@ fn score_tu(
         row.outcome = c.outcome;
         row.ged = c.ged;
         row.joern_ged = c.joern_ged;
+        row.types = c.types;
         row.tags = c.tags;
         out.push(row);
     }
@@ -408,10 +476,13 @@ fn score_tu(
 }
 
 /// Score one output text against an already built source function.
+#[allow(clippy::too_many_arguments)]
 pub fn score_output(
     sg: &cfg::Graph,
     sf: &csyntax::Features,
     joern_source: Option<&cfg::Graph>,
+    truth: Option<&crate::types::Signature>,
+    dm: crate::types::DataModel,
     text: &str,
     function: &str,
     budget: u64,
@@ -420,6 +491,7 @@ pub fn score_output(
         outcome: Outcome::Unscored,
         ged: None,
         joern_ged: None,
+        types: None,
         tags: vec![tag.to_string()],
     };
     let Ok(ot) = csyntax::parse(text) else {
@@ -446,9 +518,11 @@ pub fn score_output(
             output_edges: Some(jog.edges.len() as u32),
         })
     });
+    let types = truth.map(|t| crate::types::compare(t, &crate::types::from_source(odef, text, dm)));
     Cached {
         outcome: Outcome::Scored,
         joern_ged,
+        types,
         ged: Some(GedScore {
             value: d.value as f64,
             exact: d.exact,
