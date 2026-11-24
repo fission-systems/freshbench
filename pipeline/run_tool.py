@@ -62,7 +62,11 @@ try:
 except Exception as e:  # noqa: BLE001
     version = f"unknown ({e})"
 
-rows, run = [], {"tool": tool, "version": version, "project": manifest["project"],
+# v2: the target architecture (FB_ARCH, default x86_64 = v1). byte_match needs
+# the exact target compilers in the score image, which exists for x86-64 only;
+# on other architectures it is not run (null), never scored as 0.
+ARCH = os.environ.get("FB_ARCH", "x86_64")
+rows, run = [], {"tool": tool, "version": version, "project": manifest["project"], "arch": ARCH,
                  "compiler": manifest["compiler"], "config": manifest["config"], "binaries": {}}
 perfect = {m: MetricRegistry.get(m).perfect_value for m in METRICS}
 pk = out / "pkl"
@@ -167,7 +171,7 @@ for binf, info in manifest["binaries"].items():
     # the exact compilers that built this binary (see build/Dockerfile.score).
     bm = {}
     score_image = os.environ.get("SCORE_IMAGE")
-    if score_image and shutil.which("docker"):
+    if score_image and shutil.which("docker") and ARCH == "x86_64":
         t2 = time.time()
         bmdir = out / "bm"
         bmdir.mkdir(exist_ok=True)
@@ -209,7 +213,7 @@ for binf, info in manifest["binaries"].items():
         name = f["name"]
         fd = res.functions.get(name)
         code = getattr(fd, "decompiled_code", None) if fd is not None else None
-        row = {"project": manifest["project"], "compiler": manifest["compiler"],
+        row = {"project": manifest["project"], "arch": ARCH, "compiler": manifest["compiler"],
                "config": manifest["config"], "binary": binf, "function": name,
                "address": f["address"], "source": f["source"], "tool": tool,
                "decompiled": bool(code),
