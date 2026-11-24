@@ -76,13 +76,50 @@ fn ordinary_qualified_omitted_return_is_not_a_constructor() {
 }
 
 #[test]
-fn recovery_does_not_qualify_unknown_initialization_effects() {
-    assert!(
-        analyze(
-            "demo::Record::Record(int value) : field(value) {}",
-            "slice.cpp",
-            &options()
-        )
-        .is_err()
+fn recovery_keeps_the_body_without_initialization_effects() {
+    // Joern 4.0.150 exports this slice as a constructor whose CFG starts at
+    // the body; the initializer has no node of its own.
+    let analysis = analyze(
+        "demo::Record::Record(int value) : field(value) { effect(); }",
+        "slice.cpp",
+        &options(),
+    )
+    .unwrap();
+    let [method] = analysis.functions.as_slice() else {
+        panic!("expected one constructor, got {:?}", analysis.functions);
+    };
+    assert_eq!(method.name, "Record");
+    let calls: Vec<_> = method
+        .cpg
+        .nodes
+        .iter()
+        .filter(|n| n.kind == "CALL")
+        .filter_map(|n| n.name.as_deref())
+        .collect();
+    assert_eq!(calls, ["effect"]);
+}
+
+#[test]
+fn defaulted_and_deleted_members_are_methods_named_like_definitions() {
+    // CDT parses `= default` and `= delete` as definitions: Joern keeps each
+    // member and names a defaulted operator like a defined one.
+    let source = "struct A {\n  A() = default;\n  A(const A&) = delete;\n  ~A() = default;\n  A& operator=(const A&) = default;\n  A& operator+=(int);\n  virtual int f() = 0;\n};\n";
+    let analysis = analyze(source, "members.cpp", &options()).unwrap();
+    let mut methods = analysis
+        .functions
+        .iter()
+        .map(|f| (f.name.as_str(), f.fullname.as_str()))
+        .collect::<Vec<_>>();
+    methods.sort();
+    assert_eq!(
+        methods,
+        [
+            ("=", "A.operator=:A &(A &)"),
+            ("A", "A.A:ANY()"),
+            ("A", "A.A:ANY(A &)"),
+            ("f", "A.f:int()"),
+            ("operator +=", "A.operator+=:A &(int)"),
+            ("~A", "A.~A:ANY()"),
+        ]
     );
 }

@@ -327,6 +327,23 @@ pub(crate) fn lex_preprocessed_with_macros_for_language(
                         }
                     }
                     kind = TokenKind::Identifier;
+                    if active && &source[start..at] == "__pragma" {
+                        if let Some(end) = msvc_pragma_end(bytes, at) {
+                            at = end;
+                            ignored = true;
+                        } else {
+                            diagnostics.push(ParseDiagnostic {
+                                message: "unsupported or malformed MSVC __pragma".into(),
+                                span: Span {
+                                    start,
+                                    end: at,
+                                    line: start_line,
+                                    column: start_column,
+                                    end_line: start_line,
+                                },
+                            });
+                        }
+                    }
                 } else if bytes[at].is_ascii_digit()
                     || (bytes[at] == b'.' && bytes.get(at + 1).is_some_and(u8::is_ascii_digit))
                 {
@@ -350,10 +367,19 @@ pub(crate) fn lex_preprocessed_with_macros_for_language(
                         "||", "<=", ">=", "==", "!=", "+=", "-=", "*=", "/=", "%=", "&=", "|=",
                         "^=", "<<", ">>", "::", "##", "<:", ":>", "<%", "%>", "%:",
                     ];
-                    at += OPERATORS
-                        .iter()
-                        .find(|op| source[start..].starts_with(**op))
-                        .map_or(1, |op| op.len());
+                    let tail = &source[start..];
+                    at += if cpp
+                        && tail.starts_with("<::")
+                        && !matches!(bytes.get(start + 3), Some(b':' | b'>'))
+                    {
+                        // C++ [lex.pptoken] gives this '<' its own token.
+                        1
+                    } else {
+                        OPERATORS
+                            .iter()
+                            .find(|op| tail.starts_with(**op))
+                            .map_or(1, |op| op.len())
+                    };
                 }
             }
         }
@@ -959,6 +985,40 @@ fn next_nontrivia_byte(bytes: &[u8], at: usize) -> Option<u8> {
     bytes.get(skip_trivia(bytes, at)).copied()
 }
 
+/// The inline forms of the warning and pack directives handled as trivia.
+/// Accept their unquoted arguments without scanning past a malformed directive.
+fn msvc_pragma_end(bytes: &[u8], after_name: usize) -> Option<usize> {
+    let open = skip_trivia(bytes, after_name);
+    if bytes.get(open) != Some(&b'(') {
+        return None;
+    }
+    let start = skip_trivia(bytes, open + 1);
+    let end = start
+        + bytes[start..]
+            .iter()
+            .take_while(|&&b| identifier_byte(b))
+            .count();
+    if !matches!(&bytes[start..end], b"warning" | b"pack") {
+        return None;
+    }
+    let arguments = skip_trivia(bytes, end);
+    if bytes.get(arguments) != Some(&b'(') {
+        return None;
+    }
+    let mut at = skip_trivia(bytes, arguments + 1);
+    while let Some(&byte) = bytes.get(at) {
+        if byte == b')' {
+            let close = skip_trivia(bytes, at + 1);
+            return (bytes.get(close) == Some(&b')')).then_some(close + 1);
+        }
+        if !identifier_byte(byte) && !matches!(byte, b',' | b':' | b';') {
+            return None;
+        }
+        at = skip_trivia(bytes, at + 1);
+    }
+    None
+}
+
 fn skip_trivia(bytes: &[u8], mut at: usize) -> usize {
     loop {
         while bytes.get(at).is_some_and(u8::is_ascii_whitespace) {
@@ -995,6 +1055,32 @@ fn identifier_byte(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpp_qualified_template_arguments_keep_the_less_token() {
+        let source = "W<::n::A> <::> <::: <::";
+        let spellings = |cpp| {
+            let (tokens, diagnostics, _) =
+                lex_preprocessed_with_macros_for_language(source, true, cpp);
+            assert!(diagnostics.is_empty(), "{diagnostics:?}");
+            tokens
+                .into_iter()
+                .map(|token| &source[token.span.start..token.span.end])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            spellings(true),
+            [
+                "W", "<", "::", "n", "::", "A", ">", "<:", ":>", "<:", "::", "<", "::"
+            ]
+        );
+        assert_eq!(
+            spellings(false),
+            [
+                "W", "<:", ":", "n", "::", "A", ">", "<:", ":>", "<:", "::", "<:", ":"
+            ]
+        );
+    }
 
     #[test]
     fn keeps_lines_and_literal_contents() {

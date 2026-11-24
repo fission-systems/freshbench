@@ -16,7 +16,14 @@ fn initialization_follows_declarations_and_preserves_rhs_and_body_calls() {
     let source = "int first(); int second(); void body(); struct A {
         int x; int y; A() : y(second()), x(first()) { body(); }
     };";
-    assert!(analyze(source, "order.cpp", &options(false)).is_err());
+    // Without the profile, Joern's body-only CFG has no initialization nodes.
+    let joern = analyze(source, "order.cpp", &options(false)).unwrap();
+    assert!(joern.functions.iter().all(|f| {
+        f.cpg
+            .nodes
+            .iter()
+            .all(|n| n.name.as_deref() != Some("<operator>.fieldInitialization"))
+    }));
     let result = analyze(source, "order.cpp", &options(true)).unwrap();
     let method = result.functions.iter().find(|f| f.name == "A").unwrap();
     let calls: Vec<_> = method
@@ -69,6 +76,38 @@ fn initialization_follows_declarations_and_preserves_rhs_and_body_calls() {
 }
 
 #[test]
+fn default_profile_matches_joern_and_starts_at_the_body() {
+    // Joern 4.0.150 has no CFG node for a member initializer. Strict parsing
+    // keeps the constructor and its body instead of rejecting the input.
+    for source in [
+        "int g(int); int h(); struct A { int x; int y; A(): x(g(1)) { h(); } };",
+        "int g(int); int h(); struct B { B(int); }; struct A : B { int& x; A(int& v): B(g(v)), x(v) { h(); } };",
+        "int g(int); int h(); struct A { int x; A(); }; A::A(): x(g(2)) { h(); }",
+    ] {
+        let analysis = analyze(source, "default.cpp", &options(false))
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+        let constructor = analysis
+            .functions
+            .iter()
+            .find(|function| function.name == "A" && function.start_line == function.end_line)
+            .unwrap_or_else(|| panic!("{source}: no constructor"));
+        let calls: Vec<_> = constructor
+            .cpg
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "CALL")
+            .filter_map(|node| node.name.as_deref())
+            .collect();
+        assert!(calls.contains(&"h"), "{source}: {calls:?}");
+        assert!(!calls.contains(&"g"), "{source}: {calls:?}");
+        assert!(
+            !calls.contains(&"<operator>.fieldInitialization"),
+            "{source}: {calls:?}"
+        );
+    }
+}
+
+#[test]
 fn incomplete_or_non_scalar_plans_fail_closed() {
     for source in [
         "struct A { int x; int y; A(): x(1) {} };",
@@ -82,7 +121,11 @@ fn incomplete_or_non_scalar_plans_fail_closed() {
         "struct A { int x:2; A(): x(1) {} };",
         "struct A { int x[2]; A(): x(1) {} };",
         "struct A { int x; virtual void f(); A(): x(1) {} };",
-        "struct A { int x; A(): x{1} {} };",
+        "struct A { int x; A(double d): x{d} {} };",
+        "struct A { bool x; A(): x{2} {} };",
+        "struct A { int x; A(): x{09} {} };",
+        "struct A { int x; A(): x{1, 2} {} };",
+        "struct A { int x; A(): x{} {} };",
         "struct A { int x; A(): x() {} };",
         "A::A(): x(1) {}",
         "struct A { int x; A(): x(unknown()) {} };",
@@ -97,6 +140,108 @@ fn incomplete_or_non_scalar_plans_fail_closed() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn braced_initializers_keep_the_body_and_declaration_order() {
+    let source = "int first(); void body(); namespace demo {
+        struct A { int x; int y; bool ready; int* p; A(); };
+        A::A() : p{nullptr}, ready{true}, y{42}, x(first()) { body(); }
+        int after() { return 1; }
+    }";
+    // Since PR #52 the default profile follows Joern: strict parsing accepts
+    // the constructor and its CFG has no initialization nodes.
+    let joern = analyze(source, "braces.cpp", &options(false)).unwrap();
+    assert!(joern.functions.iter().all(|f| {
+        f.cpg
+            .nodes
+            .iter()
+            .all(|n| n.name.as_deref() != Some("<operator>.fieldInitialization"))
+    }));
+    let analysis = analyze(source, "braces.cpp", &options(true)).unwrap();
+    let method = analysis
+        .functions
+        .iter()
+        .find(|f| f.name == "A" && f.start_line == 3)
+        .unwrap();
+    let nodes = &method.cpg.nodes;
+    let inits: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.name.as_deref() == Some("<operator>.fieldInitialization"))
+        .collect();
+    assert_eq!(
+        inits.iter().map(|n| n.code.as_str()).collect::<Vec<_>>(),
+        ["x(first())", "y{42}", "ready{true}", "p{nullptr}"]
+    );
+    let only_call = |name| {
+        let nodes: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.name.as_deref() == Some(name))
+            .collect();
+        assert_eq!(nodes.len(), 1);
+        nodes[0].id
+    };
+    let order = [
+        only_call("first"),
+        inits[0].id,
+        inits[1].id,
+        inits[2].id,
+        inits[3].id,
+        only_call("body"),
+    ];
+    for pair in order.windows(2) {
+        let mut reached = std::collections::HashSet::new();
+        let mut pending = vec![pair[0]];
+        while let Some(node) = pending.pop() {
+            if reached.insert(node) {
+                pending.extend(
+                    method
+                        .cpg
+                        .edges
+                        .iter()
+                        .filter(|edge| edge.kind == "CFG" && edge.source == node)
+                        .map(|edge| edge.target),
+                );
+            }
+        }
+        assert!(reached.contains(&pair[1]), "missing CFG path {pair:?}");
+    }
+    assert!(analysis.functions.iter().any(|f| f.name == "after"));
+}
+
+#[test]
+fn inline_braces_after_noexcept_condition_keep_the_body() {
+    let source = "void body(); struct A {
+        int x; A() noexcept(true ? true : false) : x{1} { body(); }
+    };";
+    let analysis = analyze(source, "inline.cpp", &options(true)).unwrap();
+    let method = analysis.functions.iter().find(|f| f.name == "A").unwrap();
+    assert!(method.cpg.nodes.iter().any(|n| n.code == "x{1}"));
+    let mut permissive = options(false);
+    permissive.strict = false;
+    let analysis = analyze(source, "inline.cpp", &permissive).unwrap();
+    // Since PR #52 the default profile accepts initializer lists as Joern does.
+    assert!(
+        !analysis
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("member-initializer CFG is unsupported"))
+    );
+    let method = analysis.functions.iter().find(|f| f.name == "A").unwrap();
+    assert!(
+        method
+            .cpg
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("body"))
+    );
+    assert!(
+        method
+            .cpg
+            .nodes
+            .iter()
+            .all(|n| n.name.as_deref() != Some("<operator>.fieldInitialization"))
+    );
 }
 
 #[test]
@@ -160,9 +305,6 @@ fn literal_and_pointer_conversions_require_proven_compatibility() {
         "struct A { int x; A(): x(\"abc\") {} };",
         "struct A { int x; A(int* p): x(p) {} };",
         "struct A { int* x; A(const int* p): x(p) {} };",
-        // A valid pointer copy is also rejected until pointee qualifiers are
-        // preserved well enough to distinguish it from the case above.
-        "struct A { int* x; A(int* p): x(p) {} };",
     ] {
         assert!(
             analyze(source, "invalid.cpp", &options(true)).is_err(),
@@ -177,6 +319,77 @@ fn literal_and_pointer_conversions_require_proven_compatibility() {
     ] {
         assert!(
             analyze(source, "valid.cpp", &options(true)).is_ok(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn matching_plain_pointer_parameters_initialize_in_member_order() {
+    let analysis = analyze(
+        "struct Payload { int value; };
+         class Owner {
+             bool ready;
+             const Payload* payload;
+         public:
+             Owner(const Payload* payload): payload(payload), ready(true) {}
+         };",
+        "pointer-copy.cpp",
+        &options(true),
+    )
+    .unwrap();
+    let method = analysis
+        .functions
+        .iter()
+        .find(|function| function.name == "Owner")
+        .unwrap();
+    let initializers: Vec<_> = method
+        .cpg
+        .nodes
+        .iter()
+        .filter(|node| node.name.as_deref() == Some("<operator>.fieldInitialization"))
+        .collect();
+    assert_eq!(
+        initializers
+            .iter()
+            .map(|node| node.code.as_str())
+            .collect::<Vec<_>>(),
+        ["ready(true)", "payload(payload)"]
+    );
+    let rhs = method
+        .cpg
+        .edges
+        .iter()
+        .find(|edge| {
+            edge.kind == "ARGUMENT"
+                && edge.source == initializers[1].id
+                && edge.label.as_deref() == Some("2")
+        })
+        .unwrap()
+        .target;
+    assert_eq!(method.cpg.nodes[rhs as usize].kind, "IDENTIFIER");
+    assert!(method.cpg.edges.iter().any(|edge| {
+        edge.kind == "REF"
+            && edge.source == rhs
+            && method.cpg.nodes[edge.target as usize].kind == "METHOD_PARAMETER_IN"
+    }));
+}
+
+#[test]
+fn pointer_copies_reject_unproved_types_and_declarators() {
+    for source in [
+        "struct A { int* x; A(volatile int* p): x(p) {} };",
+        "struct A { int* x; A(int* volatile p): x(p) {} };",
+        "struct A { int* x; A(int p[2]): x(p) {} };",
+        "struct A { int** x; A(int** p): x(p) {} };",
+        "struct A { int* x; A(int* p = nullptr): x(p) {} };",
+        "struct A { int* x; A(int* p); }; A::A(int* p): x(p) {}",
+        "struct A { using T = int; T* x; A(T* p): x(p) {} };",
+        "struct A { int* x; int* y; A(int* p): x(p), y(x) {} };",
+        "struct A { Unknown* x; A(Unknown* p): x(p) {} };",
+    ] {
+        assert!(
+            analyze(source, "unproved.cpp", &options(true)).is_err(),
             "{source}"
         );
     }

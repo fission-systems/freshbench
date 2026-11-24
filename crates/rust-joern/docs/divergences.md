@@ -6,6 +6,178 @@ graphs it affects and how to restore the reference behavior. Add an entry, newes
 first, in the change that introduces a divergence. Fixes that restore parity
 belong in regression fixtures, not here.
 
+## Unknown template-id declarations stay declarations
+
+**Recorded:** 2026-11-23, [PR #68](https://github.com/Noelo-Lab/rust-joern/pull/68), which added the Joern behavior under
+`joern_cdt_failures`.
+
+**Joern:** when neither the template name nor its single argument names a type,
+as in `std::vector<std::string> lines;` after header stripping, CDT reads the
+comparison `(std::vector < std::string) > lines`. With `= value` the statement
+is an assignment to that comparison. A known class template, a type-keyword or
+pointer argument, two arguments or a keyword-led name stay declarations.
+
+**Rust Joern:** the statement declares a local of that type, with its
+initializer as an assignment.
+
+**Why:** the source declares a variable, and a compiled binary contains no such
+comparison. The comparison nodes can also open an extra basic block, as before
+the loop in ninja's `StatusPrinter::PrintStatus`.
+
+**Affects:** the CPG, CFG, reaching definitions and DDG of C++ function bodies
+with such declarations, typically after header stripping.
+
+**Reference behavior:** `joern_cdt_failures`, as for the CDT failures below.
+
+## C++ `while` and `switch` with a declaration condition keep their CFG
+
+**Recorded:** 2026-11-23, [PR #62](https://github.com/Noelo-Lab/rust-joern/pull/62).
+
+**Joern:** a `while` or `switch` whose condition declares a variable, such as
+`while (int q = g())` or `switch (int p = g())`, has no CFG at all, body
+included. `if (int p = g())` keeps its CFG.
+
+**Rust Joern:** the condition is evaluated as a declaration, and the loop or
+switch is lowered like one with an expression condition.
+
+**Why:** dropping the statement loses all of its body. ninja's
+`GuessParallelism` is one such function.
+
+**Affects:** the CFG, reaching definitions and DDG of C++ functions with such a
+`while` or `switch`.
+
+**Reference behavior:** `joern_cpp_control_flow`, as for `noexcept` operands
+below.
+
+## C++ names in decompiled C are still analyzed
+
+**Recorded:** 2026-11-21, [PR #53](https://github.com/Noelo-Lab/rust-joern/pull/53),
+approved by the DecBench maintainer as output Joern cannot produce.
+
+**Joern:** decompilers print C++ names into the C they emit for C++ binaries.
+CDT's C parser fails on a template-id definition such as
+`char * EmitCopy<true>(char *op) { ... }`, on a definition whose own name is
+qualified (`void snappy::Sink::~Sink(...)`), on `class ns::Record { ... }`, and
+on a call `operator new[](n)`. The definitions have no method; the declaration
+`operator delete(p);` becomes a local prototype named `delete`, and
+`return operator new(n);` has no nodes.
+
+**Rust Joern:** in C input, such a definition keeps its method, named as
+Joern's C++ frontend names it: the last name component without template
+arguments (`EmitCopy`, `~Sink`). The record is a record definition, and
+`operator new`, `operator new[]`, `operator delete` and `operator delete[]`
+followed by `(` are ordinary named calls. A `::` in a return or parameter type
+remains a problem declaration, as before.
+
+**Why:** C++ is parsed only from the original source. Decompiled output is
+pseudo-C that uses `this`, `new` and `delete` as identifiers, so it stays in C
+mode with recovery. On the C output of angr, Ghidra, Kuna and Fission for three
+local C++ projects at three optimization levels, strict parsing accepted 10 of
+36 files before this change and all 36 after, with 11,185 methods instead of
+10,753.
+
+**Affects:** which methods exist in decompiled C containing these forms, and
+their CPG, CFG, reaching definitions and DDG. All 177 C fixtures give
+byte-identical output in the default, compatibility-strict and DDG profiles.
+
+**Reference behavior:** `joern_cdt_failures` in `Options` and Python, or
+`--joern-cdt-failures` on the CLI.
+
+## C++ definitions without a Joern method keep their bodies
+
+**Recorded:** 2026-11-20, [PR #51](https://github.com/Noelo-Lab/rust-joern/pull/51),
+approved by the DecBench maintainer. Earlier C++
+parser changes already produce it; open C++ recovery changes extend it.
+
+**Joern:** in some preprocessed C++ translation units that GCC accepts, Joern
+exports no method for a definition, so it has no CFG. Examples include the
+`wabt` `BinaryReader` constructor with a member initializer list,
+`tinyrenderer`'s out-of-line `Model::nverts`, functions using lambdas or
+structured bindings, and explicit specializations in `ggml`.
+
+**Rust Joern:** the definition keeps its method, body, CFG and DDG.
+
+**Why:** the source compiles, so its body is recoverable. The maintainer
+approved emitting graphs that Joern cannot produce. Parity is measured on the
+functions for which Joern exports a body.
+
+**Affects:** which methods exist in preprocessed C++ sources, and their CPG,
+CFG, reaching definitions and DDG. The 2026-11-19 frozen replay of 74 C++
+translation units requests 3,354 functions; Joern exports no method for 783 of
+them. Upstream main exports a body CFG for 358 of those 783, and a local
+composition of the open C++ recovery changes for 551. Joern's 280 degenerate
+graphs in the same replay are not affected by this entry.
+
+**Reference behavior:** no option removes these methods. `compare_pyjoern.py`
+reports them as `extra` rows. Comparisons with original references count only
+functions for which Joern exports a body CFG.
+
+## C++23 consteval if retains the runtime arm
+
+**Introduced:** 2026-11-14.
+
+Joern 4.0.150 drops both arms in the checked `if consteval` control.
+Rust Joern keeps the compound statement selected outside constant evaluation.
+The first arm runs for `if !consteval`; the `else` arm runs for `if consteval`,
+with fallthrough when it is absent. The compile-time arm and the test itself
+produce no runtime nodes. This is runtime CFG extraction, with no constant
+interpreter or analysis of the skipped arm.
+
+This affects the CPG, CFG, reaching definitions and DDG of the selected arm.
+The `joern_cpp_control_flow` option omits both arms for reference comparisons.
+
+## Braced scalar constructor initializers
+
+**Recorded:** 2026-11-14, follow-up to [PR #5](https://github.com/Noelo-Lab/rust-joern/pull/5).
+
+Joern 4.0.150 recovers the constructor body in the checked C++11 example.
+The existing opt-in `cpp_constructor_initializers` profile additionally emits
+normal-completion field writes for a proved single braced literal. Initialization
+follows field declaration order, even when the initializer list is reordered.
+Disabling the profile suppresses these extra nodes; the CFG then starts at the
+constructor body as in Joern, and strict parsing accepts the constructor.
+
+## MSVC inline warning and pack pragmas
+
+Recorded 2026-11-11 in [PR #27](https://github.com/Noelo-Lab/rust-joern/pull/27).
+
+Joern 4.0.150 exports only the final `return 5;` in the CFG of a
+Windows-target compiler control where an inline `__pragma(warning(...))`
+precedes `if (x) return 3;`. Clang retains the conditional and both returns.
+
+Rust Joern treats supported unquoted `warning` and `pack` invocations as
+preprocessing trivia, preserving original source positions. This keeps
+directives out of the executable CPG and preserves the adjacent CFG and
+data flow. The parser models the surrounding syntax and does not evaluate
+compiler warning policy or record packing. Unsupported forms produce a
+diagnostic.
+
+There is no option to restore Joern's dropped branch.
+
+## Placement new operand evaluation
+
+**Recorded:** 2026-11-12, standalone placement-new parser change.
+
+**Joern:** 4.0.150 exports both operands in a scalar placement-new expression
+and visits the constructor initializer before the placement operand in its CFG.
+
+**Rust Joern:** the placement list in `new (args) T` is retained within the
+existing `<operator>.new` graph expression. The graph visits placement
+operands before constructor initializer operands. The type argument remains
+structural. The parser does not resolve allocation overloads or model hidden
+constructor or exception-cleanup calls.
+
+**Why:** the C++ new-expression evaluates placement operands before
+initializer operands. Windows ARM64 Clang IR for the control evaluates
+`location()` before `value()`; the original Joern CFG reverses those two calls.
+
+**Affects:** CPG arguments and CFG order for this form, and their dependent DDG.
+The independent parenthesized allocated type-id form retains its previous
+handling.
+
+**Reference behavior:** no option changes the argument order of the retained
+placement-new expression. DecBench's backend pin remains unchanged.
+
 ## Invalid explicit-destructor call diagnostics
 
 **Recorded:** 2026-10-28, follow-up to PR #3; no DecBench pin update.
@@ -277,6 +449,29 @@ request it. DecBench and its shim use the default, so `compare_decbench.py`
 reports these loops as differences, and DecBench's GED cache needs a new
 `cache_version`.
 
+## Literal `if constexpr` conditions select one CFG branch
+
+**Introduced** 2026-11-11, [PR #26](https://github.com/Noelo-Lab/rust-joern/pull/26).
+
+**Joern:** 4.0.150 emits both successors for the literal `if constexpr` cases
+in the comparison fixture.
+
+**Rust Joern:** a boolean or recognized integer literal selects the executed
+branch. The condition and discarded statements retain their AST nodes. An
+unresolved condition reports an error diagnostic and keeps the structural CFG
+available in non-strict mode. Init-statements and conditions that require
+name lookup, constant evaluation, or template instantiation are unresolved.
+
+**Why:** C++17 discards the unselected substatement at compile time. A generic
+conditional graph cannot stand for an instantiated function. See the
+[C++ draft's if statement](https://eel.is/c++draft/stmt.if).
+
+**Affects:** raw and normalized CFGs and their data-flow projections. Ordinary
+`if` statements keep their existing CFGs.
+
+**Reference behavior:** use `joern_cpp_control_flow` or
+`--joern-cpp-control-flow` to retain both branches and Joern's CFG.
+
 ## Original exporter stack overflows are not reproduced
 
 **Recorded:** 2026-10-09 CFG parity evaluation.
@@ -304,3 +499,9 @@ remain unchanged and still diagnose unsupported initializer syntax. This has
 not changed the DecBench parser pin or metrics. See
 [the profile contract](cpp-constructor-initializers.md) for the admitted subset,
 normal-completion-only scope and checkpointed corpus qualification driver.
+
+On 2026-11-11, the follow-up to [PR #5](https://github.com/Noelo-Lab/rust-joern/pull/5)
+extends that profile to a direct copy from a matching plain-pointer parameter
+in an inline constructor. The original declaration tokens supply the pointee
+type and qualifiers. The CFG places the field write in declaration order.
+Use the default option to reproduce the original initializer behavior.
