@@ -46,6 +46,7 @@ jobs:
       - run: chmod +x "$RUNNER_TEMP/fb/freshbench" && echo "FRESHBENCH_BIN=$RUNNER_TEMP/fb/freshbench" >> "$GITHUB_ENV"
       - name: image
         run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           source ci/pins.env
           docker pull -q "$BUILD_IMAGE_CROSS"
       - name: qualify

@@ -25,6 +25,8 @@ pub struct Target {
     pub source_path: String,
     /// unstripped binary, relative to the root (type ground truth)
     pub binary_path: Option<String>,
+    /// the build's optimization flags (recompilation)
+    pub flags: String,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +44,8 @@ struct Bin {
     arch: Option<String>,
     #[serde(default)]
     binary_path: Option<String>,
+    #[serde(default)]
+    flags: String,
     #[serde(default)]
     function_info: Vec<FInfo>,
 }
@@ -85,6 +89,7 @@ pub fn targets(root: &Path) -> Result<Vec<Target>> {
                         address: f.address,
                         source_path: sp,
                         binary_path: b.binary_path.clone(),
+                        flags: b.flags.clone(),
                     },
                 );
             }
@@ -134,6 +139,7 @@ fn prepared_targets(root: &Path) -> Result<Vec<Target>> {
                         address: Some(f.address),
                         source_path: f.source_path,
                         binary_path: Some(format!("{build}/binaries/{bin}")),
+                        flags: pb.flags.clone(),
                     },
                 );
             }
@@ -406,6 +412,7 @@ fn score_tu(
             ged: None,
             joern_ged: None,
             types: None,
+            recompile: None,
             tags: vec![],
             scorer: score::SCORER.to_string(),
         };
@@ -535,6 +542,78 @@ pub fn score_output(
         }),
         tags: taxonomy::tags(Some(sn), Some(on), Some(sf), Some(&of)),
     }
+}
+
+/// Recompile every target `tool` printed and compare it with the original code.
+/// `toolchain(arch, compiler, flags)` gives the compiler for a build.
+pub fn recompile_all(
+    root: &Path,
+    tool: &str,
+    toolchain: &(dyn Fn(&str, &str, &str) -> crate::recompile::Toolchain + Sync),
+    limit: Option<usize>,
+) -> Result<Vec<crate::rows::RecompileLine>> {
+    let targets = targets(root)?;
+    let code = records(root, tool)?;
+    let ranges: std::sync::Mutex<HashMap<String, std::sync::Arc<HashMap<u64, u64>>>> =
+        Default::default();
+    let todo: Vec<&Target> = targets
+        .iter()
+        .filter(|t| {
+            code.get(&t.key).is_some_and(|c| !c.trim().is_empty())
+                && t.binary_path.is_some()
+                && t.address.is_some()
+        })
+        .take(limit.unwrap_or(usize::MAX))
+        .collect();
+    let mut out: Vec<crate::rows::RecompileLine> = todo
+        .par_iter()
+        .map(|t| {
+            let bp = t.binary_path.as_ref().unwrap();
+            let existing = ranges.lock().unwrap().get(bp).cloned();
+            let r = match existing {
+                Some(r) => r,
+                None => {
+                    let r = std::sync::Arc::new(
+                        std::fs::read(root.join(bp))
+                            .ok()
+                            .and_then(|d| crate::dwarf::ranges(&d).ok())
+                            .unwrap_or_default(),
+                    );
+                    ranges
+                        .lock()
+                        .unwrap()
+                        .entry(bp.clone())
+                        .or_insert(r)
+                        .clone()
+                }
+            };
+            let low = t.address.unwrap();
+            let score = match r.get(&low) {
+                Some(&high) => {
+                    let tc = toolchain(&t.key.arch, &t.key.compiler, &t.flags);
+                    crate::recompile::score(
+                        &tc,
+                        &code[&t.key],
+                        &t.key.function,
+                        &root.join(bp),
+                        low,
+                        high,
+                    )
+                }
+                None => crate::recompile::RecompileScore {
+                    error: Some("no high_pc in DWARF".into()),
+                    ..Default::default()
+                },
+            };
+            crate::rows::RecompileLine {
+                key: t.key.clone(),
+                tool: tool.to_string(),
+                recompile: score,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
 }
 
 #[cfg(test)]

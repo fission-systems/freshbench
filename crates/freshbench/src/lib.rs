@@ -19,6 +19,7 @@ pub mod headroom;
 pub mod joern;
 pub mod manifest;
 pub mod prepare;
+pub mod recompile;
 pub mod report;
 pub mod rows;
 pub mod score;

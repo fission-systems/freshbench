@@ -146,6 +146,51 @@ fn collect<'a>(
     Ok(())
 }
 
+/// low_pc -> high_pc of every subprogram that has both.
+pub fn ranges(data: &[u8]) -> Result<HashMap<u64, u64>> {
+    let file = object::File::parse(data)?;
+    let endian = if file.is_little_endian() {
+        RunTimeEndian::Little
+    } else {
+        RunTimeEndian::Big
+    };
+    let load = |id: gimli::SectionId| -> Result<Cow<[u8]>, object::Error> {
+        match file.section_by_name(id.name()) {
+            Some(s) => s.uncompressed_data(),
+            None => Ok(Cow::Borrowed(&[][..])),
+        }
+    };
+    let owned = gimli::DwarfSections::load(load)?;
+    let dwarf = owned.borrow(|s| EndianSlice::new(s, endian));
+    let mut out = HashMap::new();
+    let mut units = dwarf.units();
+    while let Some(header) = units.next()? {
+        let unit = dwarf.unit(header)?;
+        let u = unit.unit_ref(&dwarf);
+        let mut cursor = unit.entries();
+        while let Some(die) = cursor.next_dfs()? {
+            if die.tag() != gimli::DW_TAG_subprogram {
+                continue;
+            }
+            let Some(lv) = die.attr_value(gimli::DW_AT_low_pc) else {
+                continue;
+            };
+            let Ok(Some(low)) = u.attr_address(lv) else {
+                continue;
+            };
+            let high = match die.attr_value(gimli::DW_AT_high_pc) {
+                Some(AttributeValue::Udata(n)) => Some(low + n),
+                Some(v) => u.attr_address(v).ok().flatten(),
+                None => None,
+            };
+            if let Some(h) = high {
+                out.insert(low, h);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// low_pc -> signature for every subprogram with a low_pc in the binary.
 pub fn signatures(data: &[u8]) -> Result<HashMap<u64, Signature>> {
     let file = object::File::parse(data)?;

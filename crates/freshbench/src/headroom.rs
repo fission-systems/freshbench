@@ -269,6 +269,7 @@ mod tests {
             }),
             joern_ged: None,
             types: None,
+            recompile: None,
             tags: vec![],
             scorer: String::new(),
         }
