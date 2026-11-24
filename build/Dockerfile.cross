@@ -30,9 +30,6 @@ RUN dpkg --add-architecture i386 && dpkg --add-architecture arm64 && dpkg --add-
       libmpc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY cross/install_foreign_dev.sh /usr/local/lib/freshbench/install_foreign_dev.sh
-RUN apt-get update && bash /usr/local/lib/freshbench/install_foreign_dev.sh && rm -rf /var/lib/apt/lists/*
-
 COPY cross/build_cross_gcc.sh /usr/local/lib/freshbench/build_cross_gcc.sh
 RUN curl -fsSL -o /tmp/gcc.tar.xz "https://ftpmirror.gnu.org/gcc/gcc-${GCC_VER}/gcc-${GCC_VER}.tar.xz" \
     && echo "${GCC_SHA256}  /tmp/gcc.tar.xz" | sha256sum -c - \
@@ -44,6 +41,10 @@ RUN curl -fsSL -o /tmp/gcc.tar.xz "https://ftpmirror.gnu.org/gcc/gcc-${GCC_VER}/
     && bash /usr/local/lib/freshbench/build_cross_gcc.sh /tmp/gccsrc arm-linux-gnueabihf \
          --with-arch=armv7-a --with-fpu=vfpv3-d16 --with-float=hard --with-mode=thumb \
     && rm -rf /tmp/gccsrc /tmp/gccbuild-*
+
+# after the cross GCC, so changing the package set does not rebuild GCC
+COPY cross/install_foreign_dev.sh /usr/local/lib/freshbench/install_foreign_dev.sh
+RUN apt-get update && bash /usr/local/lib/freshbench/install_foreign_dev.sh && rm -rf /var/lib/apt/lists/*
 
 COPY fbcc.py /usr/local/bin/fbcc
 COPY build_project.py /usr/local/bin/build_project

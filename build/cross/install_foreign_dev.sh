@@ -19,9 +19,24 @@ for arch in i386 arm64 armhf; do
     if apt-get install -y -q --no-install-recommends --no-remove "$p:$arch" > /tmp/apt.log 2>&1; then
       echo "$arch $p installed" >> "$out"
     else
-      echo "$arch $p skipped: $(grep -m1 -E '^E:' /tmp/apt.log | cut -c1-160)" >> "$out"
+      why=$(grep -m1 -E 'trying to overwrite|^E:' /tmp/apt.log | cut -c1-200)
+      echo "$arch $p skipped: $why" >> "$out"
+      # a failed unpack leaves foreign packages half-installed and apt broken for every
+      # later install: purge what is not fully installed for this arch (never native)
+      broken=$(dpkg-query -W -f '${db:Status-Abbrev} ${Package}:${Architecture}\n' | awk -v a=":$arch" 'substr($1,2,1) ~ /[UFHWt]/ && $2 ~ a"$" {print $2}')
+      [ -n "$broken" ] && dpkg --purge --force-depends $broken > /dev/null 2>&1
+      apt-get install -y -q -f --no-remove > /dev/null 2>&1 || true
     fi
   done
 done
+# the image must leave apt consistent, or nothing built in it can be trusted
+apt-get check || exit 1
+# broken = unpacked/half-configured/half-installed/triggers pending (2nd char) or reinstall-required (3rd)
+broken_all() { dpkg-query -W -f '${db:Status-Abbrev} ${Package}:${Architecture}\n' | awk 'substr($1,2,1) ~ /[UFHWt]/ || substr($1,3,1) == "R"'; }
+if broken_all | grep -q .; then
+  echo "packages left in a non-installed state:" >&2
+  broken_all >&2
+  exit 1
+fi
 dpkg-query -W -f '${Package}:${Architecture} ${Version}\n' | sort > /etc/freshbench/dpkg-versions.txt
 grep -c installed "$out"; grep -c skipped "$out" || true
