@@ -52,7 +52,7 @@ def validate_rows(rows, expected, registry):
                 if not line.strip():
                     continue
                 row = json.loads(line)
-                key = tuple(row["key"][field] for field in KEY_FIELDS)
+                key = tuple(row[field] for field in KEY_FIELDS)
                 tool = row["tool"]
                 require(tool in registry, f"unknown tool: {tool}")
                 require(not registry[tool].get("llm", False), f"LLM tool in M1 ranking: {tool}")
