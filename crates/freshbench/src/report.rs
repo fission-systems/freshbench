@@ -194,15 +194,13 @@ fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distanc
             o.charged += u64::from(d.is_none());
             let v = d.unwrap_or(size);
             let lo = if d.is_some() {
-                per.get(t)
-                    .and_then(|r| r.ged.as_ref())
-                    .map_or(0.0, |g| {
-                        if g.exact {
-                            v
-                        } else {
-                            g.lower_bound.unwrap_or(0.0).clamp(0.0, v)
-                        }
-                    })
+                per.get(t).and_then(|r| r.ged.as_ref()).map_or(0.0, |g| {
+                    if g.exact {
+                        v
+                    } else {
+                        g.lower_bound.unwrap_or(0.0).clamp(0.0, v)
+                    }
+                })
             } else {
                 size
             };
