@@ -22,6 +22,7 @@ of function starts, as any user who knows a function's address would give it.
 | ghidra | `ghidra/run` + `FreshBenchDecompile.java` (list mode: `FreshBenchFunctions.java`) | `GHIDRA_INSTALL_DIR`, JDK 21 |
 | kuna | `kuna/run` (Kuna's own CLI: `decompile-project --addr ...`, per-function `decompile --addr --json` for the rest) | `KUNA_BIN` |
 | angr | `angr/run` | Python with `angr` |
+| unlace | `unlace/run` (`decompile-all --json` with `--addr` per function; list mode: `unlace functions --json`) | `UNLACE_BIN`, `UNLACE_SPECS`; built from the pinned commit, no binary releases |
 | borer | `borer/run` (list mode: `borer functions` pages, then `borer function` per entry for its range; `BORER_LIST_JOBS` parallel calls, default CPU count) | `BORER_BIN` |
 | fission | built in (`--fission-cli`) | `fission_cli` |
 
