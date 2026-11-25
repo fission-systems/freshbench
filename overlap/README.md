@@ -10,4 +10,3 @@ through DecBench enters FreshBench. Only hashes are stored, no code.
 
 Regenerate: `freshbench fingerprints <decbench-dataset>/sources --out decbench_token_fingerprints.json`.
 
-`decbench_fingerprints.json` / `.py`: the v1 (rust-joern CFG) fingerprints, kept for tag `v1`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v2: install one decompiler on a GitHub runner, pinned by ci/pins.env, and
+# Install one decompiler on a GitHub runner, pinned by ci/pins.env, and
 # print the adapter command for `freshbench decompile` to $GITHUB_ENV as FB_ADAPTER.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"

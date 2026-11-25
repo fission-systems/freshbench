@@ -35,7 +35,7 @@ jobs:
       - if: steps.c.outputs.cache-hit != 'true'
         run: cd fsrc && cargo build -p fission-cli --release --locked
       - uses: actions/download-artifact@v4
-        with: { name: "qual-${{ inputs.project }}", path: q, run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+        with: { name: "qual-${{ inputs.project }}-x86_64", path: q, run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
       - name: probe
         run: |
           mkdir -p out && tar -xf q/prep.tar -C q

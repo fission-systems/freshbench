@@ -1,5 +1,5 @@
 name: evaluate
-# v2: decompile prepared builds with one tool and score them with FreshBench's
+# Decompile prepared builds with one tool and score them with FreshBench's
 # own metrics (Rust; no DecBench). Inputs come from a qualify-arch run.
 on:
   workflow_dispatch:
@@ -83,7 +83,7 @@ jobs:
         with: { name: bins, path: "${{ runner.temp }}/bins" }
       - uses: actions/download-artifact@v4
         with: { name: "qual-${{ matrix.project }}-${{ inputs.arch }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
-      - run: ci/setup_tool_v2.sh ${{ matrix.tool }}
+      - run: ci/setup_tool.sh ${{ matrix.tool }}
       - name: function boundaries
         if: inputs.track == 'boundaries'
         # --jobs already runs binaries in parallel; one borer call at a time each
