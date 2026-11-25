@@ -17,7 +17,7 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def load_targets(root, manifest):
+def load_targets(root, manifest, verify_sources=False):
     expected = set()
     with gzip.open(manifest, "rt") as source:
         entries = [json.loads(line) for line in source if line.strip()]
@@ -37,6 +37,17 @@ def load_targets(root, manifest):
                        binary, function["name"])
                 require(key not in expected, f"duplicate target: {key}")
                 expected.add(key)
+    if verify_sources:
+        sources = {entry["path"]: entry for entry in entries
+                   if entry["path"].startswith("sources/")}
+        require(bool(sources), "manifest has no source files")
+        for rel, entry in sorted(sources.items()):
+            path = root / rel
+            require(path.is_file() and path.stat().st_size == entry["size"],
+                    f"source missing or wrong size: {rel}")
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            require(digest == entry["sha256"], f"source digest mismatch: {rel}")
     require(len(expected) == EXPECTED_TARGETS, f"unexpected M1 row count: {len(expected)}")
     return expected
 
@@ -76,6 +87,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--verify-sources", action="store_true")
     parser.add_argument("--rows", type=Path, required=True)
     parser.add_argument("--meta", type=Path, required=True)
     parser.add_argument("--registry", type=Path, required=True)
@@ -84,7 +96,7 @@ def main():
     require(meta["pins"]["corpus build (qualify-arch run)"] == QUALIFY_RUN,
             "result provenance does not match M1 qualification run")
     registry = json.loads(args.registry.read_text())
-    validate_rows(args.rows, load_targets(args.corpus, args.manifest), registry)
+    validate_rows(args.rows, load_targets(args.corpus, args.manifest, args.verify_sources), registry)
     print(f"M1 publication gate passed: {REVISION}")
 
 
