@@ -183,11 +183,15 @@ fn distances(
     let mut lower: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
     let mut unmeasured = 0;
     for (key, per) in table {
-        let size = truth.and_then(|index| index.get(key)).map(|t| (t.nodes, t.edges));
-        let Some((n, e)) = size.or_else(|| per.values().find_map(|r| {
-            let g = r.ged.as_ref()?;
-            Some((g.source_nodes?, g.source_edges?))
-        })) else {
+        let size = truth
+            .and_then(|index| index.get(key))
+            .map(|t| (t.nodes, t.edges));
+        let Some((n, e)) = size.or_else(|| {
+            per.values().find_map(|r| {
+                let g = r.ged.as_ref()?;
+                Some((g.source_nodes?, g.source_edges?))
+            })
+        }) else {
             unmeasured += 1;
             continue;
         };
@@ -274,7 +278,10 @@ pub fn summarize_with_truth(
         let band = truth
             .and_then(|index| index.get(key))
             .map(|t| t.nodes)
-            .or_else(|| per.values().find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes)))
+            .or_else(|| {
+                per.values()
+                    .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
+            })
             .map(|n| bands::band(Some(n)))
             .unwrap_or(bands::UNKNOWN);
         let branching = band != bands::STRAIGHT_LINE && band != bands::UNKNOWN;
@@ -1215,14 +1222,19 @@ mod tests {
         let mut t = table();
         let key = row("p3", "x86_64", "missing", "a", None, 3).key;
         t.entry(key.clone()).or_default();
-        let truth = [(key.clone(), crate::ground_truth::Entry {
-            key,
-            source: "f.c".into(),
-            source_path: "sources/p/f.c".into(),
-            source_sha256: String::new(),
-            nodes: 4,
-            edges: 5,
-        })].into_iter().collect();
+        let truth = [(
+            key.clone(),
+            crate::ground_truth::Entry {
+                key,
+                source: "f.c".into(),
+                source_path: "sources/p/f.c".into(),
+                source_sha256: String::new(),
+                nodes: 4,
+                edges: 5,
+            },
+        )]
+        .into_iter()
+        .collect();
         let s = summarize_with_truth(&t, 20, Some(&truth));
         assert_eq!(s.distance_unmeasured, 0);
         assert_eq!(s.distance["a"].rows, 3);
