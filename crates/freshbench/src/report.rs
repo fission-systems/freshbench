@@ -178,10 +178,9 @@ fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distanc
     let mut lower: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
     let mut unmeasured = 0;
     for per in table.values() {
-        let Some((n, e)) = per.values().find_map(|r| {
-            let g = r.ged.as_ref()?;
-            Some((g.source_nodes?, g.source_edges?))
-        }) else {
+        // the size comes from the ground truth every row carries, never from
+        // whichever tool happened to be scored
+        let Some((n, e)) = crate::rows::source_graph_of(per).map(|g| (g.nodes, g.edges)) else {
             unmeasured += 1;
             continue;
         };
@@ -257,10 +256,8 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
         if common {
             s.common_rows += 1;
         }
-        let band = per
-            .values()
-            .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
-            .map(|n| bands::band(Some(n)))
+        let band = crate::rows::source_graph_of(per)
+            .map(|g| bands::band(Some(g.nodes)))
             .unwrap_or(bands::UNKNOWN);
         let branching = band != bands::STRAIGHT_LINE;
         for tool in &tools {
@@ -973,6 +970,11 @@ mod tests {
             failure: None,
             source: None,
             evidence: None,
+            source_graph: Some(crate::rows::SourceGraph {
+                nodes: sn,
+                edges: sn,
+                ..Default::default()
+            }),
         }
     }
 
@@ -1078,6 +1080,47 @@ mod tests {
         );
         assert_eq!(s.overall["a"].failures["timeout"], 1);
         assert_eq!(s.overall["a"].missing, 0);
+    }
+
+    /// #25: a function every tool fails on is charged to every tool, and one
+    /// tool's distance does not depend on which other tools are in the table.
+    #[test]
+    fn distance_denominator_is_ground_truth_not_other_tools() {
+        let one = |rows: Vec<Row>| {
+            let mut t = Table::new();
+            for r in rows {
+                t.entry(r.key.clone())
+                    .or_default()
+                    .insert(r.tool.clone(), r);
+            }
+            t
+        };
+        // nobody produced a score: still charged, to both
+        let all_fail = one(vec![
+            row("p", "x86_64", "f", "a", None, 4),
+            row("p", "x86_64", "f", "b", None, 4),
+        ]);
+        let s = summarize(&all_fail, 50);
+        assert_eq!(s.distance_unmeasured, 0);
+        for t in ["a", "b"] {
+            let d = &s.distance[t];
+            assert_eq!((d.rows, d.charged, d.mean), (1, 1, 8.0), "{t}");
+        }
+        // tool a failed; whether b (which scored) is in the table or not, a's
+        // distance is the same
+        let with_b = one(vec![
+            row("p", "x86_64", "f", "a", None, 4),
+            row("p", "x86_64", "f", "b", Some(1.0), 4),
+            row("p", "x86_64", "g", "a", Some(2.0), 6),
+        ]);
+        let without_b = one(vec![
+            row("p", "x86_64", "f", "a", None, 4),
+            row("p", "x86_64", "g", "a", Some(2.0), 6),
+        ]);
+        let (x, y) = (summarize(&with_b, 50), summarize(&without_b, 50));
+        assert_eq!(x.distance["a"], y.distance["a"]);
+        assert_eq!((y.distance["a"].rows, y.distance["a"].charged), (2, 1));
+        assert_eq!(x.overall["a"].branching_rows, y.overall["a"].branching_rows);
     }
 
     #[test]

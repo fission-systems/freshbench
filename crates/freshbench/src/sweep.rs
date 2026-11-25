@@ -450,9 +450,8 @@ impl Counts {
     fn add(&mut self, r: &Row) {
         self.rows += 1;
         let branching = r
-            .ged
-            .as_ref()
-            .and_then(|g| g.source_nodes)
+            .source_graph
+            .map(|g| g.nodes)
             .is_none_or(|n| bands::band(Some(n)) != bands::STRAIGHT_LINE);
         self.branching_rows += u64::from(branching);
         let perfect = r.scored_ged() == Some(0.0);
@@ -722,9 +721,8 @@ pub fn diff(run_a: &Path, run_b: &Path, keep: usize) -> Result<Diff> {
         ..Default::default()
     };
     let branching = |r: &Row| {
-        r.ged
-            .as_ref()
-            .and_then(|g| g.source_nodes)
+        r.source_graph
+            .map(|g| g.nodes)
             .is_none_or(|n| bands::band(Some(n)) != bands::STRAIGHT_LINE)
     };
     let mut changes: Vec<(f64, Change)> = Vec::new();

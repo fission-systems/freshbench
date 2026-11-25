@@ -101,6 +101,26 @@ pub struct GedScore {
     pub output_edges: Option<u32>,
 }
 
+/// The source function's graph sizes. Ground truth: built from the pinned
+/// source whatever the tool did, so every tool's row of a function carries the
+/// same value, failures included. Denominators and bands are read from here,
+/// never from another tool's score.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceGraph {
+    pub nodes: u32,
+    pub edges: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joern_nodes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joern_edges: Option<u32>,
+}
+
+/// The source graph of one function, from any of its rows (they agree:
+/// `load_table` refuses rows that do not).
+pub fn source_graph_of(per: &BTreeMap<String, Row>) -> Option<SourceGraph> {
+    per.values().find_map(|r| r.source_graph)
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Row {
     #[serde(flatten)]
@@ -138,6 +158,10 @@ pub struct Row {
     /// what of the tool's line mappings and variable addresses was valid
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<crate::evidence::Checked>,
+    /// the source function's graph sizes, on every row whose source could be
+    /// built (None: `source_missing`, or a row from an older scorer)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_graph: Option<SourceGraph>,
 }
 
 impl Row {
@@ -319,6 +343,16 @@ pub fn load_table(root: &Path) -> Result<Table> {
     if scorers.len() > 1 {
         anyhow::bail!("rows from different scorers: {scorers:?}");
     }
+    // the source graph is ground truth: every tool's row of a function must
+    // carry the same one
+    for (k, per) in &t {
+        let mut seen = per.values().filter_map(|r| r.source_graph);
+        if let Some(first) = seen.next() {
+            if seen.any(|g| g != first) {
+                conflicts.push(format!("source graph of {k:?}"));
+            }
+        }
+    }
     if !conflicts.is_empty() {
         anyhow::bail!(
             "{} rows occur twice with different content, e.g. {}",
@@ -480,5 +514,27 @@ mod tests {
         std::fs::write(rows.join("t.recompile.jsonl"), side("new", true)).unwrap();
         std::fs::write(rows.join("u.recompile.jsonl"), side("new", false)).unwrap();
         assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("two recompile"));
+    }
+
+    /// #25: the source graph is ground truth; two rows of one function that
+    /// disagree on it are refused like conflicting duplicates.
+    #[test]
+    fn rows_that_disagree_on_the_source_graph_are_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let rows = d.path().join("rows");
+        std::fs::create_dir_all(&rows).unwrap();
+        let line = |tool: &str, nodes: u32| {
+            format!(
+                r#"{{"project":"p","arch":"x86_64","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"{tool}","outcome":"no_output","scorer":"s","source_graph":{{"nodes":{nodes},"edges":3}}}}"#
+            )
+        };
+        std::fs::write(rows.join("a.jsonl"), line("a", 4) + "\n").unwrap();
+        std::fs::write(rows.join("b.jsonl"), line("b", 4) + "\n").unwrap();
+        let t = load_table(d.path()).unwrap();
+        let per = t.values().next().unwrap();
+        assert_eq!(source_graph_of(per).map(|g| g.nodes), Some(4));
+        std::fs::write(rows.join("b.jsonl"), line("b", 5) + "\n").unwrap();
+        let e = format!("{:#}", load_table(d.path()).unwrap_err());
+        assert!(e.contains("source graph"), "{e}");
     }
 }

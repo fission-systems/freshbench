@@ -177,10 +177,7 @@ pub fn compute(
             tool_common += m;
             vbest += m.min(b);
         }
-        let sn = mine.ged.as_ref().and_then(|g| g.source_nodes).or_else(|| {
-            per.values()
-                .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
-        });
+        let sn = crate::rows::source_graph_of(per).map(|g| g.nodes);
         let rid = key.to_string();
         overall.add(perfect, reachable, gap, proven, uncovered, &rid, &acc);
         by_band
@@ -299,6 +296,11 @@ mod tests {
             failure: None,
             source: None,
             evidence: None,
+            source_graph: Some(crate::rows::SourceGraph {
+                nodes: sn,
+                edges: sn,
+                ..Default::default()
+            }),
         }
     }
 

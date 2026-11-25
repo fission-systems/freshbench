@@ -438,7 +438,26 @@ fn score_tu(
             failure: None,
             source: Some(t.source.clone()),
             evidence: None,
+            source_graph: None,
         };
+        // the source graph is ground truth: recorded on every row, whatever
+        // the tool did, so no denominator depends on another tool's result
+        let src = src_cache.entry(t.key.function.as_str()).or_insert_with(|| {
+            let def = defs.get(&t.key.function).copied().flatten()?;
+            let t = tu.as_deref()?;
+            Some((
+                cfg::build(def, t),
+                csyntax::features(def, t),
+                crate::prepare::fingerprint(def, t),
+            ))
+        });
+        let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
+        row.source_graph = src.as_ref().map(|(sg, _, _)| crate::rows::SourceGraph {
+            nodes: sg.nodes() as u32,
+            edges: sg.edges.len() as u32,
+            joern_nodes: jg.map(|g| g.nodes() as u32),
+            joern_edges: jg.map(|g| g.edges.len() as u32),
+        });
         let Some(text) = code
             .get(&t.key)
             .map(|(c, _, _)| c)
@@ -482,15 +501,6 @@ fn score_tu(
         let ev = ev.unwrap_or_default();
         let ev_sha =
             manifest::sha256_bytes(serde_json::to_string(&ev).unwrap_or_default().as_bytes());
-        let src = src_cache.entry(t.key.function.as_str()).or_insert_with(|| {
-            let def = defs.get(&t.key.function).copied().flatten()?;
-            let t = tu.as_deref()?;
-            Some((
-                cfg::build(def, t),
-                csyntax::features(def, t),
-                crate::prepare::fingerprint(def, t),
-            ))
-        });
         let Some((sg, sf, src_fp)) = src.as_ref() else {
             row.outcome = Outcome::Unscored;
             row.tags = vec!["source_missing".into()];
@@ -512,7 +522,6 @@ fn score_tu(
         // parser builds from the whole translation unit), the DWARF signature,
         // and the target's data model (`long` is 4 bytes on i686 and ARMv7,
         // so the same output text has another type class there)
-        let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
         let dm = crate::types::DataModel::for_arch(&t.key.arch);
         let graph_id = |g: &cfg::Graph| manifest::sha256_bytes(format!("{g:?}").as_bytes());
         let key = ScoreCache::key(
@@ -851,7 +860,17 @@ mod tests {
             assert_eq!(by(c).outcome, Outcome::Unscored, "{c}");
             assert_eq!(by(c).tags, [NO_LINE_MAPPINGS]);
             assert!(by(c).code_sha256.is_some());
+            // #25: an unscored row still carries the source graph, the same
+            // ground truth as the scored row of the same function
+            assert!(by(c).ged.is_none());
+            assert_eq!(by(c).source_graph, by("O2").source_graph, "{c}");
         }
+        let g = by("O2").source_graph.expect("source graph on every row");
+        let s = by("O2").ged.as_ref().unwrap();
+        assert_eq!(
+            (Some(g.nodes), Some(g.edges)),
+            (s.source_nodes, s.source_edges)
+        );
     }
 
     #[test]
