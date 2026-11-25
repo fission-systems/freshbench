@@ -1195,6 +1195,7 @@ mod tests {
         let truth = [(key.clone(), crate::ground_truth::Entry {
             key,
             source: "f.c".into(),
+            source_path: "sources/p/f.c".into(),
             source_sha256: String::new(),
             nodes: 4,
             edges: 5,
