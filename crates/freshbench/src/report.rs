@@ -119,7 +119,9 @@ pub struct ToolSummary {
 pub struct Distance {
     pub rows: u64,
     pub mean: f64,
+    pub mean_lower_bound: f64,
     pub median: f64,
+    pub median_lower_bound: f64,
     /// rows at distance 0
     pub at_zero: u64,
     /// rows charged the whole source graph (no score)
@@ -127,7 +129,9 @@ pub struct Distance {
     /// the same over rows whose source has control flow
     pub branching_rows: u64,
     pub branching_mean: f64,
+    pub branching_mean_lower_bound: f64,
     pub branching_median: f64,
+    pub branching_median_lower_bound: f64,
     pub branching_at_zero: u64,
 }
 
@@ -171,6 +175,7 @@ fn median(v: &mut [f64]) -> f64 {
 /// Fill `out` with every tool's distance; returns the rows left out.
 fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distance>) -> u64 {
     let mut all: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
+    let mut lower: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
     let mut unmeasured = 0;
     for per in table.values() {
         let Some((n, e)) = per.values().find_map(|r| {
@@ -188,6 +193,22 @@ fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distanc
             o.rows += 1;
             o.charged += u64::from(d.is_none());
             let v = d.unwrap_or(size);
+            let lo = if d.is_some() {
+                per.get(t).and_then(|r| r.ged.as_ref()).map_or(0.0, |g| {
+                    if g.exact {
+                        v
+                    } else {
+                        g.lower_bound.unwrap_or(0.0).clamp(0.0, v)
+                    }
+                })
+            } else {
+                size
+            };
+            let (la, lb) = lower.entry(t.as_str()).or_default();
+            la.push(lo);
+            if branching {
+                lb.push(lo);
+            }
             o.at_zero += u64::from(v == 0.0);
             let (a, b) = all.entry(t.as_str()).or_default();
             a.push(v);
@@ -211,6 +232,11 @@ fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distanc
         o.branching_mean = mean(&b);
         o.median = median(&mut a);
         o.branching_median = median(&mut b);
+        let (mut la, mut lb) = lower.remove(t).unwrap_or_default();
+        o.mean_lower_bound = mean(&la);
+        o.branching_mean_lower_bound = mean(&lb);
+        o.median_lower_bound = median(&mut la);
+        o.branching_median_lower_bound = median(&mut lb);
     }
     unmeasured
 }
@@ -568,7 +594,8 @@ fn render_main(s: &Summary, x: &Extras) -> String {
     let mut b = String::from(
         "<h2>Main metrics</h2><p class=mute><b>GED distance</b>: edits from the output's control-flow graph to the source's \
 (FreshBench CFG), mean, median and rows at 0, over every row; a row without a score is charged the whole source graph, so a tool \
-that skips hard functions is not rewarded. Read the mean next to the median: a few large functions dominate the mean. \
+that skips hard functions is not rewarded. Ranges show deterministic GED lower and upper bounds (including fixed penalties), not statistical confidence intervals. \
+Read the mean next to the median: a few large functions dominate the mean. Rows are ordered by the mean upper bound; overlapping ranges do not establish a strict rank. \
 <b>With control flow</b>: the same over rows whose source has a branch or a loop. \
 <b>Function boundaries</b>: start F1 of the functions a tool finds by itself in the stripped binary, as built and with the unwind tables \
 removed (they hand out every boundary on x86-64 and AArch64); <b>ends</b>: share of true functions whose end it also found exactly, \
@@ -599,14 +626,18 @@ Lower distance and cost, higher F1 and ends are better.</p>",
         let _ = write!(
             b,
             "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td>\
-<td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
-<td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
+<td>{:.1}–{:.1} <span class=mute>med {:.0}–{:.0} · {}/{} at 0</span></td>\
+<td>{:.1}–{:.1} <span class=mute>med {:.0}–{:.0} · {}/{} at 0</span></td>\
 <td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            d.mean_lower_bound,
             d.mean,
+            d.median_lower_bound,
             d.median,
             num(d.at_zero),
             num(d.rows),
+            d.branching_mean_lower_bound,
             d.branching_mean,
+            d.branching_median_lower_bound,
             d.branching_median,
             num(d.branching_at_zero),
             num(d.branching_rows),
@@ -1128,6 +1159,26 @@ mod tests {
         assert_eq!((a.branching_rows, a.branching_perfect), (1, 0));
         assert_eq!(a.branching_perfect_rate, 0.0);
         assert_eq!(s.by["band"][bands::STRAIGHT_LINE]["a"].perfect, 1);
+    }
+
+    #[test]
+    fn ged_ranges_include_approximate_scores_and_fixed_penalties() {
+        let mut t = table();
+        for per in t.values_mut() {
+            if let Some(g) = per.get_mut("a").and_then(|r| r.ged.as_mut()) {
+                if g.value > 0.0 {
+                    g.exact = false;
+                    g.lower_bound = Some(1.0);
+                }
+            }
+        }
+        let s = summarize(&t, 20);
+        let a = &s.distance["a"];
+        assert_eq!((a.mean_lower_bound, a.mean), (0.5, 2.5));
+        assert_eq!((a.median_lower_bound, a.median), (0.5, 2.5));
+        let b = &s.distance["b<x>"];
+        assert_eq!((b.mean_lower_bound, b.mean), (31.0, 31.0));
+        assert_eq!(b.charged, 1);
     }
 
     #[test]
