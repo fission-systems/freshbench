@@ -20,10 +20,17 @@ v1 numbers and v2 numbers are not comparable.
 
 The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds
 the public leaderboard from completed `evaluate` runs. Supply their run IDs
-as a JSON array. It downloads only the pinned M1 target manifests (not the
-13.56 GB corpus), verifies their SHA-256 digests and checks that at least two
+as a JSON array. It downloads the pinned M1 target manifests and preprocessed sources (no
+binaries), verifies their SHA-256 digests and checks that at least two
 registered non-LLM tools have a row for every M1 target. Explicit failed or
 unsupported rows count; absent result rows do not pass the publication gate.
+
+The source CFG ground-truth store is generated independently of any decompiler.
+Use `freshbench ground-truth <corpus> --out ground-truth.json` and
+`freshbench report <results> --corpus <corpus> --ground-truth ground-truth.json --out site`
+to reuse the store locally. Report rejects mismatched scorer IDs and source CFG
+dimensions; publication requires no unmeasured source rows. The store is
+trusted input generated from the verified corpus; it is not a semantic oracle.
 
 Leave `deploy` false to inspect the generated `leaderboard-preview` artifact
 first. Enable GitHub Pages with GitHub Actions as its source, then run with
