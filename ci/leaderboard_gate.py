@@ -59,6 +59,10 @@ def validate_rows(rows, expected, registry):
                 require(key in expected, f"unexpected target: {key}")
                 require(bool(row["scorer"]), "empty scorer ID")
                 scorers.add(row["scorer"])
+                # no instruction index for the target: an infrastructure or
+                # truth failure, which must not be published as the tool's
+                require("no_instruction_index" not in row.get("tags", []),
+                        f"row without an instruction index: {tool} {key}")
                 seen.setdefault(tool, set()).add(key)
     require(len(scorers) == 1, f"expected one scorer ID, got {scorers}")
     require(len(seen) >= 2, "at least two tools with results are required for a leaderboard")
