@@ -249,6 +249,11 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
     let mut locals: BTreeMap<String, Pair> = BTreeMap::new();
     let mut per_project: BTreeMap<String, BTreeMap<String, (u64, u64)>> = BTreeMap::new();
     s.rows = table.len() as u64;
+    // recompilation is part of this evaluation when any row has a result; a
+    // row without one is then not measured, never a pass
+    let recompile_measured = table
+        .values()
+        .any(|per| per.values().any(|r| r.recompile.is_some()));
     for (key, per) in table {
         let common = tools
             .iter()
@@ -319,7 +324,7 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
                 o.recompile_compiles += u64::from(rc.compiles);
                 o.recompile_exact += u64::from(rc.exact);
             }
-            o.intersection_perfect += u64::from(r.intersection_perfect());
+            o.intersection_perfect += u64::from(r.intersection_perfect_in(recompile_measured));
             if let Some(t) = &r.types {
                 o.types_rows += 1;
                 o.types_perfect += u64::from(r.types_perfect());
@@ -528,7 +533,7 @@ Auxiliary: perfect rates on FreshBench's CFG, on Joern's CFG (vendored rust-joer
 (return and parameter classes against DWARF; locals coverage = local classes matched / DWARF locals with a location) and on recompilation \
 (byte match: the output, compiled as printed with the binary's own compiler, gives the original instructions). \
 <b>Union</b> = perfect on at least one of those (one is enough, so a right signature with a wrong body counts); <b>Intersection</b> = perfect on \
-every one that applies; <b>both CFGs</b> = GED 0 on both graph families; <b>strict</b> = GED 0 from output that parsed without error recovery. \
+every one that applies (types where DWARF gives a parameter or stack local to check, recompilation when it was run; a tool that reports no evidence is not perfect there); <b>both CFGs</b> = GED 0 on both graph families; <b>strict</b> = GED 0 from output that parsed without error recovery. \
 A source without control flow matches any output without control flow, an empty body included, so <b>with control flow</b> columns leave those rows out. \
 Only maintained decompilers are shown, and no LLM-based ones (the corpus is public). <b>It does not measure correctness</b>: a function can \
 print a wrong constant or argument and still score perfect. Compare tools on the same rows; do not read a score as proof that output is right or wrong.</p></details>\n\
@@ -1189,6 +1194,55 @@ mod tests {
 
     /// DecBench #6: a perfect on a source without control flow is reported
     /// apart, because an empty output scores it too.
+    /// #27: a metric that applies and was not measured is not a pass.
+    #[test]
+    fn missing_evidence_and_missing_recompile_are_not_intersection_perfect() {
+        use crate::types::TypeScore;
+        // CFG agreement on both families
+        let base = || {
+            let mut r = row("p", "x86_64", "f", "a", Some(0.0), 3);
+            r.joern_ged = r.ged.clone();
+            r
+        };
+        let mut reported = base();
+        reported.types = Some(TypeScore {
+            params_truth: 1,
+            params_output: 1,
+            params_right: 1,
+            perfect: true,
+            ..Default::default()
+        });
+        assert!(reported.intersection_perfect_in(false));
+        // types apply (DWARF has a parameter) and the tool said nothing: the
+        // scorer records a non-perfect score, so no free pass
+        let mut silent = base();
+        silent.types = Some(crate::types::compare_evidence(
+            &crate::types::Signature {
+                params: vec![crate::types::TypeClass::Int(4)],
+                ..Default::default()
+            },
+            &crate::evidence::Evidence::default(),
+            crate::types::DataModel::for_arch("x86_64"),
+        ));
+        assert!(!silent.intersection_perfect_in(false));
+        // recompilation part of the evaluation, no result for this row
+        assert!(!reported.intersection_perfect_in(true));
+        let mut t = Table::new();
+        let mut other = row("p", "x86_64", "g", "a", Some(0.0), 3);
+        other.joern_ged = other.ged.clone();
+        other.recompile = Some(crate::recompile::RecompileScore {
+            exact: true,
+            ..Default::default()
+        });
+        for r in [reported, other] {
+            t.entry(r.key.clone())
+                .or_default()
+                .insert(r.tool.clone(), r);
+        }
+        // f has no recompile result while g has one: only g is perfect
+        assert_eq!(summarize(&t, 50).overall["a"].intersection_perfect, 1);
+    }
+
     #[test]
     fn straight_line_sources_are_reported_apart() {
         let mut t = Table::new();

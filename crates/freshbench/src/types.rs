@@ -73,6 +73,20 @@ pub struct Signature {
     pub local_slots: Vec<(i64, TypeClass)>,
 }
 
+impl Signature {
+    /// Whether the type metric applies: DWARF gives a parameter or a
+    /// stack-slot local of a known class to check. Decided by the ground truth
+    /// alone, never by what a tool reported, so a tool that reports nothing is
+    /// scored (and not perfect) wherever another tool is.
+    pub fn type_checkable(&self) -> bool {
+        !self.params.is_empty()
+            || self
+                .local_slots
+                .iter()
+                .any(|(_, c)| *c != TypeClass::Unknown)
+    }
+}
+
 /// Data model of the target: pointer, `long` and `long double` storage size
 /// (what DWARF's `DW_AT_byte_size` says on that target).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -590,5 +604,34 @@ mod tests {
         );
         assert_eq!(class_of_type_string("struct pt", dm), TypeClass::Struct);
         assert_eq!(class_of_type_string("undefined8", dm), TypeClass::Int(8));
+    }
+
+    /// #27: applicability is decided by DWARF alone.
+    #[test]
+    fn type_metric_applies_only_when_dwarf_has_something_to_check() {
+        let nothing = Signature {
+            ret: Some(TypeClass::Void),
+            ..Default::default()
+        };
+        assert!(!nothing.type_checkable());
+        // empty evidence against nothing to check would read as perfect
+        let empty = crate::evidence::Evidence::default();
+        assert!(compare_evidence(&nothing, &empty, DataModel::for_arch("x86_64")).perfect);
+        let param = Signature {
+            params: vec![TypeClass::Ptr],
+            ..Default::default()
+        };
+        assert!(param.type_checkable());
+        assert!(!compare_evidence(&param, &empty, DataModel::for_arch("x86_64")).perfect);
+        let slot = Signature {
+            local_slots: vec![(-8, TypeClass::Int(4))],
+            ..Default::default()
+        };
+        assert!(slot.type_checkable());
+        let unknown_slot = Signature {
+            local_slots: vec![(-8, TypeClass::Unknown)],
+            ..Default::default()
+        };
+        assert!(!unknown_slot.type_checkable());
     }
 }

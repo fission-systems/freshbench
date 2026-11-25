@@ -617,10 +617,12 @@ pub fn score_output(
             output_edges: Some(jog.edges.len() as u32),
         })
     });
-    // types come from the tool's evidence only, never from the C text; a tool
-    // that reports no variables and no return type has no type score
+    // types come from the tool's evidence only, never from the C text. Whether
+    // the metric applies is the ground truth's call: a tool that reports no
+    // variables is scored like any other (and is not perfect), and a signature
+    // with nothing to check is not applicable to anyone
     let types = truth
-        .filter(|_| !ev.variables.is_empty() || ev.return_type.is_some())
+        .filter(|t| t.type_checkable())
         .map(|t| crate::types::compare_evidence(t, ev, dm));
     Cached {
         outcome: Outcome::Scored,
@@ -871,6 +873,36 @@ mod tests {
             (Some(g.nodes), Some(g.edges)),
             (s.source_nodes, s.source_edges)
         );
+    }
+
+    /// #27: a tool that reports no type evidence is scored where DWARF has
+    /// something to check, and is not perfect; a signature with nothing to
+    /// check has no type score for anyone.
+    #[test]
+    fn missing_type_evidence_is_scored_not_skipped() {
+        let src = "int f(int a)\n{\n  return a;\n}\n";
+        let tree = csyntax::parse(src).unwrap();
+        let def = csyntax::definitions(&tree, src)["f"].unwrap();
+        let (sg, sf) = (cfg::build(def, src), csyntax::features(def, src));
+        let dm = crate::types::DataModel::for_arch("x86_64");
+        let ev = crate::evidence::Evidence {
+            line_mappings: vec![crate::evidence::LineMap {
+                line: 3,
+                addresses: vec![0x10],
+            }],
+            ..Default::default()
+        };
+        let score = |truth: &crate::types::Signature| {
+            score_output(&sg, &sf, None, Some(truth), dm, src, "f", 1000, &ev).types
+        };
+        let one_param = crate::types::Signature {
+            params: vec![crate::types::TypeClass::Int(4)],
+            ..Default::default()
+        };
+        let t = score(&one_param).expect("applies: DWARF has a parameter");
+        assert!(!t.perfect);
+        assert_eq!(t.params_output, 0);
+        assert!(score(&crate::types::Signature::default()).is_none());
     }
 
     #[test]

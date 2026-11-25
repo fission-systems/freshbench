@@ -211,11 +211,24 @@ impl Row {
     }
 
     /// Perfect on every metric that applies to the row: both CFG families,
-    /// types where there is DWARF truth, recompilation where it was run.
-    pub fn intersection_perfect(&self) -> bool {
+    /// types where DWARF gives something to check (`types` is None only then:
+    /// `Signature::type_checkable`), and recompilation when it is part of the
+    /// evaluation (`recompile_measured`: the table has recompile results). A
+    /// metric that applies and was not measured is not a pass.
+    pub fn intersection_perfect_in(&self, recompile_measured: bool) -> bool {
         self.cfg_agreement()
             && self.types.as_ref().is_none_or(|t| t.perfect)
-            && self.recompile.as_ref().is_none_or(|r| r.exact)
+            && if recompile_measured {
+                self.recompile.as_ref().is_some_and(|r| r.exact)
+            } else {
+                self.recompile.as_ref().is_none_or(|r| r.exact)
+            }
+    }
+
+    /// [`Row::intersection_perfect_in`] for this row alone (recompilation
+    /// required when the row has a recompile result).
+    pub fn intersection_perfect(&self) -> bool {
+        self.intersection_perfect_in(self.recompile.is_some())
     }
 
     pub fn types_perfect(&self) -> bool {
