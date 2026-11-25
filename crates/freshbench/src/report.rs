@@ -409,8 +409,10 @@ pub fn render_index(s: &Summary, meta: &Meta) -> String {
     let mut b = String::new();
     let _ = write!(
         b,
-        "<h2>Overall</h2><p class=mute>{} functions; a tool's rate is over all of them (no output counts as not perfect). \
-95% interval from resampling projects. {} functions were scored by every tool; GED totals are over those.</p>",
+        "<h2>Overall</h2><p class=mute>{} rows, one per (function, build): the same source function appears once per architecture, \
+compiler and level, and some functions are copies of others, so rows are not distinct functions (published pages also show every table \
+with one function per clone group, under <code>dedup/</code>). A tool's rate is over all rows (no output and a missing result count as not perfect). \
+95% interval from resampling projects. {} rows were scored by every tool; GED totals are over those.</p>",
         num(s.rows),
         num(s.common_rows)
     );

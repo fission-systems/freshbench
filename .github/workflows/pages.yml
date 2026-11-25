@@ -53,7 +53,13 @@ jobs:
                                f"{len(prov)} result artifacts; rows from different scorers or duplicated rows with different content are refused by the report"]},
                     open("meta.json", "w"), indent=1)
           PY
-      - run: target/release/freshbench report site-src --out site --meta meta.json
+      - name: report, all rows and one function per renamed-clone group
+        run: |
+          target/release/freshbench report site-src --out site --meta meta.json
+          # DecBench's maintainer asked us to be honest about duplication: every
+          # published score also appears with clones removed
+          target/release/freshbench report site-src --out site/dedup --meta meta.json \
+            --dedup corpus/m1/duplicates-x86_64.json --dedup-level renamed
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

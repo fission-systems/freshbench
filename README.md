@@ -60,6 +60,7 @@ definitions), applied the same way for both CFG families.
 | normalized GED | GED / (source nodes + edges) | 0 |
 | call sites | direct call instructions in the unstripped binary vs calls printed (`callsites.rs`) | nothing missing, nothing extra |
 | shape tags | over/under-noded, extra goto/return/ternary/calls, lost `&&`/`||`, lost switch (`taxonomy.rs`) | |
+| function boundaries | a separate track (`boundaries.rs`): the tool gets **no** addresses and lists the functions it finds in the stripped binary; starts and ends vs the unstripped binary's `STT_FUNC` symbols and DWARF ranges. Two variants: `as-built`, and `no-unwind` with `.eh_frame`/`.eh_frame_hdr`/`.ARM.exidx`/`.ARM.extab` zeroed, because `.eh_frame` survives stripping and gives every function's exact range away on x86-64 and AArch64 Linux. Project functions (with DWARF) are reported apart from runtime code, and identical binaries are also counted once | start precision/recall/F1; exact and padded ends |
 
 Recompilation runs only inside the build image, which has the compilers.
 

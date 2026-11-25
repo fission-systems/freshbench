@@ -289,6 +289,83 @@ pub fn decompile_binary(
         .collect())
 }
 
+/// The functions `tool`'s own analysis finds in `binary`, no addresses given
+/// (`adapters/README.md`, list mode): `(start, end)` with `end` when known.
+pub fn list_functions(
+    tool: &Tool,
+    binary: &Path,
+    timeout: Duration,
+) -> Result<Vec<(u64, Option<u64>)>> {
+    let hex = |s: &str| u64::from_str_radix(s.trim().trim_start_matches("0x"), 16);
+    match tool {
+        Tool::Fission {
+            cli, resource_root, ..
+        } => {
+            let mut c = Command::new(cli);
+            c.arg("--no-db").arg("list").arg(binary).arg("--json");
+            if let Some(r) = resource_root {
+                c.arg("--resource-root").arg(r);
+            }
+            let (ok, out, err) = run_with_timeout(c, timeout)?;
+            if !ok {
+                bail!("fission_cli failed: {err}");
+            }
+            let v: Vec<serde_json::Value> =
+                serde_json::from_slice(&out).context("fission_cli output is not JSON")?;
+            let mut found = Vec::new();
+            for it in v {
+                let flag = |k: &str| it.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+                // imports and thunks are not functions of the binary
+                if flag("is_import") || flag("is_thunk_like") {
+                    continue;
+                }
+                let Some(a) = it.get("address").and_then(|a| a.as_str()) else {
+                    continue;
+                };
+                let start = hex(a)?;
+                let size = it.get("size").and_then(|x| x.as_u64()).unwrap_or(0);
+                found.push((start, (size > 0).then(|| start + size)));
+            }
+            Ok(found)
+        }
+        Tool::Script { command, .. } => {
+            let dir = tempfile::tempdir()?;
+            let outf = dir.path().join("functions.jsonl");
+            let data = std::fs::read(binary)?;
+            let mut c = Command::new(&command[0]);
+            c.args(&command[1..])
+                .arg("--list-functions")
+                .arg("--binary")
+                .arg(binary)
+                .arg("--elf-base")
+                .arg(format!("{:#x}", elf_base(&data)?))
+                .arg("--out")
+                .arg(&outf);
+            let (ok, _, err) = run_with_timeout(c, timeout)?;
+            if !ok {
+                bail!("adapter failed: {err}");
+            }
+            #[derive(Deserialize)]
+            struct Line {
+                start: String,
+                end: Option<String>,
+            }
+            let mut found = Vec::new();
+            for line in std::fs::read_to_string(&outf)
+                .context("adapter wrote no output")?
+                .lines()
+            {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let l: Line = serde_json::from_str(line)?;
+                found.push((hex(&l.start)?, l.end.as_deref().map(hex).transpose()?));
+            }
+            Ok(found)
+        }
+    }
+}
+
 /// Why a function has no code, from the error text this module and the
 /// adapters write: `timeout`, `crash` (the tool exited non-zero), `missing`
 /// (the tool returned nothing for the address), `adapter` (unreadable
