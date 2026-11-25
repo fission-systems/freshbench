@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""r2dec adapter (see adapters/README.md). Needs R2_BIN and R2DEC_PLUGIN.
+
+radare2 (`R2_BIN`, the pinned release) is run as a subprocess, once per
+binary, with the r2dec core plugin (`R2DEC_PLUGIN`, libcore_pdd.so built from
+the pinned r2dec release against that radare2) loaded by `L`. `-NN` keeps any
+user radarerc and installed plugins out. The binary is opened by its file name
+from its own directory, so r2dec's header comment (which names the opened
+file) does not depend on where the tree lives. A command script (`-i`) is run;
+`?e` markers separate the commands' output. Nothing here analyses the binary.
+
+Decompile mode, in one radare2 session:
+* `aaa`, the standard analysis a user runs before `pdd`.
+* `af @ <start>` for every requested start, in address order (a no-op where
+  `aaa` already made a function there; Ghidra's and angr's adapters create one
+  the same way). Where `aaa` made the start part of another function (a
+  tail-called function absorbed into its caller), `af` makes none; a first
+  radare2 run (`aaa`, the `af`s, `afij` per start) finds those starts and the
+  real run then also gives each `afr @ <start>` (radare2's "analyze function
+  recursively", which splits it out of the other function and may create
+  functions it calls). All functions are created before anything is
+  decompiled, so a result does not depend on the request order; they are
+  decompiled in address order for the same reason (on 32-bit ARM radare2's
+  disassembly of an instruction can depend on what it disassembled before in
+  the session: its IT-block tracking).
+* On 32-bit ARM, before `aaa`, every requested start gets radare2's
+  instruction-set hint for the state the request states: `ahb 16 @ <start>`
+  for a Thumb start (bit 0 set, cleared for radare2), `ahb 32` otherwise (a
+  bits hint holds until the next one, so each start sets its own).
+* per start: `afij` (which function radare2 has there), `pddj` (r2dec's own
+  JSON rendering), `afvj` (radare2's variables of that function, which r2dec
+  itself reads to print its declarations) and `afcrj` (the registers of the
+  function's calling convention).
+
+* `code` is the `str` of every `pddj` line, joined by newlines: the text `pdd`
+  prints (its header comments, `#include <stdint.h>` and the function).
+* `line_mappings`: r2dec gives every printed line at most one `offset`, the
+  address of the instruction it printed the line for. Line N carries that
+  offset; lines without one (header, closing braces) carry nothing. If a
+  line's `str` holds a newline, every text line it prints carries its offset.
+* `variables`: from radare2's analysis of the function (`afvj`), the variables
+  r2dec reads to print its declarations. A parameter radare2 holds in a
+  register (`reg`) gets `arg_index` = that register's position in the
+  argument registers of radare2's calling convention for the function
+  (`afcrj`'s `args`); one in a register outside that list (e.g. `xmm0`) and
+  one passed on the stack (`bp`/`sp` kind `arg`) have no position radare2
+  states, so they are left out. (`afsj`'s argument order is not used: it
+  renumbers the parameters in its own order and pairs them with the
+  convention's registers whatever register `afvj` found them in.) Locals:
+  `afvj`'s `bp`/`sp` entries of kind `var` -> `kind: stack`, `stack_offset` =
+  their `ref.offset` (from radare2's frame base for `bp`, its stack pointer
+  for `sp`). Types are radare2's (`afvj`). No size (none is stated).
+* `return_type` is null: r2dec states its return type only inside the
+  signature line of the C text, and types are never read from C text.
+  (`afsj`'s `ret` is radare2's, not the type r2dec prints, so it is not used.)
+* A start where radare2 has no function after `af`/`afr`, or has one that
+  starts elsewhere, gets an `error` and no code (decompiling it would print another
+  function). So does an r2dec failure (`pddj` with `errors` and no lines).
+
+List mode (--list-functions): `aaa` then `aflj`, radare2's function list as a
+user sees it after `aaa`. Entries it names as imports (`sym.imp.*`, its PLT
+stubs for imported symbols) are left out. The end is `aflj`'s `maxaddr`
+(radare2's highest basic-block end, exclusive), null where it is not above the
+start.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+MARK = re.compile(r"^FBR2D_(BEGIN|PDD|VARS|CC|END)_(0x[0-9a-f]+)_FBR2D\n", re.M)
+
+
+def is_arm32(path):
+    """32-bit ARM ELF (e_machine 40): bit 0 of a code address is the Thumb bit."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
+def run_r2(binary, script, timeout=None):
+    """Run radare2 with the r2dec plugin and `script`; (exit code, stdout, stderr tail)."""
+    d, name = os.path.split(os.path.abspath(binary))
+    with tempfile.TemporaryDirectory() as t:
+        sf = os.path.join(t, "script.r2")
+        with open(sf, "w") as f:
+            f.write(f"e scr.color=0\nL {PLUGIN}\n" + script)
+        with tempfile.TemporaryFile() as err:
+            p = subprocess.run([R2, "-NN", "-q", "-i", sf, name], cwd=d, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=err, timeout=timeout)
+            err.seek(0)
+            text = err.read().decode("utf-8", "replace")
+    # radare2's progress lines (INFO/HINT) say nothing about a failure
+    text = "\n".join(l for l in text.splitlines() if not l.startswith(("INFO: ", "HINT: ")))
+    return p.returncode, p.stdout.decode("utf-8", "replace"), text[-4000:]
+
+
+def segments(stdout):
+    """{(kind, addr): text} between each echo marker and the next one, and the
+    set of markers printed."""
+    out, seen, last = {}, set(), None
+    for m in MARK.finditer(stdout):
+        if last is not None:
+            out[last[0]] = stdout[last[1]:m.start()]
+        last = ((m.group(1), m.group(2)), m.end())
+        seen.add(last[0])
+    return out, seen
+
+
+def first_json(text, opener):
+    line = next((l for l in (text or "").splitlines() if l.startswith(opener)), None)
+    return None if line is None else json.loads(line)
+
+
+def as_int(v):
+    if isinstance(v, str):
+        return int(v, 16) if v.lower().startswith("0x") else int(v)
+    return int(v)
+
+
+def variables(afvj, afcrj):
+    """Parameters radare2 holds in its convention's argument registers, by that
+    register's position; locals with radare2's frame offsets."""
+    regs = [str(r) for r in (afcrj or {}).get("args") or []]
+    out = []
+    for v in (afvj or {}).get("reg") or []:
+        if v.get("kind") == "reg" and v.get("type") and v.get("ref") in regs:
+            out.append({"name": v.get("name") or "", "type": v["type"], "kind": "arg",
+                        "arg_index": regs.index(v["ref"]), "stack_offset": None, "size": None})
+    for base in ("bp", "sp"):
+        for v in (afvj or {}).get(base) or []:
+            ref = v.get("ref") if isinstance(v.get("ref"), dict) else {}
+            if v.get("kind") == "var" and v.get("type") and ref.get("offset") is not None:
+                out.append({"name": v.get("name") or "", "type": v["type"], "kind": "stack", "arg_index": None,
+                            "stack_offset": int(ref["offset"]), "size": None})
+    return out
+
+
+def record(req, key, segs, err):
+    """One output line for a requested address from its marker segments."""
+    def fail(msg):
+        return {"address": req, "code": None, "error": msg[:500]}
+
+    try:
+        fi = first_json(segs.get(("BEGIN", key)), "[")
+    except ValueError as e:
+        return fail(f"radare2: afij output is not JSON: {e}")
+    if not fi:
+        return fail("radare2 has no function at the requested start after `af`/`afr`")
+    if fi[0].get("addr") != int(key, 16):
+        return fail(f"radare2's function here starts at {fi[0].get('addr'):#x}, not at the requested start")
+    try:
+        d = first_json(segs.get(("PDD", key)), "{")
+    except ValueError as e:
+        return fail(f"r2dec: pddj output is not JSON: {e}")
+    if d is None:
+        said = [l for l in err.splitlines() if key in l]
+        return fail("r2dec: pddj printed nothing" + (f" ({said[-1]})" if said else ""))
+    lines = d.get("lines") or []
+    if not lines:
+        return fail("r2dec: " + "; ".join(str(x) for x in (d.get("errors") or ["no lines"])).strip())
+    text, lm = [], []
+    for ln in lines:
+        parts = str(ln.get("str", "")).split("\n")
+        off = ln.get("offset")
+        for part in parts:
+            text.append(part)
+            if off is not None:
+                lm.append({"line_number": len(text), "addresses": [as_int(off)]})
+    code = "\n".join(text) + "\n"
+    try:
+        afvj = first_json(segs.get(("VARS", key)), "{")
+        afcrj = first_json(segs.get(("CC", key)), "{")
+    except ValueError:
+        afvj = afcrj = None
+    rec = {"address": req, "code": code, "error": None, "line_mappings": lm,
+           "variables": variables(afvj, afcrj), "return_type": None}
+    if d.get("errors"):
+        sys.stderr.write(f"r2dec {req}: {'; '.join(map(str, d['errors']))[:300]}\n")
+    return rec
+
+
+def own_function(segs, key):
+    """Does radare2's `afij` at `key` describe a function starting there?"""
+    try:
+        fi = first_json(segs.get(("BEGIN", key)), "[")
+    except ValueError:
+        return False
+    return bool(fi) and fi[0].get("addr") == int(key, 16)
+
+
+def decompile(a):
+    reqs = [l.strip() for l in open(a.addresses) if l.strip()]
+    arm = is_arm32(a.binary)
+    keys = {r: f"{int(r, 16) & (~1 if arm else ~0):#x}" for r in reqs}
+    uniq = list(dict.fromkeys(reqs))
+    starts = sorted(set(keys.values()), key=lambda k: int(k, 16))
+    # 32-bit ARM: the instruction set the request states at each start (bit 0: Thumb)
+    hints = "".join(f"ahb {16 if int(r, 16) & 1 else 32} @ {keys[r]}\n" for r in uniq) if arm else ""
+    # every requested start becomes a function before anything is decompiled
+    create = "".join(f"af @ {k}\n" for k in starts)
+    rc, out, err = run_r2(a.binary, hints + "aaa\n" + create + "".join(
+        f"?e FBR2D_BEGIN_{k}_FBR2D\nafij @ {k}\n?e FBR2D_END_{k}_FBR2D\n" for k in starts))
+    segs, seen = segments(out)
+    if not seen:
+        sys.stderr.write(f"radare2 exited {rc}: {err[-500:]}\n")
+        return 1
+    create += "".join(f"afr @ {k}\n" for k in starts if not own_function(segs, k))
+    todo = list(uniq)
+    done = {}
+    while todo:
+        script = hints + "aaa\n" + create + "".join(
+            f"?e FBR2D_BEGIN_{k}_FBR2D\nafij @ {k}\n?e FBR2D_PDD_{k}_FBR2D\npddj @ {k}\n"
+            f"?e FBR2D_VARS_{k}_FBR2D\nafvj @ {k}\n?e FBR2D_CC_{k}_FBR2D\nafcrj @ {k}\n?e FBR2D_END_{k}_FBR2D\n"
+            for k in sorted({keys[r] for r in todo}, key=lambda k: int(k, 16)))
+        rc, out, err = run_r2(a.binary, script)
+        segs, seen = segments(out)
+        rest = []
+        for r in todo:
+            k = keys[r]
+            if ("END", k) in seen:
+                done[r] = record(r, k, segs, err)
+            elif ("BEGIN", k) in seen:
+                # radare2 ended inside this function: its failure; the rest run again
+                done[r] = {"address": r, "code": None,
+                           "error": f"radare2 exited {rc} decompiling it: {err.strip()[-400:]}"[:500]}
+            else:
+                rest.append(r)
+        if rest and not seen:
+            # radare2 could not open or analyse the binary at all
+            sys.stderr.write(f"radare2 exited {rc}: {err[-500:]}\n")
+            return 1
+        todo = rest
+    with open(a.out, "w") as f:
+        for r in reqs:
+            f.write(json.dumps(done[r]) + "\n")
+    return 0
+
+
+def list_functions(a):
+    rc, out, err = run_r2(a.binary, "aaa\n?e FBR2D_BEGIN_0x0_FBR2D\naflj\n?e FBR2D_END_0x0_FBR2D\n")
+    segs, _ = segments(out)
+    try:
+        entries = first_json(segs.get(("BEGIN", "0x0")), "[")
+    except ValueError:
+        entries = None
+    if entries is None:
+        sys.stderr.write(f"radare2 aflj exited {rc}: {err[-500:]}\n")
+        return 1
+    found = {}
+    for e in entries:
+        if str(e.get("name", "")).startswith("sym.imp."):
+            continue
+        s, end = int(e["addr"]), e.get("maxaddr")
+        found[s] = int(end) if end is not None and int(end) > s else None
+    with open(a.out, "w") as f:
+        for s in sorted(found):
+            end = found[s]
+            f.write(json.dumps({"start": f"{s:#x}", "end": None if end is None else f"{end:#x}"}) + "\n")
+    return 0
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
+a = ap.parse_args()
+R2 = os.environ["R2_BIN"]
+PLUGIN = os.environ["R2DEC_PLUGIN"]
+if a.list_functions:
+    sys.exit(list_functions(a))
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
+sys.exit(decompile(a))

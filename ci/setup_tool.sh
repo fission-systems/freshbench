@@ -70,6 +70,18 @@ case "$tool" in
     echo "REKO_DIR=$T/reko" >> "$GITHUB_ENV"
     echo "REKO_DOTNET=$T/dotnet/dotnet" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/reko/run" >> "$GITHUB_ENV";;
+  r2dec)
+    # radare2 from its pinned release .deb; the r2dec plugin was built against it once by
+    # evaluate.yml's build job (r2dec's release .so targets another radare2 ABI)
+    curl -fsSL -o "$T/radare2.deb" "$RADARE2_DEB_URL"
+    echo "$RADARE2_DEB_SHA256  $T/radare2.deb" | sha256sum -c -
+    sudo apt-get install -y -q "$T/radare2.deb" >/dev/null
+    p="$RUNNER_TEMP/bins/r2dec-bin/libcore_pdd.so"
+    r2 -v | head -1
+    r2 -NN -q -c "L $p; Lc" -- | grep -q '^r2dec '  # loads: same radare2 ABI
+    echo "R2_BIN=$(command -v r2)" >> "$GITHUB_ENV"
+    echo "R2DEC_PLUGIN=$p" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/r2dec/run" >> "$GITHUB_ENV";;
   fission) :;;  # built in; see evaluate.yml
   *) echo "unknown tool $tool"; exit 1;;
 esac

@@ -8,5 +8,6 @@
   "ghidra-rs": { "repo": "koute/ghidra-decompiler", "version": "ghidra-rs {GHIDRA_RS_VERSION} sha256:{GHIDRA_RS_CRATE_SHA256}" },
   "revng": { "repo": "revng/revng", "version": "revng {REVNG_COMMIT} sha256:{REVNG_SHA256}" },
   "r2sleigh": { "repo": "radareorg/r2sleigh", "version": "r2sleigh {R2SLEIGH_SHA}" },
-  "reko": { "repo": "uxmal/reko", "version": "reko {REKO_TAG} sha256:{REKO_SHA256}" }
+  "reko": { "repo": "uxmal/reko", "version": "reko {REKO_TAG} sha256:{REKO_SHA256}" },
+  "r2dec": { "repo": "wargio/r2dec-js", "version": "r2dec {R2DEC_TAG} sha256:{R2DEC_SRC_SHA256} radare2 {RADARE2_TAG} sha256:{RADARE2_DEB_SHA256}" }
 }
