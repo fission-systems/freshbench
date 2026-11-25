@@ -88,10 +88,12 @@ impl Evidence {
             .into_iter()
             .flatten()
             .filter_map(|m| {
-                let line = m
-                    .get("line_number")
-                    .or_else(|| m.get("line"))
-                    .and_then(|l| l.as_u64())? as u32;
+                let line = u32::try_from(
+                    m.get("line_number")
+                        .or_else(|| m.get("line"))
+                        .and_then(|l| l.as_u64())?,
+                )
+                .ok()?;
                 Some(LineMap {
                     line,
                     addresses: addrs(m.get("addresses")),
@@ -198,21 +200,58 @@ pub struct Checked {
     pub code_lines: u32,
     pub valid_addresses: u32,
     pub dropped_addresses: u32,
+    /// Distinct instruction addresses covered by valid output-line mappings.
+    #[serde(default)]
+    pub mapped_instructions: u32,
+    /// Number of line records outside the output or on blank lines.
+    #[serde(default)]
+    pub invalid_lines: u32,
 }
 
-/// Drop every address that is not an instruction start of the function.
-pub fn validate(ev: &mut Evidence, starts: &Starts) -> Checked {
-    let mut c = Checked::default();
+/// Validate output line numbers and instruction starts, merging repeated
+/// records for the same line. Address counts describe input occurrences;
+/// mapped_lines and mapped_instructions count distinct surviving items.
+pub fn validate(ev: &mut Evidence, starts: &Starts, output: &str) -> Checked {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let lines: Vec<bool> = output.lines().map(|l| !l.trim().is_empty()).collect();
+    let mut c = Checked {
+        code_lines: lines.iter().filter(|&&line| line).count() as u32,
+        ..Default::default()
+    };
     let keep = |v: &mut Vec<u64>, c: &mut Checked| {
         let before = v.len();
         v.retain(|a| starts.contains(*a));
         c.valid_addresses += v.len() as u32;
         c.dropped_addresses += (before - v.len()) as u32;
+        v.sort_unstable();
+        v.dedup();
     };
-    for m in &mut ev.line_mappings {
+    let mut by_line = BTreeMap::<u32, BTreeSet<u64>>::new();
+    for mut m in std::mem::take(&mut ev.line_mappings) {
+        if m.line == 0 || !lines.get(m.line as usize - 1).copied().unwrap_or(false) {
+            c.invalid_lines += 1;
+            c.dropped_addresses += m.addresses.len() as u32;
+            continue;
+        }
         keep(&mut m.addresses, &mut c);
-        c.mapped_lines += u32::from(!m.addresses.is_empty());
+        if !m.addresses.is_empty() {
+            by_line.entry(m.line).or_default().extend(m.addresses);
+        }
     }
+    let mut instructions = BTreeSet::new();
+    ev.line_mappings = by_line
+        .into_iter()
+        .map(|(line, addresses)| {
+            instructions.extend(addresses.iter().copied());
+            LineMap {
+                line,
+                addresses: addresses.into_iter().collect(),
+            }
+        })
+        .collect();
+    c.mapped_lines = ev.line_mappings.len() as u32;
+    c.mapped_instructions = instructions.len() as u32;
     for v in &mut ev.variables {
         keep(&mut v.addresses, &mut c);
     }
@@ -271,6 +310,35 @@ mod tests {
     }
 
     #[test]
+    fn invalid_and_duplicate_lines_cannot_inflate_coverage() {
+        let s = Starts::new("x86_64", 0x1000, 0x1002, &[0x90, 0xc3]);
+        let mut e = Evidence {
+            line_mappings: [
+                (0, 0x1000),
+                (1, 0x1000),
+                (1, 0x1000),
+                (1, 0x1001),
+                (2, 0x1001),
+                (4, 0x1000),
+            ]
+            .into_iter()
+            .map(|(line, address)| LineMap {
+                line,
+                addresses: vec![address],
+            })
+            .collect(),
+            ..Default::default()
+        };
+        let c = validate(&mut e, &s, "return 1;\n\n}");
+        assert_eq!(
+            (c.mapped_lines, c.code_lines, c.mapped_instructions),
+            (1, 2, 2)
+        );
+        assert_eq!(c.invalid_lines, 3);
+        assert_eq!(e.line_mappings[0].addresses, [0x1000, 0x1001]);
+    }
+
+    #[test]
     fn only_instruction_starts_in_the_function_count() {
         // push rbp; mov rbp, rsp; mov eax, 1; pop rbp; ret
         let code = [0x55, 0x48, 0x89, 0xe5, 0xb8, 0x01, 0, 0, 0, 0x5d, 0xc3];
@@ -299,7 +367,7 @@ mod tests {
             }],
             return_type: None,
         };
-        let c = validate(&mut e, &s);
+        let c = validate(&mut e, &s, "return 1;\nreturn 2;");
         assert_eq!(
             (c.mapped_lines, c.valid_addresses, c.dropped_addresses),
             (1, 2, 3)
