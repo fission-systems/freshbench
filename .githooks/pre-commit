@@ -1,0 +1,10 @@
+#!/bin/sh
+# Refuse a commit that stages freshbench Rust code cargo fmt would change.
+# Enable once per clone: git config core.hooksPath .githooks
+set -eu
+if git diff --cached --name-only --diff-filter=ACM | grep -q '^crates/freshbench/.*\.rs$'; then
+  if ! cargo fmt -p freshbench --check >/dev/null 2>&1; then
+    echo "pre-commit: cargo fmt -p freshbench --check failed. Run 'cargo fmt -p freshbench' and stage the result." >&2
+    exit 1
+  fi
+fi
