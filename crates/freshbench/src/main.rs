@@ -8,6 +8,9 @@ use clap::{Parser, Subcommand};
 
 use freshbench::{bands, callsites, cfg, csyntax, headroom, manifest, rows, score};
 
+#[cfg(feature = "sentry")]
+mod telemetry;
+
 #[derive(Parser)]
 #[command(
     name = "freshbench",
@@ -434,6 +437,8 @@ fn parse_u64(s: &str) -> Result<u64, String> {
 }
 
 fn main() -> ExitCode {
+    #[cfg(feature = "sentry")]
+    let _telemetry = telemetry::init();
     match run() {
         Ok(code) => code,
         Err(e) => {

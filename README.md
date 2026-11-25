@@ -48,6 +48,22 @@ cargo clippy --locked -p freshbench --all-targets -- -D warnings
 cargo test --locked -p freshbench
 ```
 
+The minimum supported Rust version is 1.90 (`rust-version` in `Cargo.toml`).
+
+### Optional error reporting (Sentry)
+
+Build with `--features sentry` to report panics to Sentry. Nothing is sent unless
+both variables are set at run time:
+
+```bash
+FRESHBENCH_SENTRY=1 SENTRY_DSN=<project DSN> target/release/freshbench <command>
+```
+
+Without the feature, no Sentry code is compiled. With it, reporting stays off
+until both variables are set. Output text, binaries, decompiled code and
+environment variables are never sent, and file paths are reduced to base names.
+Official benchmark runs leave the variables unset.
+
 ## What is measured, and what is not
 
 **Measured:** how close the output is to the source, and a static agreement

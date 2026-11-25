@@ -41,6 +41,15 @@ Root `AGENTS.md` applies. This crate is the v2 scorer and CLI; its output is the
 - Return errors with context; do not add `unwrap`/`expect` to production paths. A scorer panic
   must cost one row, not the run.
 
+## Telemetry (`sentry` feature)
+
+- `src/telemetry.rs` is compiled into the binary only, never into the library. It is off unless
+  the feature is on and `FRESHBENCH_SENTRY=1` and `SENTRY_DSN` are set.
+- Its `scrub` function is the last line of defence before an event leaves the process. Keep it
+  dropping breadcrumbs, extra data, request, user and server name, and keep reducing paths.
+- Only panics are reported today. Expected validation failures must not be reported; infrastructure
+  failure categories are a separate change.
+
 ## Tests
 
 - Put unit tests in the module under `#[cfg(test)]`; integration regressions go in

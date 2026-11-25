@@ -80,6 +80,13 @@ Resolve conflicts in that order; easy but wrong numbers are not progress.
 - `load_table` must continue to refuse mixed scorers, conflicting duplicate rows and stale
   recompile side files.
 - Every published number must carry the provenance of the run that produced it.
+### Telemetry
+- Error reporting to Sentry is opt-in: the `sentry` Cargo feature and both `FRESHBENCH_SENTRY=1`
+  and `SENTRY_DSN` at run time. Official benchmark runs must not set them.
+- Initialize Sentry only in the binary's `main`. Library code never initializes it.
+- Never send binaries, decompiled output, memory, environment variables or unreduced paths.
+  `src/telemetry.rs` owns the scrubbing rules; change them there and test them.
+
 ### Tests
 - Every fixed scoring or evaluation defect gets a regression test. DecBench parity defects use
   the `decbench_NNN_*` naming convention.
@@ -122,6 +129,13 @@ Run from the repository root. These are the repository-supported gates:
 cargo fmt -p freshbench --check
 cargo clippy --locked -p freshbench --all-targets -- -D warnings
 cargo test --locked -p freshbench
+```
+
+The optional Sentry feature must also pass (CI runs these):
+
+```bash
+cargo clippy --locked -p freshbench --features sentry --all-targets -- -D warnings
+cargo test --locked -p freshbench --features sentry
 ```
 
 CI (`.github/workflows/test.yml`) additionally runs:

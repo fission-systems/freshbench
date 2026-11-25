@@ -335,7 +335,7 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
                 };
                 write_atomic(&j.checkpoint(&run), &serde_json::to_vec(&c)?)?;
                 let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if n % 50 == 0 || n == todo.len() {
+                if n.is_multiple_of(50) || n == todo.len() {
                     eprintln!("  {n}/{} binaries", todo.len());
                 }
                 Ok(())
