@@ -56,8 +56,8 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/main' && ((github.event_name == 'push' && needs.plan.outputs.bootstrap == 'true') || (github.event_name == 'workflow_dispatch' && inputs.deploy && (inputs.evaluate_runs == '[]' || inputs.evaluate_runs == '')))
     runs-on: ubuntu-24.04
-    permissions: { contents: read, actions: read, pages: write, id-token: write }
-    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    permissions: { contents: read, actions: read, pages: read }
+    outputs: { publish: "${{ steps.guard.outputs.publish }}" }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: pages
@@ -97,8 +97,19 @@ jobs:
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         if: steps.guard.outputs.publish == 'true'
         with: { path: bootstrap-site }
+  # Deployed from its own job, like the ranking: deploy-pages lists the run's
+  # artifacts, and in the same job a second after the upload it found none
+  # ("No artifacts named github-pages"), so the landing page never updated.
+  # Not named `deploy`: the guard above treats a successful `deploy` job as a
+  # published ranking.
+  bootstrap-deploy:
+    needs: bootstrap
+    if: needs.bootstrap.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions: { contents: read, actions: read, pages: write, id-token: write }
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
       - id: d
-        if: steps.guard.outputs.publish == 'true'
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
   build:
     needs: plan
