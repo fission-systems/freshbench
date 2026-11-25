@@ -132,12 +132,17 @@ if a.list_functions:
 if a.addresses is None:
     ap.error("--addresses is required without --list-functions")
 reqs = [l.strip() for l in open(a.addresses) if l.strip()]
-want = {int(r, 16) & ~1: r for r in reqs}
+with open(a.binary, "rb") as _f:
+    _h = _f.read(20)
+# 32-bit ARM: bit 0 is the Thumb bit; elsewhere an odd address is an address
+arm = _h[:4] == b"\x7fELF" and int.from_bytes(_h[18:20], "little" if _h[5] == 1 else "big") == 40
+mask = ~1 if arm else ~0
+want = {int(r, 16) & mask: r for r in reqs}
 with tempfile.TemporaryDirectory() as td:
     c = os.path.join(td, "out.c")
     p = subprocess.run([borer, "export", a.binary, "--c", c, "--library"], capture_output=True, text=True, env=ENV)
     parsed = parse_export(open(c, errors="replace").read()) if os.path.exists(c) else {}
-parsed = {e & ~1: v for e, v in parsed.items()}
+parsed = {e & mask: v for e, v in parsed.items()}
 delta = best_delta(list(parsed), set(want))
 with open(a.out, "w") as out:
     for va, r in sorted(want.items()):

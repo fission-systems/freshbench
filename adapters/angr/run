@@ -129,7 +129,8 @@ with open(a.out, "w") as out:
         ev = {}
         try:
             fn = cfg.kb.functions.function(addr=addr)
-            if fn is None and addr & 1:
+            # a Thumb start may be known without its bit; on x86 an odd address is its own
+            if fn is None and is_arm and addr & 1:
                 fn = cfg.kb.functions.function(addr=addr & ~1)
             if fn is None:
                 err = "no function at address"

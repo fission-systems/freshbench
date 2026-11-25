@@ -45,6 +45,14 @@ def exec_segments(path):
     return out
 
 
+def is_arm(path):
+    """32-bit ARM ELF (e_machine 40): bit 0 of a code address is the Thumb bit.
+    Everywhere else an odd address is an address (x86 code need not be aligned)."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
 def as_int(v):
     if isinstance(v, int):
         return v
@@ -76,15 +84,16 @@ def evidence(f):
     return {"line_mappings": lm, "variables": vs}
 
 
-def records(doc):
-    """address (Thumb bit cleared) -> (code or None, error, evidence)."""
+def records(doc, arm):
+    """address (Thumb bit cleared on ARM) -> (code or None, error, evidence)."""
+    mask = ~1 if arm else ~0
     got = {}
     for f in doc.get("functions") or []:
         addr = as_int(f.get("address"))
         if addr is None:
             continue
         code = f.get("code")
-        got[addr & ~1] = (code if code and code.strip() else None, f.get("error"), evidence(f))
+        got[addr & mask] = (code if code and code.strip() else None, f.get("error"), evidence(f))
     return got
 
 
@@ -118,10 +127,11 @@ def list_functions(tool, a):
 
 def decompile(tool, a):
     reqs = [l.strip() for l in open(a.addresses) if l.strip()]
-    want = {int(r, 16) & ~1: r for r in reqs}
+    arm = is_arm(a.binary)
+    want = {(int(r, 16) & ~1 if arm else int(r, 16)): r for r in reqs}
     got, note = {}, ""
     with tempfile.TemporaryDirectory() as td:
-        # the same function starts every tool is given (Thumb bit cleared)
+        # the same function starts every tool is given (Thumb bit cleared on ARM)
         df = os.path.join(td, "starts.txt")
         with open(df, "w") as f:
             f.write("".join(f"{va:#x}\n" for va in sorted(want)))
@@ -130,7 +140,7 @@ def decompile(tool, a):
             cmd += ["--addr", f"{va:#x}"]
         p = subprocess.run(cmd, capture_output=True, text=True)
         try:
-            got = records(json.loads(p.stdout))
+            got = records(json.loads(p.stdout), arm)
         except Exception:  # noqa: BLE001
             note = f" (decompile-all exited {p.returncode}: {p.stderr[-300:]})"
     with open(a.out, "w") as out:
@@ -140,7 +150,7 @@ def decompile(tool, a):
                 q = subprocess.run([tool, "decompile", a.binary, f"{va:#x}", "--addr", "--json",
                                     "--define-function", f"{va:#x}"], capture_output=True, text=True)
                 try:
-                    code, err, ev = records(json.loads(q.stdout)).get(va, (None, None, None))
+                    code, err, ev = records(json.loads(q.stdout), arm).get(va, (None, None, None))
                     if code is None and err is None:
                         err = "no record for the address" + note
                 except Exception:  # noqa: BLE001
