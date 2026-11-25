@@ -79,6 +79,19 @@ jobs:
           target/release/freshbench report site-src --out site/dedup --meta meta.json $EXTRA \
             --dedup-level renamed --dedup corpus/m1/duplicates-x86_64.json corpus/m1/duplicates-i686.json \
             corpus/m1/duplicates-aarch64.json corpus/m1/duplicates-armv7.json
+          # Policy filtering must not leave an empty or single-tool ranking.
+          jq -e '.summary.rows == 285875 and (.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/summary.json >/dev/null
+          jq -e '(.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/dedup/summary.json >/dev/null
+          # Link both populations without depending on an absolute site URL.
+          python - <<'PY'
+          from pathlib import Path
+          for filename, nav in [
+              ("site/index.html", '<nav><b>All M1 rows</b> · <a href="dedup/index.html">Renamed-clone-deduplicated</a> · <a href="summary.json">JSON</a> · <a href="speed.md">Speed</a></nav>'),
+              ("site/dedup/index.html", '<nav><a href="../index.html">All M1 rows</a> · <b>Renamed-clone-deduplicated</b> · <a href="summary.json">JSON</a></nav>'),
+          ]:
+              p = Path(filename)
+              p.write_text(p.read_text().replace("<body>", "<body>" + nav, 1))
+          PY
           # what each tool cost: CPU and wall time and memory per binary and per function
           target/release/freshbench speed dl > site/speed.md
           target/release/freshbench speed dl --json > site/speed.json
