@@ -137,6 +137,9 @@ enum Cmd {
         /// only these arch-qualified builds (`gcc-O0`, `aarch64-gcc-O0`; comma list)
         #[arg(long, value_delimiter = ',')]
         builds: Vec<String>,
+        /// binaries decompiled at once (each one a separate tool process)
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
     },
     /// Merge a prepared tree (`prepare --out`) into a corpus root with
     /// arch-qualified builds: binaries/ stripped/ truth/ sources/<arch>/ projects/.
@@ -455,6 +458,7 @@ fn run() -> Result<ExitCode> {
             binary_timeout_s,
             function_timeout_s,
             builds,
+            jobs,
         } => {
             use freshbench::adapters::{self, Tool};
             use std::time::Duration;
@@ -474,38 +478,65 @@ fn run() -> Result<ExitCode> {
                     command: adapter,
                 }
             };
-            let (mut ok, mut failed) = (0u64, 0u64);
-            for u in freshbench::corpus::units(&root)? {
+            use rayon::prelude::*;
+            let units: Vec<_> = freshbench::corpus::units(&root)?
+                .into_iter()
                 // --builds takes arch-qualified build names (`gcc-O0`, `aarch64-gcc-O0`)
-                if !builds.is_empty() && !builds.contains(&u.build) {
-                    continue;
-                }
-                let pb = &u.targets;
+                .filter(|u| builds.is_empty() || builds.contains(&u.build))
+                .collect();
+            // one job per binary, largest first so a long one starts early;
+            // results are collected in a fixed order, so output does not depend on --jobs
+            let mut work: Vec<(usize, &String)> = units
+                .iter()
+                .enumerate()
+                .flat_map(|(i, u)| u.targets.binaries.keys().map(move |b| (i, b)))
+                .collect();
+            let size = |&(i, b): &(usize, &String)| {
+                std::fs::metadata(root.join(&units[i].stripped).join(b)).map_or(0, |m| m.len())
+            };
+            let mut order: Vec<usize> = (0..work.len()).collect();
+            order.sort_by_key(|&k| std::cmp::Reverse(size(&work[k])));
+            let pool = rayon::ThreadPoolBuilder::new().num_threads(jobs.max(1)).build()?;
+            let done: Vec<(usize, Result<Vec<adapters::Record>>)> = pool.install(|| {
+                order
+                    .par_iter()
+                    .map(|&k| {
+                        let (i, bin) = work[k];
+                        let b = &units[i].targets.binaries[bin];
+                        // Thumb functions are requested as address | 1 (the ELF for ARM convention)
+                        let funcs: BTreeMap<u64, String> = b
+                            .functions
+                            .iter()
+                            .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
+                            .collect();
+                        let r = adapters::decompile_binary(
+                            &t,
+                            &root.join(&units[i].stripped).join(bin),
+                            bin,
+                            &funcs,
+                            Duration::from_secs(binary_timeout_s),
+                            Duration::from_secs(function_timeout_s),
+                        );
+                        eprintln!("{} {bin}: done", units[i].build);
+                        (k, r)
+                    })
+                    .collect()
+            });
+            let mut by_k: Vec<Option<Vec<adapters::Record>>> = vec![None; work.len()];
+            for (k, r) in done {
+                by_k[k] = Some(r?);
+            }
+            let (mut ok, mut failed) = (0u64, 0u64);
+            for (i, u) in units.iter().enumerate() {
                 let mut recs = Vec::new();
-                for (bin, b) in &pb.binaries {
-                    // Thumb functions are requested as address | 1 (the ELF for ARM convention)
-                    let funcs: BTreeMap<u64, String> = b
-                        .functions
-                        .iter()
-                        .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
-                        .collect();
-                    let r = adapters::decompile_binary(
-                        &t,
-                        &root.join(&u.stripped).join(bin),
-                        bin,
-                        &funcs,
-                        Duration::from_secs(binary_timeout_s),
-                        Duration::from_secs(function_timeout_s),
-                    )?;
-                    for x in &r {
-                        if x.code.is_some() {
-                            ok += 1
-                        } else {
-                            failed += 1
-                        }
+                for (k, (wi, _)) in work.iter().enumerate() {
+                    if *wi == i {
+                        recs.extend(by_k[k].take().unwrap_or_default());
                     }
-                    recs.extend(r);
                 }
+                ok += recs.iter().filter(|x| x.code.is_some()).count() as u64;
+                failed += recs.iter().filter(|x| x.code.is_none()).count() as u64;
+                let pb = &u.targets;
                 // results are keyed by the arch-qualified build, so rows of a
                 // non-x86-64 build never read back as x86-64
                 let out = root
