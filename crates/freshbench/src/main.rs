@@ -1053,13 +1053,17 @@ fn run() -> Result<ExitCode> {
                             );
                             if let Some(g) = &row.ged {
                                 anyhow::ensure!(
-                                    g.source_nodes == Some(t.nodes) && g.source_edges == Some(t.edges),
+                                    g.source_nodes == Some(t.nodes)
+                                        && g.source_edges == Some(t.edges),
                                     "result source CFG disagrees with ground truth: {key}"
                                 );
                             }
                         }
                     }
-                    meta.notes.push(format!("independent source CFG ground truth: {} rows", index.len()));
+                    meta.notes.push(format!(
+                        "independent source CFG ground truth: {} rows",
+                        index.len()
+                    ));
                     truth_index = Some(index);
                 }
                 for t in targets {
@@ -1127,7 +1131,14 @@ fn run() -> Result<ExitCode> {
                 speed: (!trows.is_empty()).then(|| freshbench::speed::summarize(&trows)),
             };
             std::fs::create_dir_all(&out)?;
-            let files = freshbench::report::site_with_truth(&table, &meta, resamples, keep, &extras, truth_index.as_ref());
+            let files = freshbench::report::site_with_truth(
+                &table,
+                &meta,
+                resamples,
+                keep,
+                &extras,
+                truth_index.as_ref(),
+            );
             for (name, body) in &files {
                 std::fs::write(out.join(name), body)?;
             }
