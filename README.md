@@ -1,278 +1,260 @@
 # FreshBench
 
-FreshBench is a decompiler benchmark built on recent, license-clean C
-programs chosen to be outside the corpora decompilers are usually tuned on
-(DecBench's functions are excluded by fingerprint; this lowers the chance
-that a tool has seen them, it does not prove it). It does two jobs: it compares
-decompilers on the same functions, and it shows each decompiler where it can
-improve. It has its own ground truth and its own metrics, written in Rust
-(`crates/freshbench`).
+[![test](https://github.com/fission-systems/freshbench/actions/workflows/test.yml/badge.svg)](https://github.com/fission-systems/freshbench/actions/workflows/test.yml)
 
-**Status:** The M1 corpus is published ([`corpus/m1`](corpus/m1/README.md));
-verified tool results are pending. The Rust-native evaluation engine is the
-only supported scoring pipeline.
+FreshBench is a static decompiler benchmark. It measures how close a decompiler's
+output is to the original C function, and it shows each decompiler where it can
+improve. It does not measure whether the output is correct.
 
-## M1 leaderboard
+It uses recent, license-clean C programs chosen to lie outside the corpora
+decompilers are usually tuned on. DecBench's functions are excluded by
+fingerprint, which lowers the chance that a tool has seen a function; it does not
+prove it. FreshBench has its own ground truth and metrics, written in Rust in
+[`crates/freshbench`](crates/freshbench/).
 
-The landing page is deployed from `site-bootstrap/` when that directory changes on
-`main`. It contains corpus statistics and no invented rankings. To request a landing
-page deployment manually, run the Pages workflow with `evaluate_runs: []` and
-`deploy: true`. The workflow refuses to replace an existing ranking. Only generated
-site files are published; do not add the generic repository-wide Static HTML workflow.
+> **Status (2026-11-25):** The scorer, CFG builders, GED, type and recompile
+> metrics, `gaps` and manifests are implemented and tested. The M1 corpus is
+> published ([`corpus/m1`](corpus/m1/README.md)). Tool results on M1 are in progress.
 
+![FreshBench pipeline](assets/pipeline.svg)
 
-The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds
-the public leaderboard from completed `evaluate` runs. Supply their run IDs
-as a JSON array. It downloads only the pinned M1 target manifests (not the
-13.56 GB corpus), verifies their SHA-256 digests and checks that at least two
-registered non-LLM tools have a row for every M1 target. Explicit failed or
-unsupported rows count; absent result rows do not pass the publication gate.
+## Contents
 
-Leave `deploy` false to inspect the generated `leaderboard-preview` artifact
-first. Enable GitHub Pages with GitHub Actions as its source, then run with
-`deploy` true to publish. The intended site is
-https://fission-systems.github.io/freshbench/. The all-row and renamed-clone
-deduplicated views link to each other and expose JSON summaries, metrics,
-and per-tool improvement targets. Function boundaries and timing are shown
-when their artifacts are supplied. GED is a structural metric, not a
-correctness guarantee; rows with unknown source graph size are explicitly
-reported outside the distance aggregate.
+- [Quick start](#quick-start)
+- [What is measured, and what is not](#what-is-measured-and-what-is-not)
+- [How GED is computed](#how-ged-is-computed)
+- [Corpus M1](#corpus-m1)
+- [Publication](#publication)
+- [Improvement targets](#improvement-targets-freshbench-gaps)
+- [Sweep and speed](#sweep-and-speed)
+- [Layout](#layout)
+- [Prior work and license](#prior-work-and-license)
 
-## Prior work
+## Quick start
 
-FreshBench's metric families follow [DecBench](https://github.com/Noelo-Lab/decbench)
-(Noelo-Lab): control-flow graph edit distance against the source, type recovery
-against DWARF, recompilation byte match, and a Union of perfect scores.
-FreshBench uses no DecBench code. Its own CFG definition, GED computation, type and
-recompilation scoring, and ground-truth path are documented below and in the
-source. For the second CFG family it vendors
-[rust-joern](https://github.com/Noelo-Lab/rust-joern) (Apache-2.0,
-`crates/rust-joern/`, upstream main plus the open pull requests #21-#68; see
-`VENDORED.md`), but scores its graphs with FreshBench's GED. Its scores are
-therefore not DecBench scores. See `NOTICE`. DecBench's maintainer agreed
-to this reuse of its metric design on 2026-11-25, with one request we keep:
-be honest about duplication. Row counts overstate how many different
-functions a corpus holds; see
-[how many functions M1 really is](corpus/m1/README.md#how-many-functions-this-really-is).
-The scoring defects DecBench found over the years are tracked against this
-implementation, each with its status and a regression test, in
-[`docs/decbench-compatibility-audit.md`](docs/decbench-compatibility-audit.md).
+```bash
+cargo build --release --locked -p freshbench
+target/release/freshbench --help
+
+# Check the corpus you downloaded against the pinned manifest
+target/release/freshbench manifest verify data/m1 corpus/m1/manifest.jsonl.gz
+```
+
+Tests and lints (run from the repository root; see [`AGENTS.md`](AGENTS.md)):
+
+```bash
+cargo fmt -p freshbench --check
+cargo clippy --locked -p freshbench --all-targets -- -D warnings
+cargo test --locked -p freshbench
+```
 
 ## What is measured, and what is not
 
-**Measured: how close the output is to the source, and a static agreement
-signal against the binary.**
+**Measured:** how close the output is to the source, and a static agreement
+signal against the binary.
 
-**What is ranked.** The main metrics are the GED distance from the source
-(mean, median and rows at 0 over every row; a row without a score is charged
-the whole source graph) and function boundaries (start F1 and exact ends of
-the functions a tool finds by itself, with and without unwind tables). Perfect
-rates, Joern GED, types and recompilation (byte match) are auxiliary: shown,
-not ranked. Speed is reported next to them (CPU time per function, peak
-memory).
+![What each metric compares](assets/metrics.svg)
 
-**Who is published.** Only decompilers in the tool registry
-(`ci/tools.json`) whose upstream repository had a commit within the last
-365 days when the page is built; an unmaintained project's numbers stay in
-the raw results but are not published. LLM-based decompilers are not ranked:
-the corpus is public, so a model may have seen it. They would need a separate
-track with its own contamination controls.
+**Ranked.** The main metrics are GED distance from the source (mean, median, and
+rows at 0 over every row; a row without a score is charged the whole source
+graph) and function boundaries (start F1 and exact ends of the functions a tool
+finds by itself, with and without unwind tables). Speed is reported next to them.
 
-**Line mappings are required.** Every decompiled function must come with the
-tool's own line mappings (which instructions each output line came from) and,
-for types, its variables with ABI argument positions and stack slots, as in
-DecBench's native line-mapping contract (Noelo-Lab/decbench#129). Addresses are
-checked against the function's instructions; an output with no valid line
-mapping is not scored. Types are matched to DWARF through this evidence only,
-never by reading the C text. GED still reads the output's C, since the
-structure is what it measures.
-
-**No fixups.** Every metric reads the decompiler's output exactly as it was
-printed. FreshBench does not rewrite keywords, define pseudo-types, inject
-declarations the compiler asks for, or repair code before compiling or
-parsing it. Such fixups measure the fixer, and a fixer written around one
-decompiler's dialect favours that decompiler. Output that needs a type or
-declaration it did not print fails to compile, and that counts against the
-decompiler that printed it. The only uniform inputs are the compiler flags
-(`-w -fpermissive -std=gnu17 -fno-builtin` plus the build's own) and, for
-choosing the scored function, the rule "the function with the source's name,
-else the only function defined in the output" (prototypes are not
-definitions), applied the same way for both CFG families.
+**Auxiliary.** Perfect rates, Joern GED, types and recompilation (byte match) are
+shown but not ranked.
 
 | metric | compares | perfect |
 |---|---|---|
 | GED | the output's CFG vs the source function's CFG, both built by FreshBench's one CFG builder (`cfg.rs`) | 0 |
 | Joern GED | the same comparison on Joern's basic-block CFG (vendored rust-joern, `joern.rs`), scored with the same GED engine | 0 |
 | types | return and parameter type classes (`int<N>`, `float<N>`, bool, ptr, array, struct, void) vs DWARF (`types.rs`, `dwarf.rs`); locals as coverage only | arity, every parameter and the return right |
-| recompile | the output exactly as printed (no prelude, no injected declarations, no repair loop), built by the binary's own compiler and flags plus one fixed permissive flag set; its instructions vs the original's with every constant, displacement and register kept, where only an operand the object file has a relocation for may differ (`recompile.rs`) | instruction-identical |
-| Union | any of GED, Joern GED, types or recompile perfect (one is enough: a right signature with a wrong body counts) | |
-| Intersection, both CFGs, strict | every metric that applies perfect; GED 0 on both graph families; GED 0 from output that parsed without error recovery | |
-| with control flow | the perfect rate over rows whose source function has a branch or a loop. A source without control flow is `entry -> exit` and matches any output without control flow, an empty body included, so those perfects carry no information about structure and are also reported as their own `straight-line` band | |
-| size bands | every table split by source CFG nodes: straight-line (≤2), 3-5, 6-20, 21-50, 51-100, >100 | |
+| recompile | the output exactly as printed, built by the binary's own compiler and flags plus one fixed permissive flag set; its instructions vs the original's, with every constant, displacement and register kept (`recompile.rs`) | instruction-identical |
+| Union | any of GED, Joern GED, types or recompile perfect | |
+| Intersection, strict | every applicable metric perfect; GED 0 on both graph families; GED 0 from output that parsed without error recovery | |
+| with control flow | perfect rate over rows whose source has a branch or loop. A source without control flow matches any output without control flow, so those perfects are also reported as their own `straight-line` band | |
+| size bands | every table split by source CFG nodes: straight-line (≤2), 3–5, 6–20, 21–50, 51–100, >100 | |
 | normalized GED | GED / (source nodes + edges) | 0 |
 | call sites | direct call instructions in the unstripped binary vs calls printed (`callsites.rs`) | nothing missing, nothing extra |
 | shape tags | over/under-noded, extra goto/return/ternary/calls, lost `&&`/`||`, lost switch (`taxonomy.rs`) | |
-| function boundaries | a separate track (`boundaries.rs`): the tool gets **no** addresses and lists the functions it finds in the stripped binary; starts and ends vs the unstripped binary's `STT_FUNC` symbols and DWARF ranges. Two variants: `as-built`, and `no-unwind` with `.eh_frame`/`.eh_frame_hdr`/`.ARM.exidx`/`.ARM.extab` zeroed, because `.eh_frame` survives stripping and gives every function's exact range away on x86-64 and AArch64 Linux. Project functions (with DWARF) are reported apart from runtime code, and identical binaries are also counted once | start precision/recall/F1; exact and padded ends |
+| function boundaries | the tool gets no addresses and lists the functions it finds in the stripped binary; starts and ends are compared with the unstripped binary's `STT_FUNC` symbols and DWARF ranges (`boundaries.rs`). Variants: `as-built` and `no-unwind` (`.eh_frame`, `.eh_frame_hdr`, `.ARM.exidx`, `.ARM.extab` zeroed, since they reveal exact function ranges) | start precision/recall/F1; exact and padded ends |
 
-Recompilation runs only inside the build image, which has the compilers.
+**Line mappings are required.** Every decompiled function must come with the
+tool's own line mappings (which instructions each output line came from) and,
+for types, its variables with ABI argument positions and stack slots. Addresses
+are checked against the function's instructions. An output with no valid line
+mapping is not scored. Types are matched to DWARF through this evidence only,
+never by reading the C text. GED still reads the output's C, since structure is
+what it measures.
 
-**Not measured: correctness.** GED sees only graph shape. A function that
-prints the wrong constant, the wrong argument or an invented call can score
-perfect, and recovering missing code can make the score worse. Call-site
-agreement checks that each call is printed once, not that its arguments are
-right. Use FreshBench to compare decompilers on the same rows and to find
-regressions. A better score is not evidence that a change is correct, and a
-worse one is not evidence that it is wrong.
+**No fixups.** Every metric reads the output exactly as printed. FreshBench does
+not rewrite keywords, define pseudo-types, inject declarations or repair code
+before compiling or parsing it. Output that needs a declaration it did not print
+fails to compile, and that counts against the decompiler that printed it. The
+only uniform inputs are the compiler flags (`-w -fpermissive -std=gnu17
+-fno-builtin` plus the build's own) and the rule for choosing the scored function:
+the function with the source's name, else the only function defined in the output.
+
+**Not measured: correctness.** GED sees only graph shape. A function that prints
+the wrong constant, the wrong argument or an invented call can score perfect, and
+recovering missing code can make the score worse. Call-site agreement checks that
+each call is printed once, not that its arguments are right. A better score is
+not evidence that a change is correct, and a worse one is not evidence that it
+is wrong.
 
 ## How GED is computed
 
 * **One CFG builder for both sides.** Source and output are parsed with
-  tree-sitter-c and built by the same code. Two texts with the same control
-  flow therefore get the same graph, whatever syntax they print it with.
-  * `&&`, `||` and `?:` are control flow, as in the machine code, so
-    `if (a && b)` and `if (a) if (b)` match.
+  tree-sitter-c and built by the same code, so two texts with the same control
+  flow get the same graph.
+  * `&&`, `||` and `?:` are control flow, as in machine code.
   * Literal conditions are folded (`while (1)`, `do {} while (0)`).
   * `goto`, `break`, `continue` and `return;` are edges, not blocks.
   * Calls to no-return functions end at EXIT.
-  * Empty blocks are removed, chains are merged, and unreachable code is
-    dropped.
-* **Edit costs.** Inserting or deleting a node or an edge costs 1.
-  Substituting a node costs 0 for the same label (ENTRY, EXIT, block) and 1
-  otherwise.
-* **Search.** The lower bound is the size difference. The upper bound comes
-  from a Hungarian node assignment plus deterministic local search. A
-  branch-and-bound search then tightens it within a fixed work count, never a
-  time limit. Each row records `exact` and `lower_bound`. A value of 0 is
-  always exact.
+  * Empty blocks are removed, chains are merged, and unreachable code is dropped.
+* **Edit costs.** Inserting or deleting a node or an edge costs 1. Substituting a
+  node costs 0 for the same label (ENTRY, EXIT, block) and 1 otherwise.
+* **Search.** The lower bound is the size difference. The upper bound comes from a
+  Hungarian node assignment plus deterministic local search. A branch-and-bound
+  search then tightens it within a fixed work count, never a time limit. Each row
+  records `exact` and `lower_bound`. A value of 0 is always exact.
 * **Deterministic.** Identical inputs give byte-identical rows on any machine.
   `freshbench determinism` checks that no (function, output hash) pair has two
   scores.
+* **Score cache.** A score is keyed by scorer, metrics revision, budget, function,
+  source definition fingerprint and DWARF signature, and output hash. The metrics
+  revision changes whenever a CFG builder or the vendored rust-joern changes, so a
+  cache never returns a score from an older definition. `rescore --cache FILE`
+  keeps the cache between runs.
 
-* **Score cache.** A score is keyed by (scorer, metrics revision, budget,
-  function, source definition fingerprint and DWARF signature, output hash).
-  The metrics revision changes whenever a CFG builder or the vendored
-  rust-joern changes, so a cache never returns a score from an older
-  definition. The same source function and the same
-  output text are scored once, across builds, tools and runs.
-  `rescore --cache FILE` keeps the cache between runs.
+## Corpus M1
 
-Cold- and warm-cache timings for M1 will be reported with verified results.
-A resumed comparison rescores only inputs whose cache keys changed.
+| milestone | languages | architectures | compilers | optimization | status |
+|---|---|---|---|---|---|
+| **M1** | C | x86-64, i686, AArch64, ARMv7 (Thumb-2, hard float) | GCC 16.2.0, Clang 23.1.6 | O0 O1 O2 O3 Os O2-noinline | published ([`corpus/m1`](corpus/m1/README.md)); tool results in progress |
+| M2 | C++, C | + PE/PDB | + MSVC, MinGW-w64 | | planned |
+| M3 | Rust, Go | | rustc, gc | | planned; no C source CFG, so binary-grounded signals only |
+
+M1 has 20 projects, 285,875 rows (functions per build), and 7,885 distinct source
+functions. Rows overstate distinct functions because projects copy code between
+files; see [how many functions M1 really is](corpus/m1/README.md#how-many-functions-this-really-is).
+
+Rules:
+
+* **Fresh, licensed sources.** Only GitHub projects with an OSI license. Each
+  project's license file, SPDX id and commit ship with the dataset. GPL binaries
+  ship with their preprocessed sources and upstream commit. No malware.
+* **One exact toolchain per binary.** The build image is pinned by digest. Each
+  manifest entry records the compiler version line, target and flags.
+* **Stripped input only.** Decompilers see stripped copies. Names, addresses and
+  types come from the unstripped original, for grading only.
+* **Static only.** No corpus binary is executed.
+* **Same functions across the matrix.** Selection order is
+  sha256(`project/source/name`), independent of architecture and compiler.
+
+Corpus files and results are on Hugging Face at a pinned revision
+(`sjkim1127/freshbench-v2`, from M1 on). This repository holds only the manifests,
+hashes and documentation. Git LFS is not used.
+
+## Publication
+
+The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds the
+public leaderboard from completed `evaluate` runs. Supply their run IDs as a JSON
+array. It downloads only the pinned M1 target manifests, verifies their SHA-256
+digests, and checks that at least two registered non-LLM tools have a row for
+every M1 target. Explicit failed or unsupported rows count; absent rows do not
+pass the gate.
+
+Publication rules:
+
+* Only tools in [`ci/tools.json`](ci/tools.json) whose upstream repository had a
+  commit within the last 365 days when the page is built. An unmaintained tool's
+  numbers stay in the raw results but are not published.
+* LLM-based decompilers are not ranked. The corpus is public, so a model may have
+  seen it.
+* Results on the whole corpus use `report --corpus`, so the denominator is the
+  corpus and not the union of result files.
+* Deduplicated views (one function per renamed-clone group) are published next to
+  the all-row view.
+
+Leave `deploy` false to inspect the generated `leaderboard-preview` artifact first.
+The landing page is deployed from `site-bootstrap/` when that directory changes on
+`main`; it contains corpus statistics and no rankings.
 
 ## Improvement targets: `freshbench gaps`
 
-```sh
-cargo build --release
-target/release/freshbench rescore <dataset> --tool fission --out rows/fission.jsonl
-target/release/freshbench gaps <dir-with-rows> --tool fission --json gaps.json
+```bash
+target/release/freshbench rescore <dataset> --tool <tool> --out rows/<tool>.jsonl
+target/release/freshbench gaps <dir-with-rows> --tool <tool> --json gaps.json
 ```
 
 For every function, the tool is compared with every other tool on the same row:
 
-* **reachable**: another decompiler scored GED 0 from the same stripped
-  binary and this one did not. This is an existence proof that the source's
-  shape is recoverable.
-* **gap**: this tool's GED minus the best other tool's GED.
-* **no score**: this tool has nothing scorable where another tool scored.
+* **reachable:** another decompiler scored GED 0 from the same stripped binary and
+  this one did not. This shows the source's shape is recoverable.
+* **gap:** this tool's GED minus the best other tool's GED.
+* **no score:** this tool has nothing scorable where another tool scored.
 
-Results are grouped by size band, outcome and shape tag. Each group lists
-example rows, worst first. These are similarity gaps, not correctness
-defects. Open the output before acting on one.
+Results are grouped by size band, outcome and shape tag, with example rows, worst
+first. These are similarity gaps, not correctness defects. Inspect the output
+before acting on one.
 
-Other commands: `sweep` (below), `boundaries`, `duplicates`, `bands`, `determinism`, `score` (one function), `cfg` (print
-the graph FreshBench builds), `callsites`, `manifest build|verify|summary`.
+## Sweep and speed
 
-## Sweep (one Fission build over the corpus)
-
-The quality loop for a decompiler under development (`sweep.rs`):
+A quality loop for one decompiler under development:
 
 ```bash
-freshbench sweep run data/m1 --cli target/release/fission_cli --repo ~/Fission --label main
-freshbench sweep report runs/main          # scores, failures, timing
-freshbench sweep diff runs/main runs/fix   # output hashes first, then scores on changed rows
+target/release/freshbench sweep run data/m1 --cli <decompiler-cli> --repo <repo> --label main
+target/release/freshbench sweep report runs/main
+target/release/freshbench sweep diff runs/main runs/fix
 ```
 
-* `run` writes `runs/<label>/`: `meta.json` (CLI sha256, git commit, scorer id,
-  function-set id, every session's wall time), one checkpoint per binary
-  under `bin/`, and `rows.jsonl`. An interrupted run continues from its
-  checkpoints; a resume with another CLI or function set is refused. After
-  the scorer changed, the same command keeps the outputs and scores them again.
-  `--builds`, `--only` narrow the run; `--jobs 0` (default) runs half the
-  cores' worth of binaries at once.
+* `run` writes `runs/<label>/` with `meta.json` (CLI sha256, commit, scorer id,
+  function-set id, timings), one checkpoint per binary, and `rows.jsonl`. An
+  interrupted run resumes from its checkpoints; a resume with another CLI or
+  function set is refused.
 * A call that crashes or times out is bisected until the failing function is
   alone; the other functions of the binary keep their output.
-* The scorer is the `freshbench` binary: its id is a hash of the scoring
-  sources, written into every row, and `diff` refuses runs scored by
-  different scorers. Scores are cached by content under `runs/score-cache.jsonl`.
-* `diff` compares the sha256 of each output first. Identical outputs are not
-  compared on score (and are flagged if their scores differ). On changed rows
-  it reports perfects gained and lost, the same on functions with control
-  flow, Joern and type perfects, the distance delta and the rows that moved
-  most.
-* `report` gives the perfect count next to the total distance, split by
-  architecture, compiler, level and size band, and what the run cost: wall
-  time, CPU time of every `fission_cli` process, CPU per function and peak
-  memory. `diff` compares CPU time between the two runs.
+* `diff` compares output hashes first. Identical outputs are not compared on score.
+  It refuses runs scored by different scorers.
 
-## Speed
-
-Every tool run is measured in Rust (`adapters::run_measured`, `wait4`): wall
-time, user + system CPU time of the tool's whole process tree, and the peak
-resident memory of its largest process. `decompile` writes one line per
-binary to `results/<tool>/<build>/<project>/timing.jsonl`; boundary rows and
-sweep runs carry the same figures.
+Every tool run is timed in Rust: wall time, CPU time of the process tree, and peak
+resident memory. CPU time is the figure to compare between tools.
 
 ```bash
-freshbench speed results/ boundaries/ runs/main/timing.jsonl
+target/release/freshbench speed results/ boundaries/
 ```
 
-prints, per track and tool, CPU milliseconds per function, total CPU and wall
-time, median / p90 / max CPU seconds per binary and median / max memory. CPU
-time is the figure to compare between tools; wall time depends on how many
-binaries ran at once and on the machine.
-
-Measured on one M1 project (12 binaries, 3,600 functions, 14 cores): 75 s to
-decompile at 7 binaries at once, 53 s to score cold and about 1 s from the
-cache; a resumed run decompiles only what has no checkpoint.
-
-## Corpus
-
-| milestone | languages | architectures | compilers | optimization | status |
-|---|---|---|---|---|---|
-| **M1** | C | x86-64, i686, AArch64, ARMv7 (Thumb-2, hard float) | GCC 16.2.0, Clang 23.1.6 | same six | corpus published ([`corpus/m1`](corpus/m1/README.md)); tool results pending |
-| M2 | C++, C | + PE/PDB | + MSVC, MinGW-w64 | | planned |
-| M3 | Rust, Go | | rustc, gc | | planned; no C source CFG, so binary-grounded signals only |
-
-Rules:
-
-* **Fresh, licensed sources.** Only GitHub projects with an OSI license are
-  used. Each project's license file, SPDX id and commit ship with the dataset.
-  GPL binaries ship with their preprocessed sources and the upstream commit.
-  No malware.
-* **One exact toolchain per binary.** The build image is pinned by digest.
-  The cross GCC is built from the same GCC 16.2.0 release as the native one,
-  and Clang cross-compiles with the same 23.1.6 (`build/Dockerfile.cross`).
-  Each manifest entry records the compiler version line, target and flags.
-* **Stripped input only.** Decompilers see stripped copies. Names, addresses
-  and types come from the unstripped original, for grading only.
-* **Static only.** No corpus binary is ever executed.
-* **Same functions across the matrix.** Selection order is
-  sha256(`project/source/name`), which does not depend on the architecture or
-  compiler.
-
-Storage: the harness and per-milestone manifests (path, size, sha256,
-provenance) are in this repository. Corpus files and results are on
-Hugging Face at a pinned revision (`sjkim1127/freshbench-v2`, the published M1 dataset identifier).
-Git LFS is not used.
+Decompiling costs far more than scoring. A warm score cache makes a before/after
+comparison rescore only the rows whose output changed.
 
 ## Layout
 
 | path | what |
 |---|---|
-| `crates/freshbench/` | the scorer and CLI (Rust): `csyntax`, `cfg`, `ged`, `joern`, `types`, `dwarf`, `recompile`, `score`, `dataset`, `prepare`, `adapters`, `report`, `taxonomy`, `headroom`, `bands`, `callsites`, `manifest`, `rows` |
-| `crates/rust-joern/` | vendored rust-joern (Apache-2.0), see its `VENDORED.md` |
-| `build/` | build images (`Dockerfile` = native base, `Dockerfile.cross` = cross toolchains), compiler wrapper `fbcc.py`, `build_project.py` |
-| `ci/`, `.github/workflows/` | pins, corpus qualification per architecture, image builds, tests |
-| `selection/` | candidate enumeration and corpus lists (M1 selection and candidate provenance) |
+| [`crates/freshbench/`](crates/freshbench/) | the scorer and CLI (Rust) |
+| [`crates/rust-joern/`](crates/rust-joern/) | vendored rust-joern (Apache-2.0); see its `VENDORED.md` |
+| [`adapters/`](adapters/) | decompiler adapters and their contract |
+| [`corpus/`](corpus/) | pinned corpus manifests and digests |
+| [`selection/`](selection/) | candidate enumeration and project lists |
+| [`ci/`](ci/) | tool pins, tool registry, qualification and gate scripts |
+| [`docs/`](docs/) | DecBench compatibility audit |
+| [`.github/workflows/`](.github/workflows/) | tests, qualification, evaluation, Pages |
+| [`assets/`](assets/) | diagrams used in this README |
 
-Harness: Apache-2.0 (`LICENSE`). Corpus files keep their projects' licenses.
+## Prior work and license
+
+FreshBench's metric families follow [DecBench](https://github.com/Noelo-Lab/decbench)
+(Noelo-Lab): control-flow graph edit distance against the source, type recovery
+against DWARF, recompilation byte match, and a Union of perfect scores. The
+implementation is independent: it uses no DecBench code. For the second CFG family
+it vendors [rust-joern](https://github.com/Noelo-Lab/rust-joern) (Apache-2.0),
+but scores its graphs with FreshBench's GED, so its scores are not DecBench scores.
+DecBench's maintainer agreed to this reuse of its metric design on 2026-11-25, with
+one request we keep: be honest about duplication. The scoring defects DecBench
+found are tracked against this implementation, each with its status and a
+regression test, in
+[`docs/decbench-compatibility-audit.md`](docs/decbench-compatibility-audit.md).
+
+See [`NOTICE`](NOTICE) for attribution.
+
+Harness: Apache-2.0 ([`LICENSE`](LICENSE)). Corpus files keep their projects' licenses.

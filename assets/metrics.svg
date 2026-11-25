@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="t d">
+  <title id="t">FreshBench metrics</title>
+  <desc id="d">Ranked metrics are GED distance and function boundaries. Perfect rates, Joern GED, types, recompilation and call sites are auxiliary and shown but not ranked.</desc>
+  <rect width="960" height="360" fill="#ffffff"/>
+  <text x="32" y="40" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#1f2933">What each metric compares</text>
+  <text x="32" y="62" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#5b6470">Blue: ranked. Grey: auxiliary, shown next to the ranked figures. Structure is not correctness.</text>
+
+  <g font-family="Helvetica, Arial, sans-serif">
+    <rect x="32" y="90" width="280" height="110" rx="8" fill="#eaf1fa" stroke="#2f6fb0" stroke-width="1.5"/>
+    <text x="48" y="118" font-size="15" font-weight="700" fill="#1f2933">GED distance</text>
+    <text x="48" y="140" font-size="12" fill="#3e4c59">output CFG vs source CFG</text>
+    <text x="48" y="158" font-size="12" fill="#3e4c59">one CFG builder for both</text>
+    <text x="48" y="182" font-size="12" font-weight="700" fill="#2f6fb0">ranked · perfect = 0</text>
+
+    <rect x="340" y="90" width="280" height="110" rx="8" fill="#eaf1fa" stroke="#2f6fb0" stroke-width="1.5"/>
+    <text x="356" y="118" font-size="15" font-weight="700" fill="#1f2933">Function boundaries</text>
+    <text x="356" y="140" font-size="12" fill="#3e4c59">starts and ends the tool finds</text>
+    <text x="356" y="158" font-size="12" fill="#3e4c59">vs STT_FUNC and DWARF ranges</text>
+    <text x="356" y="182" font-size="12" font-weight="700" fill="#2f6fb0">ranked · start F1, exact ends</text>
+
+    <rect x="648" y="90" width="280" height="110" rx="8" fill="#f4f6f8" stroke="#5b6470" stroke-width="1.5"/>
+    <text x="664" y="118" font-size="15" font-weight="700" fill="#1f2933">Joern GED</text>
+    <text x="664" y="140" font-size="12" fill="#3e4c59">same GED on Joern basic blocks</text>
+    <text x="664" y="158" font-size="12" fill="#3e4c59">vendored rust-joern parser</text>
+    <text x="664" y="182" font-size="12" font-weight="700" fill="#5b6470">auxiliary · not ranked</text>
+
+    <rect x="32" y="222" width="280" height="110" rx="8" fill="#f4f6f8" stroke="#5b6470" stroke-width="1.5"/>
+    <text x="48" y="250" font-size="15" font-weight="700" fill="#1f2933">Types</text>
+    <text x="48" y="272" font-size="12" fill="#3e4c59">return and parameter classes</text>
+    <text x="48" y="290" font-size="12" fill="#3e4c59">from the tool's evidence vs DWARF</text>
+    <text x="48" y="314" font-size="12" font-weight="700" fill="#5b6470">auxiliary · not ranked</text>
+
+    <rect x="340" y="222" width="280" height="110" rx="8" fill="#f4f6f8" stroke="#5b6470" stroke-width="1.5"/>
+    <text x="356" y="250" font-size="15" font-weight="700" fill="#1f2933">Recompilation</text>
+    <text x="356" y="272" font-size="12" fill="#3e4c59">output compiled exactly as printed</text>
+    <text x="356" y="290" font-size="12" fill="#3e4c59">instructions vs the original object</text>
+    <text x="356" y="314" font-size="12" font-weight="700" fill="#5b6470">auxiliary · not ranked</text>
+
+    <rect x="648" y="222" width="280" height="110" rx="8" fill="#f4f6f8" stroke="#5b6470" stroke-width="1.5"/>
+    <text x="664" y="250" font-size="15" font-weight="700" fill="#1f2933">Call sites</text>
+    <text x="664" y="272" font-size="12" fill="#3e4c59">direct calls in the unstripped binary</text>
+    <text x="664" y="290" font-size="12" fill="#3e4c59">vs calls printed by the output</text>
+    <text x="664" y="314" font-size="12" font-weight="700" fill="#5b6470">auxiliary · not ranked</text>
+  </g>
+</svg>
