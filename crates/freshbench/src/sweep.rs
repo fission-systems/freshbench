@@ -243,7 +243,9 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
         cli: a.cli.display().to_string(),
         cli_sha256: manifest::sha256_file(&a.cli)?,
         git: git(&a.repo),
-        scorer: crate::score::SCORER.to_string(),
+        // the budget is part of the metric: a run resumed or compared under
+        // another budget is rescored or refused like a new scorer
+        scorer: crate::score::scorer_id(a.budget),
         budget: a.budget,
         builds: a.builds.clone(),
         only: a.only.clone(),
