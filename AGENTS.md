@@ -82,10 +82,14 @@ Resolve conflicts in that order; easy but wrong numbers are not progress.
 - Every published number must carry the provenance of the run that produced it.
 ### Telemetry
 - Error reporting to Sentry is opt-in: the `sentry` Cargo feature and both `FRESHBENCH_SENTRY=1`
-  and `SENTRY_DSN` at run time. Official benchmark runs must not set them.
+  and `SENTRY_DSN` at run time. Official benchmark runs must not set them; `decompile`,
+  `boundaries` and `sweep run` refuse to start while `FRESHBENCH_SENTRY`, `FISSION_SENTRY` or
+  `SENTRY_DSN` is set (`adapters::refuse_instrumented_run`). Do not add a way around it.
 - Initialize Sentry only in the binary's `main`. Library code never initializes it.
-- Never send binaries, decompiled output, memory, environment variables or unreduced paths.
-  `src/telemetry.rs` owns the scrubbing rules; change them there and test them.
+- No free text leaves the process: never send a panic message, error text, binaries, corpus
+  source, decompiled output, memory, environment variables or paths outside the public
+  source forms. `src/telemetry.rs` owns the allowlist; change it there and test it, including
+  the generator test that plants data in every event field.
 
 ### Tests
 - Every fixed scoring or evaluation defect gets a regression test. DecBench parity defects use

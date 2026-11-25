@@ -578,6 +578,45 @@ pub fn failure_kind(error: &str) -> &'static str {
     }
 }
 
+/// Variables that turn on error reporting in FreshBench (`FRESHBENCH_SENTRY`),
+/// in Fission (`FISSION_SENTRY`), or in any tool built with a Sentry SDK that
+/// reads `SENTRY_DSN` on its own. A measured tool inherits FreshBench's
+/// environment, so any of them would instrument the run being measured.
+pub const TELEMETRY_ENV: [&str; 3] = ["FRESHBENCH_SENTRY", "FISSION_SENTRY", "SENTRY_DSN"];
+
+/// The [`TELEMETRY_ENV`] variables `lookup` reports as set: non-empty, and for
+/// the opt-in flags anything but `0`.
+pub fn telemetry_env_set(lookup: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    TELEMETRY_ENV
+        .into_iter()
+        .filter(|key| {
+            lookup(key).is_some_and(|v| {
+                let v = v.trim();
+                !v.is_empty() && (*key == "SENTRY_DSN" || v != "0")
+            })
+        })
+        .collect()
+}
+
+/// Refuse to start a measurement (`decompile`, `boundaries`, `sweep run`)
+/// while telemetry is enabled. Measurements run uninstrumented, so that
+/// timings and outputs never depend on error reporting; an instrumented run
+/// is a separate debugging session. The error names the variables, never
+/// their values.
+pub fn refuse_instrumented_run(command: &str) -> Result<()> {
+    let set = telemetry_env_set(|key| std::env::var(key).ok());
+    if !set.is_empty() {
+        bail!(
+            "{command} is a measurement and runs with telemetry off, but {} {} set; \
+             unset {} and run again",
+            set.join(", "),
+            if set.len() == 1 { "is" } else { "are" },
+            if set.len() == 1 { "it" } else { "them" },
+        );
+    }
+    Ok(())
+}
+
 /// Write records as gzip JSON lines.
 pub fn write_records(path: &Path, recs: &[Record]) -> Result<()> {
     if let Some(d) = path.parent() {
@@ -595,6 +634,42 @@ pub fn write_records(path: &Path, recs: &[Record]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn measurements_refuse_telemetry_variables() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |key: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| (*v).to_owned())
+            }
+        };
+        assert!(telemetry_env_set(env(&[])).is_empty());
+        assert!(telemetry_env_set(env(&[
+            ("FRESHBENCH_SENTRY", "0"),
+            ("FISSION_SENTRY", " "),
+            ("SENTRY_DSN", "")
+        ]))
+        .is_empty());
+        assert_eq!(
+            telemetry_env_set(env(&[("FRESHBENCH_SENTRY", "1")])),
+            ["FRESHBENCH_SENTRY"]
+        );
+        assert_eq!(
+            telemetry_env_set(env(&[("FISSION_SENTRY", "1")])),
+            ["FISSION_SENTRY"]
+        );
+        // a DSN alone is refused: a tool's Sentry SDK may read it without an opt-in flag
+        assert_eq!(
+            telemetry_env_set(env(&[("SENTRY_DSN", "https://k@o1.ingest.sentry.io/2")])),
+            ["SENTRY_DSN"]
+        );
+        assert_eq!(
+            telemetry_env_set(env(&[("SENTRY_DSN", "0")])),
+            ["SENTRY_DSN"]
+        );
+    }
+
     use super::*;
 
     #[test]
