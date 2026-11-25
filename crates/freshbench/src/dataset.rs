@@ -247,7 +247,7 @@ pub const METRICS_REV: &str = "fbcfg2+joern2+types1";
 /// append-only JSON lines; on load the first value for a key wins.
 #[derive(Default)]
 pub struct ScoreCache {
-    map: std::sync::Mutex<HashMap<String, Cached>>,
+    map: std::sync::Mutex<HashMap<String, std::sync::Arc<std::sync::OnceLock<Cached>>>>,
     new: std::sync::Mutex<Vec<(String, Cached)>>,
     pub hits: std::sync::atomic::AtomicU64,
     pub misses: std::sync::atomic::AtomicU64,
@@ -269,7 +269,8 @@ impl ScoreCache {
                     value: Cached,
                 }
                 let l: L = serde_json::from_str(&line)?;
-                m.entry(l.key).or_insert(l.value);
+                m.entry(l.key)
+                    .or_insert_with(|| std::sync::Arc::new(std::sync::OnceLock::from(l.value)));
             }
         }
         Ok(c)
@@ -292,23 +293,26 @@ impl ScoreCache {
         )
     }
 
-    fn get(&self, k: &str) -> Option<Cached> {
-        let v = self.map.lock().unwrap().get(k).cloned();
-        let ctr = if v.is_some() {
-            &self.hits
-        } else {
-            &self.misses
+    /// One worker computes a missing key; other workers wait for that key
+    /// without holding the map lock. Unrelated keys can run concurrently.
+    fn get_or_compute(&self, k: String, compute: impl FnOnce() -> Cached) -> Cached {
+        use std::sync::atomic::Ordering;
+        let cell = {
+            let mut map = self.map.lock().unwrap();
+            map.entry(k.clone()).or_default().clone()
         };
-        ctr.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        v
-    }
-
-    fn put(&self, k: String, v: Cached) {
-        let mut m = self.map.lock().unwrap();
-        if !m.contains_key(&k) {
-            m.insert(k.clone(), v.clone());
-            self.new.lock().unwrap().push((k, v));
+        let mut computed = false;
+        let value = cell.get_or_init(|| {
+            computed = true;
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            let value = compute();
+            self.new.lock().unwrap().push((k, value.clone()));
+            value
+        });
+        if !computed {
+            self.hits.fetch_add(1, Ordering::Relaxed);
         }
+        value.clone()
     }
 
     pub fn len(&self) -> usize {
@@ -601,34 +605,29 @@ fn score_tu(
             ),
             &format!("{out_sha}|{ev_sha}"),
         );
-        let c = match cache.get(&key) {
-            Some(c) => c,
-            None => {
-                // a parser or builder panic on one output costs that row only
-                let c = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    score_output(
-                        sg,
-                        sf,
-                        jg,
-                        truth.as_ref(),
-                        dm,
-                        text,
-                        &t.key.function,
-                        budget,
-                        &ev,
-                    )
-                }))
-                .unwrap_or_else(|_| Cached {
-                    outcome: Outcome::Unscored,
-                    ged: None,
-                    joern_ged: None,
-                    types: None,
-                    tags: vec!["scorer_panic".into()],
-                });
-                cache.put(key, c.clone());
-                c
-            }
-        };
+        let c = cache.get_or_compute(key, || {
+            // a parser or builder panic on one output costs that row only
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                score_output(
+                    sg,
+                    sf,
+                    jg,
+                    truth.as_ref(),
+                    dm,
+                    text,
+                    &t.key.function,
+                    budget,
+                    &ev,
+                )
+            }))
+            .unwrap_or_else(|_| Cached {
+                outcome: Outcome::Unscored,
+                ged: None,
+                joern_ged: None,
+                types: None,
+                tags: vec!["scorer_panic".into()],
+            })
+        });
         row.outcome = c.outcome;
         row.ged = c.ged;
         row.joern_ged = c.joern_ged;
@@ -940,6 +939,36 @@ mod tests {
             ScoreCache::key_at(METRICS_REV, 200_000, "f", "src", "out")
         );
         assert_ne!(k, ScoreCache::key_at("older", 200_000, "f", "src", "out"));
+    }
+
+    #[test]
+    fn concurrent_requests_compute_a_key_once() {
+        let cache = ScoreCache::default();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let barrier = std::sync::Barrier::new(8);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    barrier.wait();
+                    let result = cache.get_or_compute("shared".into(), || {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        Cached {
+                            outcome: Outcome::Unscored,
+                            ged: None,
+                            joern_ged: None,
+                            types: None,
+                            tags: vec!["test".into()],
+                        }
+                    });
+                    assert_eq!(result.tags, ["test"]);
+                });
+            }
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(cache.misses.load(Ordering::Relaxed), 1);
+        assert_eq!(cache.hits.load(Ordering::Relaxed), 7);
+        assert_eq!(cache.len(), 1);
     }
 
     #[test]
