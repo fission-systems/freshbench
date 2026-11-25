@@ -28,6 +28,11 @@ say so and fix the cause.
 
 - Pages are built from `evaluate`/`boundaries` artifacts and each run's own `provenance.json`.
   Use the run's pins, not the current `ci/pins.env`, for page metadata.
+- The ranking deploys automatically on a push to `main` that changes `ci/leaderboard_runs.json`.
+  That file is the publication input: review its diff like a publication decision, and make sure
+  each listed run is a completed `evaluate` run of the pinned M1 corpus.
+- The `plan` job decides what runs. `build` and `deploy` run only when the gate has a run list
+  and `deploy` is set. Do not add a path that deploys without the gate in `build`.
 - Keep the publication policy: registered, maintained, non-LLM tools only, with the deduplicated
   view and the boundary/speed data. Do not hand-write a number.
 - Do not publish a table that mixes scorers, omits rows silently, or claims a complete evaluation

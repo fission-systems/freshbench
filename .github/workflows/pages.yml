@@ -1,10 +1,14 @@
 name: pages
-# Bootstrap a landing page once; publish verified rankings only on manual dispatch.
+# Landing page: bootstrapped once, when its files change on main.
+# Ranking: built from the evaluate runs listed in ci/leaderboard_runs.json (on
+# push to main) or given to a manual dispatch. The publication gate
+# (ci/leaderboard_gate.py) must pass before anything is deployed; a failing gate
+# leaves the published ranking unchanged.
 # Needs Settings -> Pages -> Source: GitHub Actions.
 on:
   push:
     branches: [main]
-    paths: ['site-bootstrap/**', 'crates/freshbench/src/report.css', 'crates/freshbench/src/report-theme.js']
+    paths: ['site-bootstrap/**', 'crates/freshbench/src/report.css', 'crates/freshbench/src/report-theme.js', 'ci/leaderboard_runs.json']
   workflow_dispatch:
     inputs:
       evaluate_runs: { description: "JSON list of completed evaluate run IDs; [] for landing page only", default: "[]" }
@@ -12,8 +16,44 @@ on:
 permissions: { contents: read, actions: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: false }
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      runs: ${{ steps.p.outputs.runs }}
+      deploy: ${{ steps.p.outputs.deploy }}
+      bootstrap: ${{ steps.p.outputs.bootstrap }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: p
+        env:
+          EVENT: "${{ github.event_name }}"
+          DISPATCH_RUNS: "${{ inputs.evaluate_runs }}"
+          DISPATCH_DEPLOY: "${{ inputs.deploy }}"
+          BEFORE: "${{ github.event.before }}"
+          SHA: "${{ github.sha }}"
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = push ]; then
+            runs=$(jq -c . ci/leaderboard_runs.json)
+            deploy=true
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then base=HEAD~1; else base=$BEFORE; fi
+            if git diff --name-only "$base" "$SHA" -- site-bootstrap crates/freshbench/src/report.css crates/freshbench/src/report-theme.js | grep -q .; then
+              bootstrap=true
+            else
+              bootstrap=false
+            fi
+          else
+            runs="${DISPATCH_RUNS:-[]}"
+            deploy="${DISPATCH_DEPLOY:-false}"
+            bootstrap=false
+          fi
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "bootstrap=$bootstrap" >> "$GITHUB_OUTPUT"
   bootstrap:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (inputs.deploy && (inputs.evaluate_runs == '[]' || inputs.evaluate_runs == '')))
+    needs: plan
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push' && needs.plan.outputs.bootstrap == 'true') || (github.event_name == 'workflow_dispatch' && inputs.deploy && (inputs.evaluate_runs == '[]' || inputs.evaluate_runs == '')))
     runs-on: ubuntu-24.04
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:
@@ -59,7 +99,8 @@ jobs:
         if: steps.guard.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
   build:
-    if: github.event_name == 'workflow_dispatch' && inputs.evaluate_runs != '[]' && inputs.evaluate_runs != ''
+    needs: plan
+    if: needs.plan.outputs.runs != '[]' && needs.plan.outputs.runs != ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +114,7 @@ jobs:
       - name: collect rows
         env:
           GH_TOKEN: "${{ github.token }}"
-          EVALUATE_RUNS: "${{ inputs.evaluate_runs }}"
+          EVALUATE_RUNS: "${{ needs.plan.outputs.runs }}"
         run: |
           mkdir -p site-src/rows
           jq -e 'type == "array" and length > 0 and all(.[]; tostring | test("^[0-9]+$"))' <<< "$EVALUATE_RUNS" >/dev/null
@@ -97,7 +138,7 @@ jobs:
           PY
       - name: meta (from the runs' own provenance, not the current pins)
         env:
-          EVALUATE_RUNS: "${{ inputs.evaluate_runs }}"
+          EVALUATE_RUNS: "${{ needs.plan.outputs.runs }}"
         run: |
           REVISION=$(python -c 'from ci.leaderboard_gate import REVISION; print(REVISION)')
           target/release/freshbench provenance meta dl --corpus "M1 · dataset $REVISION" \
@@ -148,11 +189,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: leaderboard-preview, path: site, if-no-files-found: error }
       - uses: actions/upload-pages-artifact@v3
-        if: inputs.deploy
+        if: needs.plan.outputs.deploy == 'true'
         with: { path: site }
   deploy:
-    if: inputs.deploy && github.ref == 'refs/heads/main'
-    needs: build
+    if: needs.plan.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
+    needs: [plan, build]
     runs-on: ubuntu-24.04
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:

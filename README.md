@@ -158,11 +158,14 @@ hashes and documentation. Git LFS is not used.
 ## Publication
 
 The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds the
-public leaderboard from completed `evaluate` runs. Supply their run IDs as a JSON
-array. It downloads only the pinned M1 target manifests, verifies their SHA-256
-digests, and checks that at least two registered non-LLM tools have a row for
-every M1 target. Explicit failed or unsupported rows count; absent rows do not
-pass the gate.
+public leaderboard from the completed `evaluate` runs listed in
+[`ci/leaderboard_runs.json`](ci/leaderboard_runs.json). A push to `main` that
+changes that file rebuilds and deploys the leaderboard. A manual dispatch can
+supply other run IDs. The workflow downloads only the pinned M1 target manifests,
+verifies their SHA-256 digests, and checks that at least two registered non-LLM
+tools have a row for every M1 target. Explicit failed or unsupported rows count;
+absent rows do not pass the gate. A run list that fails the gate deploys nothing,
+so the currently published ranking stays as it is.
 
 Publication rules:
 
@@ -176,9 +179,9 @@ Publication rules:
 * Deduplicated views (one function per renamed-clone group) are published next to
   the all-row view.
 
-Leave `deploy` false to inspect the generated `leaderboard-preview` artifact first.
-The landing page is deployed from `site-bootstrap/` when that directory changes on
-`main`; it contains corpus statistics and no rankings.
+A manual dispatch with `deploy` false only produces the `leaderboard-preview`
+artifact for inspection. The landing page is deployed from `site-bootstrap/` when
+that directory changes on `main`; it contains corpus statistics and no rankings.
 
 ## Improvement targets: `freshbench gaps`
 
