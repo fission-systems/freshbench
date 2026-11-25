@@ -638,6 +638,7 @@ fn run() -> Result<ExitCode> {
         } => {
             use freshbench::adapters::{self, Tool};
             use std::time::Duration;
+            adapters::refuse_instrumented_run("decompile")?;
             let t = if tool == "fission" {
                 Tool::Fission {
                     cli: fission_cli.context("--fission-cli is required for fission")?,
@@ -764,6 +765,7 @@ fn run() -> Result<ExitCode> {
         } => {
             use freshbench::adapters::{self, Tool};
             use freshbench::boundaries;
+            adapters::refuse_instrumented_run("boundaries")?;
             anyhow::ensure!(
                 variant == "as-built" || variant == "no-unwind",
                 "--variant is as-built or no-unwind"
@@ -944,6 +946,7 @@ fn run() -> Result<ExitCode> {
                 budget,
                 force,
             } => {
+                freshbench::adapters::refuse_instrumented_run("sweep run")?;
                 let run = freshbench::sweep::run(&freshbench::sweep::RunArgs {
                     root,
                     cli,

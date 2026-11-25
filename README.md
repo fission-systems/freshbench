@@ -60,9 +60,36 @@ FRESHBENCH_SENTRY=1 SENTRY_DSN=<project DSN> target/release/freshbench <command>
 ```
 
 Without the feature, no Sentry code is compiled. With it, reporting stays off
-until both variables are set. Output text, binaries, decompiled code and
-environment variables are never sent, and file paths are reduced to base names.
-Official benchmark runs leave the variables unset.
+until both variables are set, and only panics are reported (errors a command
+returns are not).
+
+What a report contains is an allowlist in `crates/freshbench/src/telemetry.rs`:
+the exception type (`panic`), the panic location as `file:line` when the file is
+FreshBench's own source, the Rust standard library or a crates.io dependency,
+stack frames reduced to function names in FreshBench, the standard library or
+Rayon (others read `<other>`) with the same file rule, and release, environment,
+level, timestamp and SDK version. The panic message is never sent, because it can
+hold whatever the code was looking at; it is replaced by `panic at <location>`.
+Paths outside those three forms, other tags, extra data, contexts, breadcrumbs,
+loaded modules, host and user details are dropped. Binaries, corpus source,
+decompiled output and memory are never read into a report, and no environment
+variable is besides the opt-in pair, `SENTRY_RELEASE`/`FRESHBENCH_RELEASE` (kept only
+as `freshbench@<version>`) and `SENTRY_ENVIRONMENT` (kept only from a fixed list).
+The scrub is tested, not proven: a value shaped exactly like a FreshBench source
+path or function name in a stack frame is kept, since those come from the
+binary's own debug information.
+
+Measurements run with telemetry off. `decompile`, `boundaries` and `sweep run`
+refuse to start while `FRESHBENCH_SENTRY`, `FISSION_SENTRY` or `SENTRY_DSN` is
+set, because the measured tool inherits the environment and its timings and
+output must not depend on error reporting. Debug a crash in a separate,
+instrumented run of another command (for example `score` or `rescore`), and never
+publish numbers from it.
+
+The repository secrets `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` are
+reserved for uploading releases and debug files; no workflow uses them yet.
+`SENTRY_ORG` is the Sentry organization slug (`fission-systems`). It is a Sentry
+setting, not the GitHub organization; the two names happen to be the same here.
 
 ## What is measured, and what is not
 

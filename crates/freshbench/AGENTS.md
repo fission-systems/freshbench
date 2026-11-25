@@ -45,10 +45,14 @@ Root `AGENTS.md` applies. This crate is the v2 scorer and CLI; its output is the
 
 - `src/telemetry.rs` is compiled into the binary only, never into the library. It is off unless
   the feature is on and `FRESHBENCH_SENTRY=1` and `SENTRY_DSN` are set.
-- Its `scrub` function is the last line of defence before an event leaves the process. Keep it
-  dropping breadcrumbs, extra data, request, user and server name, and keep reducing paths.
-- Only panics are reported today. Expected validation failures must not be reported; infrastructure
-  failure categories are a separate change.
+- Its `scrub` function is the last line of defence before an event leaves the process. It
+  rebuilds the event from an allowlist (exception type, `location` tag, fingerprint
+  `[type, location]`, clean frames, release, environment); every other field is dropped.
+  Message, log entry and exception value are templates, never the original text.
+- Paths survive only as `crates/...`, `library/...` or `deps/<crate>-<ver>/...`
+  (`clean_source_path`); frame function names only for the crates in `FRAME_CRATES`.
+- Only panics are reported today, with the panic message never read. Expected validation
+  failures must not be reported; infrastructure failure categories are a separate change.
 
 ## Tests
 

@@ -14,7 +14,8 @@ path = "src/main.rs"
 [features]
 # Opt-in error reporting to Sentry. Off by default: without this feature no
 # Sentry code is compiled, and with it the CLI still sends nothing unless
-# FRESHBENCH_SENTRY=1 and SENTRY_DSN are set (see src/telemetry.rs).
+# FRESHBENCH_SENTRY=1 and SENTRY_DSN are set. Panics only, no message text
+# (see src/telemetry.rs).
 sentry = ["dep:sentry"]
 
 [dependencies]
