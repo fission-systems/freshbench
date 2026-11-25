@@ -19,6 +19,7 @@ pub mod dataset;
 pub mod dwarf;
 pub mod evidence;
 pub mod ged;
+pub mod ground_truth;
 pub mod headroom;
 pub mod joern;
 pub mod manifest;
