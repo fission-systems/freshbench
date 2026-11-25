@@ -1,10 +1,8 @@
 //! A dataset tree: targets (functions to decompile), their source TUs, and
 //! each tool's decompiled code.
 //!
-//! Layout (shared by v1 and v2):
-//!   configs/full/manifest.json   binaries[] with project, compiler, level, binary, [arch],
-//!                                function_info[] {name, address, source_path}
-//!   sources/<build>/<project>/<tu>.c          preprocessed translation units
+//! Layout: see `corpus` for prepared trees and assembled corpus manifests.
+//!   sources/<arch>/<project>/<tu>.c  preprocessed translation units
 //!   results/<tool>/<build>/<project>/records.jsonl.gz   {binary, function, code}
 
 use std::collections::{BTreeMap, HashMap};
@@ -31,90 +29,11 @@ pub struct Target {
     pub flags: String,
 }
 
-#[derive(Deserialize)]
-struct Manifest {
-    binaries: Vec<Bin>,
-}
-
-#[derive(Deserialize)]
-struct Bin {
-    project: String,
-    compiler: String,
-    level: String,
-    binary: String,
-    #[serde(default)]
-    arch: Option<String>,
-    #[serde(default)]
-    binary_path: Option<String>,
-    #[serde(default)]
-    flags: String,
-    #[serde(default)]
-    function_info: Vec<FInfo>,
-}
-
-#[derive(Deserialize)]
-struct FInfo {
-    name: String,
-    #[serde(default)]
-    address: Option<u64>,
-    #[serde(default)]
-    source_path: Option<String>,
-}
-
-/// Targets of a v1 dataset tree (`configs/full/manifest.json`), an assembled
-/// corpus (`truth/`) or a prepared tree (`<cfg>/manifest.json`); see `corpus`.
+/// Targets in an assembled corpus or per-project prepared tree.
 pub fn targets(root: &Path) -> Result<Vec<Target>> {
-    let p = root.join("configs").join("full").join("manifest.json");
-    if !p.exists() {
-        return prepared_targets(root);
-    }
-    let m: Manifest = serde_json::from_reader(std::io::BufReader::new(
-        std::fs::File::open(&p).with_context(|| format!("open {}", p.display()))?,
-    ))?;
-    let mut out = BTreeMap::new();
-    for b in m.binaries {
-        for f in b.function_info {
-            let key = RowKey {
-                project: b.project.clone(),
-                arch: b.arch.clone().unwrap_or_else(|| "x86_64".into()),
-                compiler: b.compiler.clone(),
-                config: b.level.clone(),
-                binary: b.binary.clone(),
-                function: f.name,
-            };
-            if let Some(sp) = f.source_path {
-                let sp = resolve_source(root, &key.project, &sp);
-                out.insert(
-                    key.clone(),
-                    Target {
-                        key,
-                        address: f.address,
-                        source: sp.clone(),
-                        source_path: sp,
-                        binary_path: b.binary_path.clone(),
-                        flags: b.flags.clone(),
-                    },
-                );
-            }
-        }
-    }
-    Ok(out.into_values().collect())
-}
-
-/// The manifest's `sources/<build>/<project>/<tu>.c`, or the deduplicated
-/// `sources/<project>/<tu>.c` (TU file names carry their content hash, so the
-/// same name is the same text in every build).
-fn resolve_source(root: &Path, project: &str, sp: &str) -> String {
-    if root.join(sp).exists() {
-        return sp.to_string();
-    }
-    let name = sp.rsplit('/').next().unwrap_or(sp);
-    let alt = format!("sources/{project}/{name}");
-    if root.join(&alt).exists() {
-        alt
-    } else {
-        sp.to_string()
-    }
+    let targets = prepared_targets(root)?;
+    anyhow::ensure!(!targets.is_empty(), "no prepared targets in {}", root.display());
+    Ok(targets)
 }
 
 fn prepared_targets(root: &Path) -> Result<Vec<Target>> {
