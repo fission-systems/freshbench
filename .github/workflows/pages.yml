@@ -1,15 +1,58 @@
 name: pages
-# Results site from evaluate runs. Manual only: a public page is published only
-# when someone runs this. Needs Settings -> Pages -> Source: GitHub Actions.
+# Bootstrap a landing page once; publish verified rankings only on manual dispatch.
+# Needs Settings -> Pages -> Source: GitHub Actions.
 on:
+  push:
+    branches: [main]
+    paths: ['site-bootstrap/**']
   workflow_dispatch:
     inputs:
-      evaluate_runs: { description: "JSON list of evaluate run ids whose eval-* and bound-* artifacts to publish", required: true }
+      evaluate_runs: { description: "JSON list of completed evaluate run IDs; [] for landing page only", default: "[]" }
       deploy: { description: "Publish to GitHub Pages (false = downloadable preview)", type: boolean, default: false }
 permissions: { contents: read, actions: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: false }
 jobs:
+  bootstrap:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (inputs.deploy && (inputs.evaluate_runs == '[]' || inputs.evaluate_runs == '')))
+    runs-on: ubuntu-24.04
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: protect any existing leaderboard
+        id: guard
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          BASE_URL: "${{ steps.pages.outputs.base_url }}"
+        run: |
+          set -euo pipefail
+          test -n "$BASE_URL"
+          # A previous successful ranking deployment is sufficient reason to
+          # skip even if the public CDN is temporarily returning a 404.
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/pages.yml/runs?event=workflow_dispatch&status=success&per_page=100" --jq '.workflow_runs[].id')
+          for id in $runs; do
+            deployed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" --jq '.jobs[] | select(.name == "deploy" and .conclusion == "success") | .id')
+            if [ -n "$deployed" ]; then
+              echo "Verified ranking deployment exists; refusing to replace it."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          status=$(curl --silent --show-error --location --retry 3 --max-time 30 --output /dev/null --write-out '%{http_code}' "${BASE_URL%/}/summary.json")
+          case "$status" in
+            404) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            200) echo "Existing summary; refusing to overwrite it."; echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Cannot safely determine published state (HTTP $status)" >&2; exit 1 ;;
+          esac
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.guard.outputs.publish == 'true'
+        with: { path: site-bootstrap }
+      - id: d
+        if: steps.guard.outputs.publish == 'true'
+        uses: actions/deploy-pages@v4
   build:
+    if: github.event_name == 'workflow_dispatch' && inputs.evaluate_runs != '[]' && inputs.evaluate_runs != ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +144,7 @@ jobs:
         if: inputs.deploy
         with: { path: site }
   deploy:
-    if: inputs.deploy
+    if: inputs.deploy && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-24.04
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }

@@ -18,6 +18,13 @@ v1 numbers and v2 numbers are not comparable.
 
 ## M1 leaderboard
 
+The landing page is deployed from `site-bootstrap/` when that directory changes on
+`main`. It contains corpus statistics and no invented rankings. To request a landing
+page deployment manually, run the Pages workflow with `evaluate_runs: []` and
+`deploy: true`. The workflow refuses to replace an existing ranking. Only generated
+site files are published; do not add the generic repository-wide Static HTML workflow.
+
+
 The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds
 the public leaderboard from completed `evaluate` runs. Supply their run IDs
 as a JSON array. It downloads only the pinned M1 target manifests (not the
