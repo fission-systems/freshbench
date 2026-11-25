@@ -1,0 +1,83 @@
+# Path -> area:* labels for pull requests (actions/labeler, .github/workflows/label-areas.yml).
+# Only objective area labels from changed paths. Type, risk, status and priority
+# stay manual (.github/AGENTS.md). Labels are added, never removed.
+# ci/test_labeler.py checks that every glob matches a tracked file and every
+# label exists in .github/labels.json.
+
+area:scorer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/freshbench/**
+
+area:rust-joern:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/rust-joern/**
+
+area:adapters:
+  - changed-files:
+      - any-glob-to-any-file:
+          - adapters/**
+          - crates/freshbench/src/adapters.rs
+          - ci/setup_tool.sh
+
+area:corpus:
+  - changed-files:
+      - any-glob-to-any-file:
+          - corpus/**
+          - build/**
+          - ci/qualify_arch.sh
+          - crates/freshbench/src/prepare.rs
+          - crates/freshbench/src/corpus.rs
+          - crates/freshbench/src/manifest.rs
+          - .github/workflows/qualify-arch.yml
+          - .github/workflows/image-cross.yml
+
+area:selection:
+  - changed-files:
+      - any-glob-to-any-file:
+          - selection/**
+          - overlap/**
+
+area:evaluation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/evaluate.yml
+          - .github/workflows/probe.yml
+          - crates/freshbench/src/sweep.rs
+
+area:publication:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ci/leaderboard_runs.json
+          - ci/leaderboard_gate.py
+          - ci/test_leaderboard_gate.py
+          - ci/tools.json
+          - .github/workflows/pages.yml
+          - site-bootstrap/**
+          - crates/freshbench/src/report*
+          - crates/freshbench/src/policy.rs
+
+area:pins:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ci/pins.env
+
+area:telemetry:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/freshbench/src/telemetry.rs
+
+area:ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - ci/**
+          - .githooks/**
+
+area:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - "**/*.md"
+          - assets/**

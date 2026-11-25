@@ -1,0 +1,24 @@
+# zizmor configuration (.github/workflows/workflow-lint.yml).
+#
+# Known debt, recorded 2026-11-25 (52 high findings, zizmor 1.32.0). These
+# workflows were frozen while the M1 measurement campaign ran, so the findings
+# are ignored per file instead of fixed. New workflows are checked in full.
+# Remove an entry when its file is fixed; do not add one for a new workflow.
+rules:
+  unpinned-uses:
+    ignore:
+      - evaluate.yml
+      - image-cross.yml
+      - pages.yml
+      - probe.yml
+      - qualify-arch.yml
+      - test.yml
+  template-injection:
+    ignore:
+      - evaluate.yml
+      - image-cross.yml
+      - probe.yml
+      - qualify-arch.yml
+  excessive-permissions:
+    ignore:
+      - pages.yml

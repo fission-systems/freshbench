@@ -1,0 +1,31 @@
+name: label-areas
+
+# Adds area:* labels from the paths a pull request changes (.github/labeler.yml).
+# pull_request, not pull_request_target: no PR code is checked out or run. Fork
+# and Dependabot PRs get a read-only token that cannot label, so they are skipped
+# instead of failing; label those by hand.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: label-areas-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label areas
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: false
+          dot: true
