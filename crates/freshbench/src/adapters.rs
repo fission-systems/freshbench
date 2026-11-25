@@ -353,24 +353,51 @@ pub struct CallStats {
     pub usage: Usage,
 }
 
+/// How many `binary_timeout`s one binary may take in all, bisection included.
+pub const BINARY_BUDGET_FACTOR: u32 = 2;
+
 /// Decompile `addrs` in one call; a call that crashes or times out is bisected
 /// until the failing function is alone, so one bad function costs that
 /// function and never the rest of the binary. A function is blamed only when
 /// it fails by itself. A subset's time limit is `function_timeout` per
 /// function, at most `binary_timeout`.
+///
+/// All calls for one binary share `deadline`. A tool whose fixed cost per call
+/// (loading the binary, recovering its whole CFG) exceeds the limit times out
+/// on every subset, and bisecting it makes about two calls per function: one
+/// armv7 binary held a CI job for five hours that way. Once the deadline has
+/// passed, every function not yet decompiled is a timeout.
+#[allow(clippy::too_many_arguments)]
 fn bisect(
     tool: &Tool,
     binary: &Path,
     addrs: &[u64],
     base: u64,
     (binary_timeout, function_timeout): (Duration, Duration),
+    deadline: (std::time::Instant, Duration),
     stats: &mut CallStats,
     out: &mut BTreeMap<u64, Result<Got, String>>,
 ) {
+    let left = deadline
+        .0
+        .saturating_duration_since(std::time::Instant::now());
+    if left.is_zero() {
+        for a in addrs {
+            out.insert(
+                *a,
+                Err(format!(
+                    "timeout after {}s: the binary's time budget is spent",
+                    deadline.1.as_secs()
+                )),
+            );
+        }
+        return;
+    }
     let limit = function_timeout
         .saturating_mul(addrs.len() as u32)
         .min(binary_timeout)
-        .max(function_timeout);
+        .max(function_timeout)
+        .min(left);
     stats.calls += 1;
     match call(tool, binary, addrs, base, limit, &mut stats.usage) {
         Ok(m) => out.extend(m),
@@ -386,6 +413,7 @@ fn bisect(
                     l,
                     base,
                     (binary_timeout, function_timeout),
+                    deadline,
                     stats,
                     out,
                 );
@@ -395,6 +423,7 @@ fn bisect(
                     r,
                     base,
                     (binary_timeout, function_timeout),
+                    deadline,
                     stats,
                     out,
                 );
@@ -438,12 +467,14 @@ pub fn decompile_binary_stats(
     let mut got = BTreeMap::new();
     let mut stats = CallStats::default();
     if !addrs.is_empty() {
+        let budget = binary_timeout.saturating_mul(BINARY_BUDGET_FACTOR);
         bisect(
             tool,
             binary,
             &addrs,
             base,
             (binary_timeout, function_timeout),
+            (std::time::Instant::now() + budget, budget),
             &mut stats,
             &mut got,
         );
@@ -763,6 +794,43 @@ else echo "{\"address\":\"$a\",\"code\":\"int f(void){return 1;}\",\"error\":nul
         assert_eq!(recs[0].code.as_deref(), Some("int f(void){return 1;}"));
         assert_eq!(recs[1].code, None);
         assert_eq!(recs[1].error.as_deref(), Some("boom"));
+    }
+
+    /// A tool whose every call outlives the limit, however few functions it
+    /// is given (a whole-binary CFG per call): bisection stops at the binary's
+    /// budget instead of making two calls per function.
+    #[cfg(unix)]
+    #[test]
+    fn bisection_stops_at_the_binary_budget() {
+        let d = tempfile::tempdir().unwrap();
+        let script = d.path().join("run");
+        std::fs::write(&script, "#!/bin/sh\nsleep 5\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let me = std::env::current_exe().unwrap();
+        let tool = Tool::Script {
+            name: "slow".into(),
+            command: vec![script.to_string_lossy().into_owned()],
+        };
+        let funcs: BTreeMap<u64, String> =
+            (0..16u64).map(|i| (0x10 + i, format!("f{i}"))).collect();
+        let t = std::time::Instant::now();
+        let (recs, stats) = decompile_binary_stats(
+            &tool,
+            &me,
+            "me",
+            &funcs,
+            Duration::from_millis(400),
+            Duration::from_millis(400),
+        )
+        .unwrap();
+        // without the budget: 31 calls of 0.4 s each
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        assert!(stats.calls <= 3, "{} calls", stats.calls);
+        assert_eq!(recs.len(), 16);
+        assert!(recs
+            .iter()
+            .all(|r| r.code.is_none() && failure_kind(r.error.as_deref().unwrap()) == "timeout"));
     }
 
     /// One function crashes the tool whenever it is in the batch: bisection
