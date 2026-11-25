@@ -1077,7 +1077,7 @@ fn run() -> Result<ExitCode> {
                     .iter()
                     .map(|d| Ok(serde_json::from_str(&read(d)?)?))
                     .collect::<Result<_>>()?;
-                table = freshbench::report::dedup(&table, &reps, dedup_level)?;
+                table = freshbench::report::dedup_with_truth(&table, &reps, dedup_level, truth_index.as_ref())?;
                 meta.notes.push(format!(
                     "one function per {dedup_level:?} clone group: {} of {all} rows",
                     table.len()
@@ -1085,7 +1085,7 @@ fn run() -> Result<ExitCode> {
             }
             if matched {
                 let before = table.len();
-                table = freshbench::report::matched(&table);
+                table = freshbench::report::matched_with_truth(&table, truth_index.as_ref());
                 meta.notes.push(format!(
                     "matched track: functions present in every build, {} of {before} rows",
                     table.len()
