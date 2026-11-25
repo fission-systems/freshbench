@@ -660,6 +660,35 @@ struct BuildBin {
     file: String,
 }
 
+/// Upper bound on the eligible functions of one build directory: distinct
+/// (primary source, name) of DWARF subprograms with a `low_pc` in C units
+/// whose primary source lies in the project tree. `prepare`'s other checks
+/// only remove functions from this set, so a count below a threshold rejects
+/// a candidate before the full analysis.
+pub fn quick_count(dir: &Path) -> Result<usize> {
+    let meta: BuildJson = serde_json::from_slice(&std::fs::read(dir.join("build.json"))?)?;
+    let work = PathBuf::from(meta.work_dir.trim_end_matches('/'));
+    let mut seen: BTreeSet<(PathBuf, String)> = BTreeSet::new();
+    for b in &meta.binaries {
+        let Ok(data) = std::fs::read(dir.join("bin").join(&b.file)) else {
+            continue;
+        };
+        // a binary DWARF cannot be read from contributes nothing
+        let Ok(units) = dwarf_functions(&data) else {
+            continue;
+        };
+        for (src, _, fns) in units {
+            if !src.starts_with(&work) {
+                continue;
+            }
+            for f in fns {
+                seen.insert((src.clone(), f.name));
+            }
+        }
+    }
+    Ok(seen.len())
+}
+
 #[derive(Debug, Default, Serialize)]
 pub struct BuildResult {
     /// (source, name) -> (binary file, candidate); the first binary in file order owns a function
@@ -1070,5 +1099,70 @@ mod tests {
             selection_key("p", "src/b.c", "f")
         );
         assert_eq!(selection_key("p", "s", "f").len(), 64);
+    }
+
+    /// Needs Homebrew's (or the image's) clang and ld.lld: link a small Linux
+    /// ELF with DWARF and count it.
+    #[test]
+    fn quick_count_counts_project_functions_when_clang_present() {
+        let Some(bin) = ["/opt/llvm/bin", "/opt/homebrew/opt/llvm/bin"]
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.join("clang").exists())
+        else {
+            return;
+        };
+        if std::process::Command::new("ld.lld")
+            .arg("--version")
+            .output()
+            .is_err()
+            && !bin.join("ld.lld").exists()
+        {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        // the compiler records the real path (macOS: /private/var, not /var)
+        let root = d.path().canonicalize().unwrap();
+        let work = root.join("work");
+        std::fs::create_dir_all(work.join("src")).unwrap();
+        std::fs::write(
+            work.join("src/a.c"),
+            "static int g(int x){return x*3;}\nint h(int x){return g(x)+1;}\nvoid _start(void){ h(2); for(;;); }\n",
+        )
+        .unwrap();
+        let build = root.join("build");
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        let ok = std::process::Command::new(bin.join("clang"))
+            .args([
+                "--target=x86_64-linux-gnu",
+                "-fuse-ld=lld",
+                "-nostdlib",
+                "-static",
+                "-g",
+                "-O0",
+            ])
+            .current_dir(&work)
+            .arg("src/a.c")
+            .arg("-o")
+            .arg(build.join("bin/a.elf"))
+            .status()
+            .unwrap()
+            .success();
+        if !ok {
+            return;
+        }
+        let meta = |w: &Path| {
+            serde_json::json!({"compiler": "clang", "config": "O0", "work_dir": w.display().to_string(),
+                "binaries": [{"file": "a.elf"}]})
+        };
+        std::fs::write(build.join("build.json"), meta(&work).to_string()).unwrap();
+        assert_eq!(quick_count(&build).unwrap(), 3);
+        // sources outside the project tree do not count
+        std::fs::write(
+            build.join("build.json"),
+            meta(&root.join("elsewhere")).to_string(),
+        )
+        .unwrap();
+        assert_eq!(quick_count(&build).unwrap(), 0);
     }
 }

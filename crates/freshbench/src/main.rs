@@ -169,6 +169,15 @@ enum Cmd {
     /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
     /// `boundaries` rows (files or directories of *.jsonl); JSON.
     BoundariesSummary { rows: Vec<PathBuf> },
+    /// Record or check where results came from (CI provenance and page metadata).
+    Provenance {
+        #[command(subcommand)]
+        action: ProvCmd,
+    },
+    /// Upper bound on the eligible functions of one build directory (fast pre-filter).
+    Quickcount { build_dir: PathBuf },
+    /// Set key=value pairs in a JSON status file.
+    Status { file: PathBuf, pairs: Vec<String> },
     /// How fast each tool is: CPU time, wall time and peak memory per binary and
     /// per function, from `timing.jsonl` files (`decompile`) and boundary rows.
     Speed {
@@ -279,6 +288,45 @@ enum Cmd {
         function: String,
         #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
         delta: i64,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProvCmd {
+    /// Write one job's provenance.json.
+    Write {
+        #[arg(long)]
+        pins: PathBuf,
+        #[arg(long)]
+        tool: String,
+        #[arg(long, default_value = "")]
+        fission_sha: String,
+        #[arg(long)]
+        freshbench_commit: String,
+        #[arg(long)]
+        qualify_run: String,
+        #[arg(long)]
+        evaluate_run: String,
+        #[arg(long)]
+        arch: String,
+        #[arg(long)]
+        project: String,
+        #[arg(long, default_value = "")]
+        build: String,
+        #[arg(long, default_value = "decompile")]
+        track: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Page metadata from every provenance.json under DIR; fails on mixed versions.
+    Meta {
+        dir: PathBuf,
+        #[arg(long)]
+        corpus: String,
+        #[arg(long)]
+        note: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -815,6 +863,57 @@ fn run() -> Result<ExitCode> {
             }
             print_json(&freshbench::boundaries::summarize(&rows))?
         }
+        Cmd::Provenance { action } => match action {
+            ProvCmd::Write {
+                pins,
+                tool,
+                fission_sha,
+                freshbench_commit,
+                qualify_run,
+                evaluate_run,
+                arch,
+                project,
+                build,
+                track,
+                out,
+            } => {
+                use freshbench::provenance as pv;
+                let pins = pv::read_pins(&read(&pins)?);
+                let p = pv::Provenance {
+                    tool_version: pv::tool_version(&tool, &pins, &fission_sha)?,
+                    tool,
+                    freshbench_commit,
+                    qualify_run,
+                    evaluate_run,
+                    arch,
+                    project,
+                    build: if build.is_empty() {
+                        "all".into()
+                    } else {
+                        build
+                    },
+                    track,
+                };
+                if let Some(d) = out.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                std::fs::write(&out, serde_json::to_vec_pretty(&p)?)?;
+            }
+            ProvCmd::Meta {
+                dir,
+                corpus,
+                note,
+                out,
+            } => {
+                use freshbench::provenance as pv;
+                let m = pv::meta(&pv::load(&dir)?, &corpus, &note)?;
+                std::fs::write(&out, serde_json::to_vec_pretty(&m)?)?;
+            }
+        },
+        Cmd::Quickcount { build_dir } => {
+            println!("{}", freshbench::prepare::quick_count(&build_dir)?)
+        }
+        Cmd::Status { file, pairs } => freshbench::provenance::set_status(&file, &pairs)?,
         Cmd::Speed { paths, json } => {
             let s = freshbench::speed::summarize(&freshbench::speed::load(&paths)?);
             if json {

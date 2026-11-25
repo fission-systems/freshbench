@@ -24,7 +24,7 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           mkdir -p site-src/rows
-          for id in $(echo '${{ inputs.evaluate_runs }}' | python3 -c 'import json,sys;print(" ".join(map(str,json.load(sys.stdin))))'); do
+          for id in $(echo '${{ inputs.evaluate_runs }}' | jq -r '.[]'); do
             gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -D "dl/$id"
           done
           # every rows/<tool>.jsonl of every artifact, named uniquely
@@ -34,25 +34,8 @@ jobs:
           ls site-src/rows | wc -l
       - name: meta (from the runs' own provenance, not the current pins)
         run: |
-          python3 - <<'PY'
-          import glob, json, collections
-          prov = [json.load(open(f)) for f in sorted(glob.glob("dl/*/*/provenance.json"))]
-          assert prov, "no provenance.json in the artifacts"
-          by_tool = collections.defaultdict(set)
-          for p in prov:
-              by_tool[p["tool"]].add(p["tool_version"])
-          mixed = {t: sorted(v) for t, v in by_tool.items() if len(v) > 1}
-          assert not mixed, f"one tool measured at several versions: {mixed}"
-          qual = {p["qualify_run"] for p in prov}
-          assert len(qual) == 1, f"artifacts from several corpus builds: {sorted(qual)}"
-          pins = {t: next(iter(v)) for t, v in sorted(by_tool.items())}
-          pins["corpus build (qualify-arch run)"] = qual.pop()
-          pins["freshbench commits"] = ", ".join(sorted({p["freshbench_commit"][:12] for p in prov}))
-          json.dump({"title": "FreshBench results", "corpus": "${{ inputs.corpus }}", "pins": pins,
-                     "notes": ["evaluate runs: ${{ inputs.evaluate_runs }}",
-                               f"{len(prov)} result artifacts; rows from different scorers or duplicated rows with different content are refused by the report"]},
-                    open("meta.json", "w"), indent=1)
-          PY
+          target/release/freshbench provenance meta dl --corpus '${{ inputs.corpus }}' \
+            --note 'evaluate runs: ${{ inputs.evaluate_runs }}' --out meta.json
       - name: report, all rows and one function per renamed-clone group
         run: |
           target/release/freshbench report site-src --out site --meta meta.json
@@ -61,6 +44,9 @@ jobs:
           target/release/freshbench report site-src --out site/dedup --meta meta.json \
             --dedup-level renamed --dedup corpus/m1/duplicates-x86_64.json corpus/m1/duplicates-i686.json \
             corpus/m1/duplicates-aarch64.json corpus/m1/duplicates-armv7.json
+          # what each tool cost: CPU and wall time and memory per binary and per function
+          target/release/freshbench speed dl > site/speed.md
+          target/release/freshbench speed dl --json > site/speed.json
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:
