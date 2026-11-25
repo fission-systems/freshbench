@@ -20,7 +20,21 @@ jobs:
       - run: cargo fmt -p freshbench --check
       - run: cargo clippy --locked -p freshbench --all-targets -- -D warnings
       - run: cargo test --locked -p freshbench
+      - name: optional Sentry feature builds, lints and tests
+        run: |
+          cargo clippy --locked -p freshbench --features sentry --all-targets -- -D warnings
+          cargo test --locked -p freshbench --features sentry
       - name: vendored rust-joern's own tests
         run: cargo test --locked --release -p rust-joern
       - name: the ELF end-to-end test must take the GCC path
         run: cargo test --locked -p freshbench elf_end_to_end -- --nocapture 2>&1 | tee e2e.log; grep -q "cc is gcc = true" e2e.log
+  msrv:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: check the declared minimum Rust version, with and without Sentry
+        run: |
+          rustup toolchain install 1.90 --profile minimal
+          cargo +1.90 check --locked -p freshbench
+          cargo +1.90 check --locked -p freshbench --features sentry
