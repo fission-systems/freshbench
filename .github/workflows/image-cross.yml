@@ -1,5 +1,5 @@
 name: build-image-cross
-# v2 build image: the v1 x86-64 image (pinned by digest) + cross GCC 16.2.0 and
+# Cross build image: the native x86-64 image (pinned by digest) + cross GCC 16.2.0 and
 # Clang 23.1.6 for i686, aarch64, armv7. Pushes to the org's GHCR and records
 # the digest, toolchain versions and the foreign package set as an artifact.
 on:
