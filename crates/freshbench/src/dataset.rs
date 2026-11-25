@@ -32,7 +32,11 @@ pub struct Target {
 /// Targets in an assembled corpus or per-project prepared tree.
 pub fn targets(root: &Path) -> Result<Vec<Target>> {
     let targets = prepared_targets(root)?;
-    anyhow::ensure!(!targets.is_empty(), "no prepared targets in {}", root.display());
+    anyhow::ensure!(
+        !targets.is_empty(),
+        "no prepared targets in {}",
+        root.display()
+    );
     Ok(targets)
 }
 
