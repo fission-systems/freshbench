@@ -25,6 +25,15 @@ pub struct Meta {
     pub notes: Vec<String>,
 }
 
+/// Results that come from other tracks, shown on the same page.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Extras {
+    /// function boundaries (`freshbench boundaries` rows)
+    pub boundaries: Option<crate::boundaries::Summary>,
+    /// what each tool cost (`timing.jsonl`, boundary rows)
+    pub speed: Option<crate::speed::Summary>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 pub struct Cell {
     pub rows: u64,
@@ -84,6 +93,11 @@ pub struct ToolSummary {
     pub strict_perfect: u64,
     /// GED 0 on both CFG families
     pub cfg_agreement: u64,
+    /// recompiled to the same instructions (byte match, auxiliary)
+    pub recompile_exact: u64,
+    /// rows a recompilation was attempted on, and how many compiled
+    pub recompile_rows: u64,
+    pub recompile_compiles: u64,
     /// perfect on every metric that applies to the row
     pub intersection_perfect: u64,
     pub median_normalized_ged: Option<f64>,
@@ -91,8 +105,33 @@ pub struct ToolSummary {
     pub ged_on_common_rows: f64,
 }
 
+/// GED distance from the source: the main structural metric. A row without a
+/// score (no output, unparsable output, no result at all) is charged the size
+/// of the source graph (nodes + edges), the edits that build it from nothing,
+/// so skipping a hard function never lowers a tool's distance. Rows whose
+/// source graph no tool reported are left out for every tool.
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+pub struct Distance {
+    pub rows: u64,
+    pub mean: f64,
+    pub median: f64,
+    /// rows at distance 0
+    pub at_zero: u64,
+    /// rows charged the whole source graph (no score)
+    pub charged: u64,
+    /// the same over rows whose source has control flow
+    pub branching_rows: u64,
+    pub branching_mean: f64,
+    pub branching_median: f64,
+    pub branching_at_zero: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 pub struct Summary {
+    /// tool -> GED distance (FreshBench CFG)
+    pub distance: BTreeMap<String, Distance>,
+    /// rows no tool scored, so their source size is unknown (out of `distance`)
+    pub distance_unmeasured: u64,
     pub tools: Vec<String>,
     pub rows: u64,
     pub common_rows: u64,
@@ -109,6 +148,66 @@ impl std::ops::AddAssign<(u64, u64)> for Pair {
         self.0 += a;
         self.1 += b;
     }
+}
+
+fn median(v: &mut [f64]) -> f64 {
+    if v.is_empty() {
+        return 0.0;
+    }
+    v.sort_by(f64::total_cmp);
+    let n = v.len();
+    if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        (v[n / 2 - 1] + v[n / 2]) / 2.0
+    }
+}
+
+/// Fill `out` with every tool's distance; returns the rows left out.
+fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distance>) -> u64 {
+    let mut all: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
+    let mut unmeasured = 0;
+    for per in table.values() {
+        let Some((n, e)) = per.values().find_map(|r| {
+            let g = r.ged.as_ref()?;
+            Some((g.source_nodes?, g.source_edges?))
+        }) else {
+            unmeasured += 1;
+            continue;
+        };
+        let size = f64::from(n + e);
+        let branching = bands::band(Some(n)) != bands::STRAIGHT_LINE;
+        for t in tools {
+            let d = per.get(t).and_then(|r| r.scored_ged());
+            let o = out.entry(t.clone()).or_default();
+            o.rows += 1;
+            o.charged += u64::from(d.is_none());
+            let v = d.unwrap_or(size);
+            o.at_zero += u64::from(v == 0.0);
+            let (a, b) = all.entry(t.as_str()).or_default();
+            a.push(v);
+            if branching {
+                b.push(v);
+                o.branching_rows += 1;
+                o.branching_at_zero += u64::from(v == 0.0);
+            }
+        }
+    }
+    for (t, (mut a, mut b)) in all {
+        let o = out.get_mut(t).unwrap();
+        let mean = |v: &[f64]| {
+            if v.is_empty() {
+                0.0
+            } else {
+                v.iter().sum::<f64>() / v.len() as f64
+            }
+        };
+        o.mean = mean(&a);
+        o.branching_mean = mean(&b);
+        o.median = median(&mut a);
+        o.branching_median = median(&mut b);
+    }
+    unmeasured
 }
 
 pub fn summarize(table: &Table, resamples: usize) -> Summary {
@@ -181,6 +280,11 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             o.union_perfect += u64::from(r.union_perfect());
             o.strict_perfect += u64::from(r.strict_perfect());
             o.cfg_agreement += u64::from(r.cfg_agreement());
+            if let Some(rc) = &r.recompile {
+                o.recompile_rows += 1;
+                o.recompile_compiles += u64::from(rc.compiles);
+                o.recompile_exact += u64::from(rc.exact);
+            }
             o.intersection_perfect += u64::from(r.intersection_perfect());
             if let Some(t) = &r.types {
                 o.types_rows += 1;
@@ -226,6 +330,7 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             }
         }
     }
+    s.distance_unmeasured = distances(table, &tools, &mut s.distance);
     for (tool, o) in s.overall.iter_mut() {
         o.perfect_rate = if o.rows > 0 {
             o.perfect as f64 / o.rows as f64
@@ -389,16 +494,17 @@ fn page(title: &str, meta: &Meta, body: &str) -> String {
         "<!doctype html>\n<html lang=en><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">\
 <title>{t}</title><style>{CSS}</style></head><body>\n\
 <h1>{t}</h1><p class=sub>{corpus}</p>\n\
-<div class=note><b>What this measures.</b> How close each decompiler's output is to the original source: \
-the control-flow graph edit distance (GED) between the output and the source function, both built by FreshBench's one CFG builder. \
-Two CFG families are scored with the same GED engine: FreshBench's own CFG (one builder for source and output; \
-<code>&amp;&amp;</code>, <code>||</code> and <code>?:</code> are control flow) and Joern's CFG (vendored rust-joern); \
-Types: return and parameter classes against DWARF (perfect = arity and every class right); locals coverage = local classes matched / DWARF locals with a location. \
-<b>Union</b> = perfect on at least one of FreshBench CFG, Joern CFG, types or recompilation (one is enough, so a function with the right \
-signature and a wrong body counts); <b>Intersection</b> = perfect on every one that applies; <b>both CFGs</b> = GED 0 on both graph families; \
-<b>strict</b> = GED 0 from output that parsed without error recovery. <b>With control flow</b> = perfect rate over rows whose source function has a branch \
-or a loop: a source without control flow matches any output without control flow, an empty body included, so those perfects say nothing about structure. <b>It does not measure correctness</b>: a function can print a wrong constant or argument and still score perfect. \
-Compare tools on the same rows; do not read a score as proof that output is right or wrong.</div>\n\
+<div class=note><b>What this measures.</b> Main: the control-flow graph edit distance (GED) between each decompiled function and its source, \
+both graphs built by FreshBench's one CFG builder (<code>&amp;&amp;</code>, <code>||</code> and <code>?:</code> are control flow), \
+and whether a tool finds the functions of a stripped binary by itself (function boundaries). \
+Auxiliary: perfect rates on FreshBench's CFG, on Joern's CFG (vendored rust-joern, same GED engine), on types \
+(return and parameter classes against DWARF; locals coverage = local classes matched / DWARF locals with a location) and on recompilation \
+(byte match: the output, compiled as printed with the binary's own compiler, gives the original instructions). \
+<b>Union</b> = perfect on at least one of those (one is enough, so a right signature with a wrong body counts); <b>Intersection</b> = perfect on \
+every one that applies; <b>both CFGs</b> = GED 0 on both graph families; <b>strict</b> = GED 0 from output that parsed without error recovery. \
+A source without control flow matches any output without control flow, an empty body included, so <b>with control flow</b> columns leave those rows out. \
+Only maintained decompilers are shown, and no LLM-based ones (the corpus is public). <b>It does not measure correctness</b>: a function can \
+print a wrong constant or argument and still score perfect. Compare tools on the same rows; do not read a score as proof that output is right or wrong.</div>\n\
 {body}\n<h2>Provenance</h2><table>{pins}</table><ul>{notes}</ul>\n\
 <footer>Generated by <code>freshbench report</code> from result rows. Metric families follow \
 <a href=\"https://github.com/Noelo-Lab/decbench\">DecBench</a> (Noelo-Lab); FreshBench uses no DecBench code, so these are not DecBench scores. \
@@ -441,11 +547,122 @@ fn dim_table(s: &Summary, dim: &str, order: &[&str]) -> String {
     h + "</table>"
 }
 
+fn f1(x: Option<&crate::boundaries::Rates>) -> String {
+    x.map(|r| format!("{:.3}", r.start_f1))
+        .unwrap_or_else(|| "-".into())
+}
+
+/// The main metrics: GED distance, function boundaries, and cost.
+fn render_main(s: &Summary, x: &Extras) -> String {
+    let mut b = String::from(
+        "<h2>Main metrics</h2><p class=mute><b>GED distance</b>: edits from the output's control-flow graph to the source's \
+(FreshBench CFG), mean, median and rows at 0, over every row; a row without a score is charged the whole source graph, so a tool \
+that skips hard functions is not rewarded. Read the mean next to the median: a few large functions dominate the mean. \
+<b>With control flow</b>: the same over rows whose source has a branch or a loop. \
+<b>Function boundaries</b>: start F1 of the functions a tool finds by itself in the stripped binary, as built and with the unwind tables \
+removed (they hand out every boundary on x86-64 and AArch64); <b>ends</b>: share of true functions whose end it also found exactly, \
+without unwind tables. <b>Cost</b>: CPU milliseconds per function to decompile (the tool's whole process tree). \
+Lower distance and cost, higher F1 and ends are better.</p>",
+    );
+    b += "<table><tr><th>tool</th><th>GED distance</th><th>with control flow</th><th>start F1 as built</th>\
+<th>start F1 no unwind</th><th>ends, no unwind</th><th>cost (CPU ms / fn)</th><th>peak memory</th></tr>";
+    let mut order: Vec<&String> = s.tools.iter().collect();
+    order.sort_by(|a, b| {
+        let d = |t: &String| s.distance.get(t).map_or(f64::MAX, |d| d.mean);
+        d(a).total_cmp(&d(b)).then(a.cmp(b))
+    });
+    for t in order {
+        let d = s.distance.get(t).cloned().unwrap_or_default();
+        let bnd = |v: &str| {
+            x.boundaries
+                .as_ref()
+                .and_then(|bs| bs.overall.get(&format!("{t} {v}")))
+        };
+        let sp = x
+            .speed
+            .as_ref()
+            .and_then(|sp| sp.overall.get("decompile"))
+            .and_then(|m| m.get(t));
+        let _ = write!(
+            b,
+            "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td>\
+<td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
+<td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
+<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            d.mean,
+            d.median,
+            num(d.at_zero),
+            num(d.rows),
+            d.branching_mean,
+            d.branching_median,
+            num(d.branching_at_zero),
+            num(d.branching_rows),
+            f1(bnd("as-built")),
+            f1(bnd("no-unwind")),
+            bnd("no-unwind")
+                .map(|r| pct(r.exact_rate))
+                .unwrap_or_else(|| "-".into()),
+            sp.map(|v| format!("{:.1}", v.cpu_ms_per_function))
+                .unwrap_or_else(|| "-".into()),
+            sp.map(|v| format!("{:.0} MB", v.max_rss_mb))
+                .unwrap_or_else(|| "-".into()),
+            f = esc(&file_safe(t)),
+            n = esc(t),
+        );
+    }
+    b += "</table>";
+    if s.distance_unmeasured > 0 {
+        let _ = write!(
+            b,
+            "<p class=mute>{} rows no tool scored are out of the distance (their source size is unknown).</p>",
+            num(s.distance_unmeasured)
+        );
+    }
+    if let Some(sp) = &x.speed {
+        b += "<h3>Cost</h3><p class=mute>CPU time is user + system of the tool's whole process tree; wall time depends on \
+how many binaries ran at once and on the machine, so compare CPU.</p>\
+<table><tr><th>track</th><th>tool</th><th>binaries</th><th>functions</th><th>CPU ms / fn</th><th>median CPU s / binary</th>\
+<th>p90</th><th>max</th><th>median memory</th><th>peak memory</th><th>failed calls</th></tr>";
+        for (track, tools) in &sp.overall {
+            let mut o: Vec<_> = tools.iter().collect();
+            o.sort_by(|a, b| {
+                a.1.cpu_ms_per_function
+                    .total_cmp(&b.1.cpu_ms_per_function)
+                    .then(a.0.cmp(b.0))
+            });
+            for (t, v) in o {
+                let _ = write!(
+                    b,
+                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{:.0} MB</td><td>{:.0} MB</td><td>{}</td></tr>",
+                    esc(track),
+                    esc(t),
+                    num(v.binaries),
+                    num(v.functions),
+                    v.cpu_ms_per_function,
+                    v.median_cpu_s_per_binary,
+                    v.p90_cpu_s_per_binary,
+                    v.max_cpu_s_per_binary,
+                    v.median_rss_mb,
+                    v.max_rss_mb,
+                    num(v.failed_calls)
+                );
+            }
+        }
+        b += "</table>";
+    }
+    b
+}
+
 pub fn render_index(s: &Summary, meta: &Meta) -> String {
-    let mut b = String::new();
+    render_index_with(s, meta, &Extras::default())
+}
+
+pub fn render_index_with(s: &Summary, meta: &Meta, x: &Extras) -> String {
+    let mut b = render_main(s, x);
     let _ = write!(
         b,
-        "<h2>Overall</h2><p class=mute>{} rows, one per (function, build): the same source function appears once per architecture, \
+        "<h2>Auxiliary metrics</h2><p class=mute>Perfect rates on each metric family, including recompilation (byte match). \
+They are kept for comparison with other benchmarks and to show where a tool is exact; the ranking above does not use them. {} rows, one per (function, build): the same source function appears once per architecture, \
 compiler and level, and some functions are copies of others, so rows are not distinct functions (published pages also show every table \
 with one function per clone group, under <code>dedup/</code>). A tool's rate is over all rows (no output and a missing result count as not perfect). \
 95% interval from resampling projects. {} rows were scored by every tool; GED totals are over those.</p>",
@@ -453,7 +670,7 @@ with one function per clone group, under <code>dedup/</code>). A tool's rate is 
         num(s.common_rows)
     );
     b += "<table><tr><th>tool</th><th>perfect (FreshBench CFG)</th><th>with control flow</th><th>95% interval</th><th>perfect (Joern CFG)</th><th>types perfect</th><th>locals coverage</th><th>Union</th><th>Intersection</th><th>both CFGs</th><th>strict</th>\
-<th>median normalized GED</th><th>GED on common rows</th><th>no output</th><th>missing</th><th>unscored</th><th>upper bound only</th><th>parse recovered</th></tr>";
+<th>recompiles</th><th>byte match</th><th>median normalized GED</th><th>GED on common rows</th><th>no output</th><th>missing</th><th>unscored</th><th>upper bound only</th><th>parse recovered</th></tr>";
     let mut order: Vec<&String> = s.tools.iter().collect();
     order.sort_by(|a, b| {
         s.overall[*b]
@@ -465,7 +682,7 @@ with one function per clone group, under <code>dedup/</code>). A tool's rate is 
         let o = &s.overall[t];
         let _ = write!(
             b,
-            "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td><td>{} <span class=mute>({}/{})</span></td><td>{} <span class=mute>({}/{})</span></td><td>{}-{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td><td>{} <span class=mute>({}/{})</span></td><td>{} <span class=mute>({}/{})</span></td><td>{}-{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             pct(o.perfect_rate),
             num(o.perfect),
             num(o.rows),
@@ -481,6 +698,21 @@ with one function per clone group, under <code>dedup/</code>). A tool's rate is 
             pct(o.intersection_perfect as f64 / o.rows.max(1) as f64),
             pct(o.cfg_agreement as f64 / o.rows.max(1) as f64),
             pct(o.strict_perfect as f64 / o.rows.max(1) as f64),
+            if o.recompile_rows > 0 {
+                format!(
+                    "{} ({}/{})",
+                    pct(o.recompile_compiles as f64 / o.recompile_rows as f64),
+                    num(o.recompile_compiles),
+                    num(o.recompile_rows)
+                )
+            } else {
+                "-".into()
+            },
+            if o.recompile_rows > 0 {
+                pct(o.recompile_exact as f64 / o.recompile_rows as f64)
+            } else {
+                "-".into()
+            },
             o.median_normalized_ged.map(|m| format!("{m:.3}")).unwrap_or_default(),
             num(o.ged_on_common_rows as u64),
             num(o.no_output),
@@ -616,12 +848,25 @@ These are similarity gaps, not correctness defects; open the output before actin
 
 /// Every file of the site: (relative path, contents).
 pub fn site(table: &Table, meta: &Meta, resamples: usize, keep: usize) -> Vec<(String, String)> {
+    site_with(table, meta, resamples, keep, &Extras::default())
+}
+
+pub fn site_with(
+    table: &Table,
+    meta: &Meta,
+    resamples: usize,
+    keep: usize,
+    x: &Extras,
+) -> Vec<(String, String)> {
     let s = summarize(table, resamples);
     let mut out = vec![
-        ("index.html".to_string(), render_index(&s, meta)),
+        ("index.html".to_string(), render_index_with(&s, meta, x)),
         (
             "summary.json".to_string(),
-            serde_json::to_string_pretty(&serde_json::json!({"meta": meta, "summary": s})).unwrap()
+            serde_json::to_string_pretty(
+                &serde_json::json!({"meta": meta, "summary": s, "extras": x}),
+            )
+            .unwrap()
                 + "\n",
         ),
     ];

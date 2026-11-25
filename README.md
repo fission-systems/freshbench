@@ -42,6 +42,21 @@ implementation, each with its status and a regression test, in
 **Measured: how close the output is to the source, and a static agreement
 signal against the binary.**
 
+**What is ranked.** The main metrics are the GED distance from the source
+(mean, median and rows at 0 over every row; a row without a score is charged
+the whole source graph) and function boundaries (start F1 and exact ends of
+the functions a tool finds by itself, with and without unwind tables). Perfect
+rates, Joern GED, types and recompilation (byte match) are auxiliary: shown,
+not ranked. Speed is reported next to them (CPU time per function, peak
+memory).
+
+**Who is published.** Only decompilers in the tool registry
+(`ci/tools.json`) whose upstream repository had a commit within the last
+365 days when the page is built; an unmaintained project's numbers stay in
+the raw results but are not published. LLM-based decompilers are not ranked:
+the corpus is public, so a model may have seen it. They would need a separate
+track with its own contamination controls.
+
 **No fixups.** Every metric reads the decompiler's output exactly as it was
 printed. FreshBench does not rewrite keywords, define pseudo-types, inject
 declarations the compiler asks for, or repair code before compiling or

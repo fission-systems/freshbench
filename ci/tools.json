@@ -1,0 +1,8 @@
+{
+  "fission": { "repo": "fission-systems/Fission" },
+  "ghidra": { "repo": "NationalSecurityAgency/ghidra" },
+  "angr": { "repo": "angr/angr" },
+  "kuna": { "repo": "Noelo-Lab/kuna" },
+  "borer": { "repo": "imjustprism/borer" },
+  "unlace": { "repo": "coleleavitt/unlace" }
+}
