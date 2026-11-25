@@ -10,6 +10,7 @@ on:
       tools: { description: "JSON list", default: '["fission","ghidra","angr","kuna","borer"]' }
       fission_ref: { description: "git ref of Fission (default: FISSION_SHA in ci/pins.env)", default: "" }
       max_parallel: { description: "concurrent jobs", default: "12" }
+      track: { description: "decompile (given function starts) or boundaries (find the functions; as-built and no-unwind)", default: "decompile" }
       builds: { description: 'JSON list of arch-qualified builds, one job each (gcc-O0, armv7-clang-Os); [""] = every build in one job', default: '[""]' }
 permissions: { contents: read, actions: read }
 jobs:
@@ -72,7 +73,25 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: "qual-${{ matrix.project }}-${{ inputs.arch }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
       - run: ci/setup_tool_v2.sh ${{ matrix.tool }}
+      - name: function boundaries
+        if: inputs.track == 'boundaries'
+        run: |
+          B="$RUNNER_TEMP/bins"; chmod +x "$B/target/release/freshbench" "$B/fission-bin/fission_cli" 2>/dev/null || true
+          FB="$B/target/release/freshbench"
+          mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
+          R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
+          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission) J=2;; *) J=4;; esac
+          for v in as-built no-unwind; do
+            o="$RUNNER_TEMP/up/boundaries/${{ matrix.tool }}-$v.jsonl"
+            if [ '${{ matrix.tool }}' = fission ]; then
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+            else
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+            fi
+          done
+          "$FB" boundaries-summary "$RUNNER_TEMP/up/boundaries" > "$RUNNER_TEMP/up/boundaries/summary.json"
       - name: decompile and score
+        if: inputs.track != 'boundaries'
         run: |
           B="$RUNNER_TEMP/bins"; chmod +x "$B/target/release/freshbench" "$B/fission-bin/fission_cli" 2>/dev/null || true
           FB="$B/target/release/freshbench"
@@ -96,6 +115,7 @@ jobs:
           ARCH: ${{ inputs.arch }}
           PROJECT: ${{ matrix.project }}
           BUILD: ${{ matrix.build }}
+          TRACK: ${{ inputs.track }}
         run: |
           mkdir -p "$RUNNER_TEMP/up"
           python3 - <<'PY'
@@ -115,9 +135,9 @@ jobs:
                      "qualify_run": os.environ["QUALIFY_RUN"],
                      "evaluate_run": os.environ["GITHUB_RUN_ID"],
                      "arch": os.environ["ARCH"], "project": os.environ["PROJECT"],
-                     "build": os.environ["BUILD"] or "all"},
+                     "build": os.environ["BUILD"] or "all", "track": os.environ["TRACK"]},
                     open(os.path.join(os.environ["RUNNER_TEMP"], "up", "provenance.json"), "w"), indent=1, sort_keys=True)
           PY
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: "eval-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }
+        with: { name: "${{ inputs.track == 'boundaries' && 'bound' || 'eval' }}-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }

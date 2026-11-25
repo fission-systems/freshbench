@@ -9,6 +9,7 @@
 
 pub mod adapters;
 pub mod bands;
+pub mod boundaries;
 pub mod callsites;
 pub mod cfg;
 pub mod clones;

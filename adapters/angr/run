@@ -7,16 +7,34 @@ import logging
 import angr
 
 ap = argparse.ArgumentParser()
-for k in ("binary", "addresses", "elf_base", "out"):
+for k in ("binary", "elf_base", "out"):
     ap.add_argument("--" + k.replace("_", "-"), required=True)
+ap.add_argument("--addresses")
+ap.add_argument("--list-functions", action="store_true")
 a = ap.parse_args()
 logging.disable(logging.WARNING)
-reqs = [l.strip() for l in open(a.addresses) if l.strip()]
 with open(a.binary, "rb") as f:
     hdr = f.read(18)
 is_dyn = hdr[16] == 3  # ET_DYN: load at the ELF addresses so no translation is needed
 opts = {"base_addr": int(a.elf_base, 16)} if is_dyn else {}
 p = angr.Project(a.binary, auto_load_libs=False, main_opts=opts)
+
+if a.list_functions:
+    # angr's own discovery, no hints; PLT stubs, SimProcedures, syscalls and
+    # alignment padding are angr's own "not a function of this binary" marks
+    cfg = p.analyses.CFGFast(normalize=True, data_references=True)
+    with open(a.out, "w") as out:
+        for fn in sorted(cfg.kb.functions.values(), key=lambda f: f.addr):
+            if fn.is_plt or fn.is_simprocedure or fn.is_syscall or getattr(fn, "is_alignment", False) or getattr(fn, "alignment", False):
+                continue
+            if not p.loader.main_object.contains_addr(fn.addr):
+                continue
+            ends = [b.addr + b.size for b in fn.blocks if b.size]
+            end = max(ends) if ends else None
+            out.write(json.dumps({"start": hex(fn.addr), "end": hex(end) if end else None}) + "\n")
+    raise SystemExit(0)
+
+reqs = [l.strip() for l in open(a.addresses) if l.strip()]
 starts = [int(r, 16) for r in reqs]  # Thumb keeps bit 0, as angr expects
 cfg = p.analyses.CFGFast(normalize=True, data_references=True, function_starts=starts)
 with open(a.out, "w") as out:

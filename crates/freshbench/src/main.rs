@@ -141,6 +141,34 @@ enum Cmd {
         #[arg(long, default_value_t = 1)]
         jobs: usize,
     },
+    /// Function boundary track: each tool lists the functions it finds in every
+    /// stripped binary under ROOT (no addresses given); compared with the
+    /// unstripped binary's symbols and DWARF. Writes one JSON line per binary.
+    Boundaries {
+        root: PathBuf,
+        #[arg(long)]
+        tool: String,
+        #[arg(long)]
+        fission_cli: Option<PathBuf>,
+        #[arg(long)]
+        resource_root: Option<PathBuf>,
+        #[arg(long, num_args = 1.., allow_hyphen_values = true)]
+        adapter: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 1800)]
+        binary_timeout_s: u64,
+        #[arg(long, value_delimiter = ',')]
+        builds: Vec<String>,
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+        /// as-built (stripped binary as shipped) or no-unwind (unwind tables removed)
+        #[arg(long, default_value = "as-built")]
+        variant: String,
+    },
+    /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
+    /// `boundaries` rows (files or directories of *.jsonl); JSON.
+    BoundariesSummary { rows: Vec<PathBuf> },
     /// Merge a prepared tree (`prepare --out`) into a corpus root with
     /// arch-qualified builds: binaries/ stripped/ truth/ sources/<arch>/ projects/.
     Assemble {
@@ -551,6 +579,133 @@ fn run() -> Result<ExitCode> {
                 eprintln!("{}/{}: {} functions", u.build, pb.project, recs.len());
             }
             eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
+        }
+        Cmd::Boundaries {
+            root,
+            tool,
+            fission_cli,
+            resource_root,
+            adapter,
+            out,
+            binary_timeout_s,
+            builds,
+            jobs,
+            variant,
+        } => {
+            use freshbench::adapters::{self, Tool};
+            use freshbench::boundaries;
+            anyhow::ensure!(
+                variant == "as-built" || variant == "no-unwind",
+                "--variant is as-built or no-unwind"
+            );
+            let scratch = tempfile::tempdir()?;
+            use rayon::prelude::*;
+            let t = if tool == "fission" {
+                Tool::Fission {
+                    cli: fission_cli.context("--fission-cli is required for fission")?,
+                    resource_root,
+                    function_timeout_ms: 0,
+                }
+            } else {
+                anyhow::ensure!(
+                    !adapter.is_empty(),
+                    "--adapter <command...> is required for {tool}"
+                );
+                Tool::Script {
+                    name: tool.clone(),
+                    command: adapter,
+                }
+            };
+            let units: Vec<_> = freshbench::corpus::units(&root)?
+                .into_iter()
+                .filter(|u| builds.is_empty() || builds.contains(&u.build))
+                .collect();
+            let work: Vec<(usize, &String)> = units
+                .iter()
+                .enumerate()
+                .flat_map(|(i, u)| u.targets.binaries.keys().map(move |b| (i, b)))
+                .collect();
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(jobs.max(1))
+                .build()?;
+            let rows: Vec<Result<boundaries::Row>> = pool.install(|| {
+                work.par_iter()
+                    .map(|&(i, bin)| {
+                        let u = &units[i];
+                        let pb = &u.targets;
+                        let full = std::fs::read(root.join(&u.binaries).join(bin))?;
+                        let truth = boundaries::truth(&full)?;
+                        let arm = pb.arch == "armv7";
+                        let mut input = root.join(&u.stripped).join(bin);
+                        if variant == "no-unwind" {
+                            let (bytes, _) = boundaries::without_unwind(&std::fs::read(&input)?)?;
+                            let p = scratch.path().join(format!("{i}-{bin}"));
+                            std::fs::write(&p, bytes)?;
+                            input = p;
+                        }
+                        let listed = adapters::list_functions(
+                            &t,
+                            &input,
+                            std::time::Duration::from_secs(binary_timeout_s),
+                        );
+                        if variant == "no-unwind" {
+                            let _ = std::fs::remove_file(&input);
+                        }
+                        let (counts, error) = match listed {
+                            Ok(found) => (boundaries::score(&truth, &found, arm), None),
+                            Err(e) => (
+                                boundaries::score(&truth, &[], arm),
+                                Some(format!("{e:#}").chars().take(300).collect()),
+                            ),
+                        };
+                        eprintln!(
+                            "{} {bin}: {} of {} starts",
+                            u.build, counts.start_match, counts.truth
+                        );
+                        Ok(boundaries::Row {
+                            tool: t.name().to_string(),
+                            variant: variant.clone(),
+                            project: pb.project.clone(),
+                            arch: pb.arch.clone(),
+                            compiler: pb.compiler.clone(),
+                            config: pb.config.clone(),
+                            binary: bin.clone(),
+                            stripped_sha256: pb.binaries[bin].stripped_sha256.clone(),
+                            counts,
+                            error,
+                        })
+                    })
+                    .collect()
+            });
+            if let Some(d) = out.parent() {
+                std::fs::create_dir_all(d)?;
+            }
+            let mut f = std::io::BufWriter::new(std::fs::File::create(&out)?);
+            for r in rows {
+                serde_json::to_writer(&mut f, &r?)?;
+                std::io::Write::write_all(&mut f, b"\n")?;
+            }
+        }
+        Cmd::BoundariesSummary { rows: paths } => {
+            let mut rows = Vec::new();
+            for p in paths {
+                let mut files = Vec::new();
+                if p.is_dir() {
+                    rows::walk_sorted(&p, &mut |f| {
+                        if f.extension().is_some_and(|e| e == "jsonl") {
+                            files.push(f.to_path_buf())
+                        }
+                    })?;
+                } else {
+                    files.push(p);
+                }
+                for f in files {
+                    for line in read(&f)?.lines().filter(|l| !l.trim().is_empty()) {
+                        rows.push(serde_json::from_str::<freshbench::boundaries::Row>(line)?);
+                    }
+                }
+            }
+            print_json(&freshbench::boundaries::summarize(&rows))?
         }
         Cmd::Assemble {
             prepared,
