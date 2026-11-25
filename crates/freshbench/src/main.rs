@@ -635,6 +635,7 @@ fn run() -> Result<ExitCode> {
                         let pb = &u.targets;
                         let full = std::fs::read(root.join(&u.binaries).join(bin))?;
                         let truth = boundaries::truth(&full)?;
+                        let plt = boundaries::plt_ranges(&full)?;
                         let arm = pb.arch == "armv7";
                         let mut input = root.join(&u.stripped).join(bin);
                         if variant == "no-unwind" {
@@ -652,9 +653,9 @@ fn run() -> Result<ExitCode> {
                             let _ = std::fs::remove_file(&input);
                         }
                         let (counts, error) = match listed {
-                            Ok(found) => (boundaries::score(&truth, &found, arm), None),
+                            Ok(found) => (boundaries::score(&truth, &found, arm, &plt), None),
                             Err(e) => (
-                                boundaries::score(&truth, &[], arm),
+                                boundaries::score(&truth, &[], arm, &plt),
                                 Some(format!("{e:#}").chars().take(300).collect()),
                             ),
                         };

@@ -18,6 +18,11 @@
 //! is an exact boundary; ending anywhere in `[true end, next true start]`
 //! (alignment padding included) is a padded boundary. On ARM the Thumb bit is
 //! cleared on both sides.
+//!
+//! Found starts inside PLT sections (`.plt`, `.plt.sec`, `.plt.got`, `.iplt`)
+//! are not scored, for every tool alike: the truth has no functions there, and
+//! some tools list PLT stubs while others filter them, which is a reporting
+//! convention, not a boundary someone found or missed.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -37,6 +42,20 @@ fn exec_ranges(f: &object::File) -> Vec<(u64, u64)> {
         .filter(|s| s.kind() == SectionKind::Text && s.file_range().is_some() && s.size() > 0)
         .map(|s| (s.address(), s.address() + s.size()))
         .collect()
+}
+
+/// Address ranges of the PLT sections, where found starts are not scored.
+pub fn plt_ranges(data: &[u8]) -> Result<Vec<(u64, u64)>> {
+    let f = object::File::parse(data)?;
+    Ok(f.sections()
+        .filter(|s| {
+            matches!(
+                s.name(),
+                Ok(".plt" | ".plt.sec" | ".plt.got" | ".iplt" | ".plt.bnd")
+            )
+        })
+        .map(|s| (s.address(), s.address() + s.size()))
+        .collect())
 }
 
 /// The functions of an unstripped binary, sorted by start.
@@ -170,10 +189,21 @@ impl std::ops::AddAssign<&Counts> for Counts {
 }
 
 /// Compare what a tool found (`(start, end)`, end optional) with the truth.
-pub fn score(truth: &[TrueFunction], found: &[(u64, Option<u64>)], arm: bool) -> Counts {
+pub fn score(
+    truth: &[TrueFunction],
+    found: &[(u64, Option<u64>)],
+    arm: bool,
+    unscored: &[(u64, u64)],
+) -> Counts {
     let clear = |a: u64| if arm { a & !1 } else { a };
     let mut found_by_start: BTreeMap<u64, Option<u64>> = BTreeMap::new();
     for &(s, e) in found {
+        if unscored
+            .iter()
+            .any(|&(lo, hi)| clear(s) >= lo && clear(s) < hi)
+        {
+            continue;
+        }
         // a start listed twice counts once; keep an end if any listing had one
         let slot = found_by_start.entry(clear(s)).or_insert(None);
         if slot.is_none() {
@@ -364,7 +394,7 @@ mod tests {
             (0x1080, Some(0x1090)), // not a function
             (0x1020, None),         // listed twice
         ];
-        let c = score(&truth, &found, false);
+        let c = score(&truth, &found, false, &[]);
         assert_eq!(
             c,
             Counts {
@@ -379,8 +409,16 @@ mod tests {
                 padded_project: 1,
             }
         );
+        // a PLT stub is neither found nor missed
+        let plt = score(
+            &truth,
+            &[(0x1000, None), (0x500, None)],
+            false,
+            &[(0x400, 0x600)],
+        );
+        assert_eq!((plt.found, plt.start_match), (1, 1));
         // past the next function's start is not a boundary
-        let c = score(&truth, &[(0x1020, Some(0x1068))], false);
+        let c = score(&truth, &[(0x1020, Some(0x1068))], false, &[]);
         assert_eq!((c.start_match, c.padded), (1, 0));
     }
 
@@ -443,10 +481,10 @@ mod tests {
     #[test]
     fn thumb_bit_is_cleared() {
         let truth = [tf(0x1000, 0x1010, true)];
-        let c = score(&truth, &[(0x1001, Some(0x1010))], true);
+        let c = score(&truth, &[(0x1001, Some(0x1010))], true, &[]);
         assert_eq!((c.start_match, c.exact), (1, 1));
         // not on x86: 0x1001 is another address
-        assert_eq!(score(&truth, &[(0x1001, None)], false).start_match, 0);
+        assert_eq!(score(&truth, &[(0x1001, None)], false, &[]).start_match, 0);
     }
 
     #[test]

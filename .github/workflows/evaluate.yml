@@ -75,6 +75,8 @@ jobs:
       - run: ci/setup_tool_v2.sh ${{ matrix.tool }}
       - name: function boundaries
         if: inputs.track == 'boundaries'
+        # --jobs already runs binaries in parallel; one borer call at a time each
+        env: { BORER_LIST_JOBS: "1" }
         run: |
           B="$RUNNER_TEMP/bins"; chmod +x "$B/target/release/freshbench" "$B/fission-bin/fission_cli" 2>/dev/null || true
           FB="$B/target/release/freshbench"

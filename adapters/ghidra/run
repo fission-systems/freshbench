@@ -1,19 +1,31 @@
 #!/bin/sh
 # Ghidra (or Kuna through a Ghidra copy) adapter. See adapters/README.md.
+# Address mode (--addresses): FreshBenchDecompile.java. List mode
+# (--list-functions): FreshBenchFunctions.java, Ghidra's own function list
+# after auto-analysis.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
+list=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --binary) bin=$2; shift 2;; --addresses) addrs=$2; shift 2;;
-    --elf-base) base=$2; shift 2;; --out) out=$2; shift 2;; *) echo "unknown $1" >&2; exit 2;;
+    --elf-base) base=$2; shift 2;; --out) out=$2; shift 2;;
+    --list-functions) list=1; shift;; *) echo "unknown $1" >&2; exit 2;;
   esac
 done
 : "${GHIDRA_INSTALL_DIR:?set GHIDRA_INSTALL_DIR}"
+if [ "$list" = 1 ]; then
+  # an empty list is an answer, so a stale file must not pass for one
+  rm -f "$out"; script=FreshBenchFunctions.java; set -- "$base" "$out"
+else
+  script=FreshBenchDecompile.java; set -- "$addrs" "$base" "$out"
+fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 # Ghidra's import fails silently on names that start with a dot: import a copy
 cp "$bin" "$tmp/target.elf"
 "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$tmp" fb -import "$tmp/target.elf" \
-  -scriptPath "$here" -postScript FreshBenchDecompile.java "$addrs" "$base" "$out" \
+  -scriptPath "$here" -postScript "$script" "$@" \
   -deleteProject -analysisTimeoutPerFile "${GHIDRA_ANALYSIS_TIMEOUT:-1800}" > "$tmp/log" 2>&1 || {
   tail -40 "$tmp/log" >&2; exit 1; }
-[ -s "$out" ] || { tail -40 "$tmp/log" >&2; exit 1; }
+# a list may be empty; it must exist. A decompile answer always has a line.
+if [ "$list" = 1 ]; then [ -f "$out" ]; else [ -s "$out" ]; fi || { tail -40 "$tmp/log" >&2; exit 1; }
