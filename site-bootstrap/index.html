@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="FreshBench is an independent decompiler benchmark and regression analysis framework.">
+<title>FreshBench — Decompiler Benchmark</title>
+<style>
+:root{color-scheme:light dark;--bg:#f8fafc;--fg:#18212f;--muted:#516174;--card:#fff;--border:#dbe2ea;--accent:#1658a5} @media(prefers-color-scheme:dark){:root{--bg:#10151d;--fg:#e8edf4;--muted:#a8b5c6;--card:#18212c;--border:#354252;--accent:#8dbdff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:44px 24px 60px}nav{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:56px}a{color:var(--accent)}h1{font-size:clamp(2.4rem,6vw,4.4rem);line-height:1.05;letter-spacing:-.05em;margin:0 0 16px}h2{font-size:1.3rem;margin:32px 0 12px}p{max-width:74ch} .muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.tile,.status{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:18px}.tile strong{display:block;font-size:1.85rem;font-variant-numeric:tabular-nums}.status{margin-top:24px}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border)}th{font-size:.85rem}footer{margin-top:42px;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body><main>
+<nav aria-label="Primary navigation"><a href="#leaderboard">Leaderboard</a><a href="#corpus">Corpus</a><a href="#methodology">Methodology</a><a href="https://github.com/fission-systems/freshbench">GitHub</a></nav>
+<header><p class="muted">Open-source · Rust-native</p><h1>FreshBench</h1><p>Independent decompiler evaluation and regression analysis across architectures, compilers and optimization levels.</p></header>
+<section class="status" id="leaderboard"><h2 style="margin-top:0">M1 leaderboard — awaiting verified results</h2><p>No official ranking has been published yet. Scores will appear only after compatible evaluation runs pass the publication gate. A missing result is not a zero score.</p><a href="https://github.com/fission-systems/freshbench/actions/workflows/evaluate.yml">Evaluation workflow</a> · <a href="https://github.com/fission-systems/freshbench/actions/workflows/pages.yml">Publication workflow</a></section>
+<section id="corpus"><h2>M1 corpus</h2><div class="grid"><div class="tile"><strong>285,875</strong>Selected function/build rows</div><div class="tile"><strong>7,885</strong>Source function identities before clone deduplication</div><div class="tile"><strong>48</strong>Build configurations</div><div class="tile"><strong>20</strong>Open-source projects</div></div><p class="muted">x86-64, i686, AArch64 and ARMv7 · GCC and Clang · six optimization configurations. Corpus statistics are not benchmark scores.</p><a href="https://github.com/fission-systems/freshbench/tree/main/corpus/m1">Corpus documentation</a> · <a href="https://huggingface.co/datasets/sjkim1127/freshbench-v2">Dataset</a></section>
+<section id="methodology"><h2>Evaluation methodology</h2><table><thead><tr><th>Track</th><th>Measurement</th></tr></thead><tbody><tr><td>Structure</td><td>Graph edit distance, including approximation bounds</td></tr><tr><td>Types</td><td>DWARF-based type recovery</td></tr><tr><td>Evidence</td><td>Validated output-line mapping</td></tr><tr><td>Recompilation</td><td>Compilation and instruction similarity</td></tr><tr><td>Binary analysis</td><td>Function boundary recovery</td></tr><tr><td>Performance</td><td>CPU time, wall time and memory</td></tr></tbody></table><p class="muted">Structural similarity is not proof of semantic correctness. Published results include provenance, coverage and a clone-deduplicated view.</p><a href="https://github.com/fission-systems/freshbench#readme">Full methodology and limitations</a></section>
+<footer>FreshBench · <a href="https://github.com/fission-systems/freshbench">Source repository</a></footer>
+</main></body>
+</html>
