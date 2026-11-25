@@ -31,6 +31,13 @@ case "$tool" in
     BORER_NO_UPDATE_CHECK=1 "$b" --version
     echo "BORER_BIN=$b" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$here/adapters/borer/run" >> "$GITHUB_ENV";;
+  unlace)
+    # built once by evaluate.yml's build job at UNLACE_SHA (no binary releases)
+    u="$RUNNER_TEMP/bins/unlace-bin"; chmod +x "$u/unlace"
+    "$u/unlace" --version || true
+    echo "UNLACE_BIN=$u/unlace" >> "$GITHUB_ENV"
+    echo "UNLACE_SPECS=$u/specs" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/unlace/run" >> "$GITHUB_ENV";;
   fission) :;;  # built in; see evaluate.yml
   *) echo "unknown tool $tool"; exit 1;;
 esac

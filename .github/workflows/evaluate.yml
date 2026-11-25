@@ -7,7 +7,7 @@ on:
       qualify_run: { description: "qualify-arch run id holding qual-<slug>-<arch> artifacts", required: true }
       projects: { description: "JSON list of slugs (owner__repo)", required: true }
       arch: { description: "x86_64 | i686 | aarch64 | armv7", required: true }
-      tools: { description: "JSON list", default: '["fission","ghidra","angr","kuna","borer"]' }
+      tools: { description: "JSON list", default: '["fission","ghidra","angr","kuna","borer","unlace"]' }
       fission_ref: { description: "git ref of Fission (default: FISSION_SHA in ci/pins.env)", default: "" }
       max_parallel: { description: "concurrent jobs", default: "12" }
       track: { description: "decompile (given function starts) or boundaries (find the functions; as-built and no-unwind)", default: "decompile" }
@@ -42,12 +42,23 @@ jobs:
           git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
           (cd fsrc && cargo build -p fission-cli --release --locked)
           mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/ && cp -r fsrc/utils fission-bin/utils
+      - uses: actions/cache@v4
+        id: uc
+        if: contains(inputs.tools, 'unlace')
+        with: { path: unlace-bin, key: "unlace-${{ hashFiles('ci/pins.env') }}" }
+      - if: contains(inputs.tools, 'unlace') && steps.uc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          git init -q usrc && git -C usrc fetch -q --depth 1 "$UNLACE_REPO" "$UNLACE_SHA" && git -C usrc checkout -q FETCH_HEAD
+          (cd usrc && cargo build --release --locked -p unlace-cli)
+          mkdir -p unlace-bin && cp usrc/target/release/unlace unlace-bin/ && cp -r usrc/specs unlace-bin/specs
       - uses: actions/upload-artifact@v4
         with:
           name: bins
           path: |
             target/release/freshbench
             fission-bin
+            unlace-bin
   run:
     needs: build
     runs-on: ubuntu-24.04
@@ -82,7 +93,7 @@ jobs:
           FB="$B/target/release/freshbench"
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
-          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission) J=2;; *) J=4;; esac
+          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/${{ matrix.tool }}-$v.jsonl"
             if [ '${{ matrix.tool }}' = fission ]; then
@@ -100,7 +111,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
-          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission) J=2;; *) J=4;; esac
+          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
           if [ '${{ matrix.tool }}' = fission ]; then
             "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
@@ -131,6 +142,7 @@ jobs:
               "angr": "angr " + pins["ANGR_VERSION"],
               "kuna": "kuna " + pins["KUNA_TAG"] + " sha256:" + pins["KUNA_SHA256"],
               "borer": "borer " + pins["BORER_TAG"] + " sha256:" + pins["BORER_SHA256"],
+              "unlace": "unlace " + pins["UNLACE_SHA"],
           }.get(tool, tool)
           json.dump({"tool": tool, "tool_version": version,
                      "freshbench_commit": os.environ["GITHUB_SHA"],
