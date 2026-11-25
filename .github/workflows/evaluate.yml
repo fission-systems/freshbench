@@ -78,10 +78,12 @@ jobs:
           FB="$B/target/release/freshbench"
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
+          # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
+          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission) J=2;; *) J=4;; esac
           if [ '${{ matrix.tool }}' = fission ]; then
-            "$FB" decompile "$R" $FB_BUILDS --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
           fi
           "$FB" rescore "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
