@@ -540,7 +540,7 @@ fn score_tu(
             _ => None,
         };
         let checked = match (&mut ev, st) {
-            (Some(e), Some(st)) => crate::evidence::validate(e, st),
+            (Some(e), Some(st)) => crate::evidence::validate(e, st, text),
             _ => crate::evidence::Checked::default(),
         };
         let mut checked = checked;
