@@ -272,6 +272,7 @@ dependencies = [
  "clap",
  "flate2",
  "gimli",
+ "libc",
  "object",
  "rayon",
  "rust-joern",

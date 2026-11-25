@@ -26,6 +26,7 @@ pub mod recompile;
 pub mod report;
 pub mod rows;
 pub mod score;
+pub mod speed;
 pub mod sweep;
 pub mod taxonomy;
 pub mod types;

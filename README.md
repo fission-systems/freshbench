@@ -162,7 +162,8 @@ freshbench sweep diff runs/main runs/fix   # output hashes first, then scores on
 * `run` writes `runs/<label>/`: `meta.json` (CLI sha256, git commit, scorer id,
   function-set id, every session's wall time), one checkpoint per binary
   under `bin/`, and `rows.jsonl`. An interrupted run continues from its
-  checkpoints; a resume with another CLI, scorer or function set is refused.
+  checkpoints; a resume with another CLI or function set is refused. After
+  the scorer changed, the same command keeps the outputs and scores them again.
   `--builds`, `--only` narrow the run; `--jobs 0` (default) runs half the
   cores' worth of binaries at once.
 * A call that crashes or times out is bisected until the failing function is
@@ -176,7 +177,26 @@ freshbench sweep diff runs/main runs/fix   # output hashes first, then scores on
   flow, Joern and type perfects, the distance delta and the rows that moved
   most.
 * `report` gives the perfect count next to the total distance, split by
-  architecture, compiler, level and size band.
+  architecture, compiler, level and size band, and what the run cost: wall
+  time, CPU time of every `fission_cli` process, CPU per function and peak
+  memory. `diff` compares CPU time between the two runs.
+
+## Speed
+
+Every tool run is measured in Rust (`adapters::run_measured`, `wait4`): wall
+time, user + system CPU time of the tool's whole process tree, and the peak
+resident memory of its largest process. `decompile` writes one line per
+binary to `results/<tool>/<build>/<project>/timing.jsonl`; boundary rows and
+sweep runs carry the same figures.
+
+```bash
+freshbench speed results/ boundaries/ runs/main/timing.jsonl
+```
+
+prints, per track and tool, CPU milliseconds per function, total CPU and wall
+time, median / p90 / max CPU seconds per binary and median / max memory. CPU
+time is the figure to compare between tools; wall time depends on how many
+binaries ran at once and on the machine.
 
 Measured on one M1 project (12 binaries, 3,600 functions, 14 cores): 75 s to
 decompile at 7 binaries at once, 53 s to score cold and about 1 s from the

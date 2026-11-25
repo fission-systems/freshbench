@@ -83,14 +83,74 @@ fn kill_group(pgid: u32) {
     let _ = pgid;
 }
 
+/// What one tool process (and the processes it waited for) cost.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Usage {
+    pub wall_s: f64,
+    /// user + system CPU time of the process tree
+    pub cpu_s: f64,
+    /// peak resident set size, the largest process of the tree
+    pub max_rss_mb: f64,
+}
+
+impl Usage {
+    /// Costs of two calls for the same binary, one after the other.
+    pub fn add(&mut self, o: &Usage) {
+        self.wall_s += o.wall_s;
+        self.cpu_s += o.cpu_s;
+        self.max_rss_mb = self.max_rss_mb.max(o.max_rss_mb);
+    }
+}
+
+/// Reap `pid` if it has exited (`block`: wait for it), with its resource usage.
+#[cfg(unix)]
+fn reap(pid: u32, block: bool) -> Option<(std::process::ExitStatus, f64, f64)> {
+    use std::os::unix::process::ExitStatusExt;
+    let mut status = 0;
+    // SAFETY: wait4 writes into the two out-parameters, which are valid for the call.
+    let (r, ru) = unsafe {
+        let mut ru: libc::rusage = std::mem::zeroed();
+        let r = libc::wait4(
+            pid as libc::pid_t,
+            &mut status,
+            if block { 0 } else { libc::WNOHANG },
+            &mut ru,
+        );
+        (r, ru)
+    };
+    if r != pid as libc::pid_t {
+        return None;
+    }
+    let secs = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 / 1e6;
+    // ru_maxrss is kilobytes on Linux and bytes on macOS
+    let rss_mb = ru.ru_maxrss as f64
+        / if cfg!(target_os = "macos") {
+            1048576.0
+        } else {
+            1024.0
+        };
+    Some((
+        std::process::ExitStatus::from_raw(status),
+        secs(ru.ru_utime) + secs(ru.ru_stime),
+        rss_mb,
+    ))
+}
+
 /// Run `cmd` in its own process group, killing the whole group after
 /// `timeout` (and any leftovers once it exits). Returns (exit ok, stdout,
 /// stderr tail).
-pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<(bool, Vec<u8>, String)> {
+pub fn run_with_timeout(cmd: Command, timeout: Duration) -> Result<(bool, Vec<u8>, String)> {
+    run_measured(cmd, timeout).map(|(ok, out, err, _)| (ok, out, err))
+}
+
+/// [`run_with_timeout`] with the wall time, CPU time and peak memory of the
+/// process tree (CPU and memory on Unix; elsewhere wall time only).
+pub fn run_measured(mut cmd: Command, timeout: Duration) -> Result<(bool, Vec<u8>, String, Usage)> {
     let dir = tempfile::tempdir()?;
     let (out_p, err_p) = (dir.path().join("out"), dir.path().join("err"));
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    #[allow(unused_mut)]
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(std::fs::File::create(&out_p)?)
@@ -98,19 +158,36 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<(bool, Ve
         .spawn()
         .context("spawn")?;
     let start = Instant::now();
+    let mut usage = Usage::default();
+    #[cfg(unix)]
     let status = loop {
-        if let Some(s) = child.try_wait()? {
+        if let Some((s, cpu, rss)) = reap(child.id(), false) {
             kill_group(child.id());
+            (usage.cpu_s, usage.max_rss_mb) = (cpu, rss);
             break Some(s);
         }
         if start.elapsed() > timeout {
             kill_group(child.id());
+            if let Some((_, cpu, rss)) = reap(child.id(), true) {
+                (usage.cpu_s, usage.max_rss_mb) = (cpu, rss);
+            }
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    #[cfg(not(unix))]
+    let status = loop {
+        if let Some(s) = child.try_wait()? {
+            break Some(s);
+        }
+        if start.elapsed() > timeout {
             let _ = child.kill();
             let _ = child.wait();
             break None;
         }
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(20));
     };
+    usage.wall_s = start.elapsed().as_secs_f64();
     let out = std::fs::read(&out_p)?;
     let err = String::from_utf8_lossy(&std::fs::read(&err_p)?).into_owned();
     let tail = err
@@ -122,8 +199,13 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<(bool, Ve
         .rev()
         .collect();
     match status {
-        Some(s) => Ok((s.success(), out, tail)),
-        None => Ok((false, out, format!("timeout after {}s", timeout.as_secs()))),
+        Some(s) => Ok((s.success(), out, tail, usage)),
+        None => Ok((
+            false,
+            out,
+            format!("timeout after {}s", timeout.as_secs()),
+            usage,
+        )),
     }
 }
 
@@ -134,6 +216,7 @@ fn call(
     addrs: &[u64],
     base: u64,
     timeout: Duration,
+    usage: &mut Usage,
 ) -> Result<BTreeMap<u64, Result<String, String>>> {
     let dir = tempfile::tempdir()?;
     let af = dir.path().join("addrs.txt");
@@ -162,7 +245,8 @@ fn call(
                 c.arg("--resource-root").arg(r);
             }
             c.env("FISSION_BENCHMARK_NO_CACHE", "1");
-            let (ok, out, err) = run_with_timeout(c, timeout)?;
+            let (ok, out, err, u) = run_measured(c, timeout)?;
+            usage.add(&u);
             if !ok {
                 bail!("fission_cli failed: {err}");
             }
@@ -211,7 +295,8 @@ fn call(
                 .arg(format!("{base:#x}"))
                 .arg("--out")
                 .arg(&outf);
-            let (ok, _, err) = run_with_timeout(c, timeout)?;
+            let (ok, _, err, u) = run_measured(c, timeout)?;
+            usage.add(&u);
             if !ok {
                 bail!("adapter failed: {err}");
             }
@@ -251,6 +336,9 @@ pub struct CallStats {
     pub calls: u32,
     /// invocations that crashed or timed out
     pub failed_calls: u32,
+    /// wall time, CPU time and peak memory of all invocations
+    #[serde(default)]
+    pub usage: Usage,
 }
 
 /// Decompile `addrs` in one call; a call that crashes or times out is bisected
@@ -272,7 +360,7 @@ fn bisect(
         .min(binary_timeout)
         .max(function_timeout);
     stats.calls += 1;
-    match call(tool, binary, addrs, base, limit) {
+    match call(tool, binary, addrs, base, limit, &mut stats.usage) {
         Ok(m) => out.extend(m),
         Err(e) => {
             stats.failed_calls += 1;
@@ -377,6 +465,18 @@ pub fn list_functions(
     binary: &Path,
     timeout: Duration,
 ) -> Result<Vec<(u64, Option<u64>)>> {
+    list_functions_measured(tool, binary, timeout).map(|(f, _)| f)
+}
+
+/// Function starts with their ends where the tool gave one.
+pub type Found = Vec<(u64, Option<u64>)>;
+
+/// [`list_functions`] with what the run cost.
+pub fn list_functions_measured(
+    tool: &Tool,
+    binary: &Path,
+    timeout: Duration,
+) -> Result<(Found, Usage)> {
     let hex = |s: &str| u64::from_str_radix(s.trim().trim_start_matches("0x"), 16);
     match tool {
         Tool::Fission {
@@ -387,7 +487,7 @@ pub fn list_functions(
             if let Some(r) = resource_root {
                 c.arg("--resource-root").arg(r);
             }
-            let (ok, out, err) = run_with_timeout(c, timeout)?;
+            let (ok, out, err, usage) = run_measured(c, timeout)?;
             if !ok {
                 bail!("fission_cli failed: {err}");
             }
@@ -407,7 +507,7 @@ pub fn list_functions(
                 let size = it.get("size").and_then(|x| x.as_u64()).unwrap_or(0);
                 found.push((start, (size > 0).then(|| start + size)));
             }
-            Ok(found)
+            Ok((found, usage))
         }
         Tool::Script { command, .. } => {
             let dir = tempfile::tempdir()?;
@@ -422,7 +522,7 @@ pub fn list_functions(
                 .arg(format!("{:#x}", elf_base(&data)?))
                 .arg("--out")
                 .arg(&outf);
-            let (ok, _, err) = run_with_timeout(c, timeout)?;
+            let (ok, _, err, usage) = run_measured(c, timeout)?;
             if !ok {
                 bail!("adapter failed: {err}");
             }
@@ -442,7 +542,7 @@ pub fn list_functions(
                 let l: Line = serde_json::from_str(line)?;
                 found.push((hex(&l.start)?, l.end.as_deref().map(hex).transpose()?));
             }
-            Ok(found)
+            Ok((found, usage))
         }
     }
 }

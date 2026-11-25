@@ -261,6 +261,12 @@ pub struct Row {
     pub counts: Counts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// wall time, CPU time and peak memory of the tool's run on this binary
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<crate::adapters::Usage>,
+    /// binaries the harness ran at once
+    #[serde(default)]
+    pub jobs: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -500,6 +506,8 @@ mod tests {
             stripped_sha256: sha.into(),
             counts: c,
             error: err.map(Into::into),
+            usage: None,
+            jobs: 1,
         };
         let good = Counts {
             truth: 10,
