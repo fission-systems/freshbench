@@ -298,6 +298,7 @@ mod tests {
             scorer: String::new(),
             failure: None,
             source: None,
+            evidence: None,
         }
     }
 

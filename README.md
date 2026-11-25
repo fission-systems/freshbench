@@ -57,6 +57,15 @@ the raw results but are not published. LLM-based decompilers are not ranked:
 the corpus is public, so a model may have seen it. They would need a separate
 track with its own contamination controls.
 
+**Line mappings are required.** Every decompiled function must come with the
+tool's own line mappings (which instructions each output line came from) and,
+for types, its variables with ABI argument positions and stack slots, as in
+DecBench's native line-mapping contract (Noelo-Lab/decbench#129). Addresses are
+checked against the function's instructions; an output with no valid line
+mapping is not scored. Types are matched to DWARF through this evidence only,
+never by reading the C text. GED still reads the output's C, since the
+structure is what it measures.
+
 **No fixups.** Every metric reads the decompiler's output exactly as it was
 printed. FreshBench does not rewrite keywords, define pseudo-types, inject
 declarations the compiler asks for, or repair code before compiling or

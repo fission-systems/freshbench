@@ -2,6 +2,7 @@
 """angr adapter (see adapters/README.md). Needs a Python with angr."""
 import argparse
 import json
+import sys
 import logging
 
 import angr
@@ -34,12 +35,98 @@ if a.list_functions:
             out.write(json.dumps({"start": hex(fn.addr), "end": hex(end) if end else None}) + "\n")
     raise SystemExit(0)
 
+
+
+def type_str(t):
+    """The C spelling angr gives a SimType (`int`, `char*`, `struct s`)."""
+    if t is None:
+        return ""
+    for f in ("c_repr", "__str__"):
+        try:
+            v = getattr(t, f)()
+            if v:
+                return str(v)
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
+
+
+def evidence(codegen, text):
+    """angr's own evidence: the codegen position map (text position -> AST node
+    with the instruction address it came from) bucketed by line, ABI-ordered
+    arguments and the unified locals with their stack offsets."""
+    from angr.sim_variable import SimStackVariable
+
+    starts = [0] + [i + 1 for i, c in enumerate(text) if c == "\n"]
+
+    def line_of(pos):
+        lo, hi = 0, len(starts)
+        while lo + 1 < hi:
+            mid = (lo + hi) // 2
+            if starts[mid] <= pos:
+                lo = mid
+            else:
+                hi = mid
+        return lo + 1
+
+    lines = {}
+    posmap = getattr(codegen, "map_pos_to_addr", None)
+    if posmap is not None and hasattr(posmap, "items"):
+        for pos, element in posmap.items():
+            obj = getattr(element, "obj", None)
+            tags = getattr(obj, "tags", None) or {}
+            ins = tags.get("ins_addr")
+            if ins is not None:
+                lines.setdefault(line_of(int(pos)), set()).add(int(ins) & ~1 if is_arm else int(ins))
+    lm = [{"line_number": n, "addresses": sorted(v)} for n, v in sorted(lines.items())]
+    cfunc = getattr(codegen, "cfunc", None)
+    variables = []
+    args = []
+    for i, cv in enumerate(getattr(cfunc, "arg_list", None) or []):
+        sv = getattr(cv, "unified_variable", None) or getattr(cv, "variable", None)
+        args.append(sv)
+        variables.append({
+            "name": getattr(cv, "name", None) or getattr(sv, "name", "") or f"a{i}",
+            "type": type_str(getattr(cv, "type", None) or getattr(cv, "variable_type", None)),
+            "kind": "arg",
+            "arg_index": i,
+        })
+    try:
+        local_map = cfunc.get_unified_local_vars() if cfunc is not None else {}
+    except Exception:  # noqa: BLE001
+        local_map = {}
+    for sv, cvar_types in (local_map or {}).items():
+        if any(sv is x for x in args):
+            continue
+        ty = ""
+        for _cv, st in cvar_types:
+            ty = type_str(st)
+            if ty:
+                break
+        stack = isinstance(sv, SimStackVariable)
+        variables.append({
+            "name": getattr(sv, "name", "") or "",
+            "type": ty,
+            "kind": "stack" if stack else "register",
+            "stack_offset": int(sv.offset) if stack and sv.offset is not None else None,
+            "size": getattr(sv, "size", None),
+        })
+    ret = None
+    try:
+        ret = type_str(cfunc.functy.returnty)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"line_mappings": lm, "variables": [v for v in variables if v["type"]], "return_type": ret or None}
+
+
+is_arm = p.arch.name.startswith("ARM")
 reqs = [l.strip() for l in open(a.addresses) if l.strip()]
 starts = [int(r, 16) for r in reqs]  # Thumb keeps bit 0, as angr expects
 cfg = p.analyses.CFGFast(normalize=True, data_references=True, function_starts=starts)
 with open(a.out, "w") as out:
     for r, addr in zip(reqs, starts):
         code = err = None
+        ev = {}
         try:
             fn = cfg.kb.functions.function(addr=addr)
             if fn is None and addr & 1:
@@ -51,6 +138,13 @@ with open(a.out, "w") as out:
                 code = d.codegen.text if d.codegen is not None else None
                 if code is None:
                     err = "decompiler produced no code"
+                else:
+                    try:
+                        ev = evidence(d.codegen, code)
+                    except Exception as e:  # noqa: BLE001 - the code stands; evidence is checked later
+                        sys.stderr.write(f"evidence {r}: {type(e).__name__}: {e}\n")
         except Exception as e:  # noqa: BLE001 - recorded per function
             err = f"{type(e).__name__}: {e}"[:500]
-        out.write(json.dumps({"address": r, "code": code, "error": err}) + "\n")
+        line = {"address": r, "code": code, "error": err}
+        line.update(ev)
+        out.write(json.dumps(line) + "\n")

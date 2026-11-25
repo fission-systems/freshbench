@@ -363,7 +363,7 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
                 binary: r.binary,
                 function: r.function,
             };
-            code.insert(key, (r.code.unwrap_or_default(), r.error));
+            code.insert(key, (r.code.unwrap_or_default(), r.error, r.evidence));
         }
     }
     // per-binary cost in the same form `freshbench speed` reads for every tool

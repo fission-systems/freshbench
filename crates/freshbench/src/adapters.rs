@@ -54,7 +54,13 @@ pub struct Record {
     pub address: u64,
     pub code: Option<String>,
     pub error: Option<String>,
+    /// the tool's own line mappings and variables (required to be scored)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<crate::evidence::Evidence>,
 }
+
+/// One function's output: its text and the tool's evidence for it.
+pub type Got = (String, Option<crate::evidence::Evidence>);
 
 /// Lowest PT_LOAD virtual address, page-aligned down (0 for a typical PIE).
 pub fn elf_base(data: &[u8]) -> Result<u64> {
@@ -217,7 +223,7 @@ fn call(
     base: u64,
     timeout: Duration,
     usage: &mut Usage,
-) -> Result<BTreeMap<u64, Result<String, String>>> {
+) -> Result<BTreeMap<u64, Result<Got, String>>> {
     let dir = tempfile::tempdir()?;
     let af = dir.path().join("addrs.txt");
     std::fs::write(&af, hex_list(addrs))?;
@@ -271,7 +277,10 @@ fn call(
                     continue;
                 };
                 match it.get("code").and_then(|c| c.as_str()) {
-                    Some(code) => m.insert(a, Ok(code.to_string())),
+                    Some(code) => m.insert(
+                        a,
+                        Ok((code.to_string(), crate::evidence::Evidence::from_json(&it))),
+                    ),
                     None => m.insert(
                         a,
                         Err(it
@@ -314,12 +323,15 @@ fn call(
                 if line.trim().is_empty() {
                     continue;
                 }
-                let l: Line = serde_json::from_str(line)?;
+                let raw: serde_json::Value = serde_json::from_str(line)?;
+                let l: Line = serde_json::from_value(raw.clone())?;
                 let a = u64::from_str_radix(l.address.trim_start_matches("0x"), 16)?;
                 m.insert(
                     a,
                     match l.code {
-                        Some(c) if !c.trim().is_empty() => Ok(c),
+                        Some(c) if !c.trim().is_empty() => {
+                            Ok((c, crate::evidence::Evidence::from_json(&raw)))
+                        }
                         _ => Err(l.error.unwrap_or_else(|| "no code".into())),
                     },
                 );
@@ -353,7 +365,7 @@ fn bisect(
     base: u64,
     (binary_timeout, function_timeout): (Duration, Duration),
     stats: &mut CallStats,
-    out: &mut BTreeMap<u64, Result<String, String>>,
+    out: &mut BTreeMap<u64, Result<Got, String>>,
 ) {
     let limit = function_timeout
         .saturating_mul(addrs.len() as u32)
@@ -442,9 +454,9 @@ pub fn decompile_binary_stats(
             let r = got
                 .remove(a)
                 .unwrap_or_else(|| Err("missing from output".into()));
-            let (code, error) = match r {
-                Ok(c) => (Some(c), None),
-                Err(e) => (None, Some(e)),
+            let (code, error, evidence) = match r {
+                Ok((c, ev)) => (Some(c), None, ev),
+                Err(e) => (None, Some(e), None),
             };
             Record {
                 binary: binary_name.to_string(),
@@ -452,6 +464,7 @@ pub fn decompile_binary_stats(
                 address: *a,
                 code,
                 error,
+                evidence,
             }
         })
         .collect();

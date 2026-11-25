@@ -28,6 +28,9 @@ tempfile = "3"
 tree-sitter = "0.26"
 tree-sitter-c = "0.24"
 
+[dev-dependencies]
+object = { version = "0.39", default-features = false, features = ["read", "std", "write"] }
+
 [build-dependencies]
 sha2 = "0.10"
 
