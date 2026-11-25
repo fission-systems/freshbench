@@ -228,6 +228,24 @@ enum Cmd {
         dedup: Vec<PathBuf>,
         #[arg(long, value_enum, default_value = "renamed")]
         dedup_level: freshbench::clones::Level,
+        /// function-boundary rows (files or directories), shown with the main metrics
+        #[arg(long, num_args = 1..)]
+        boundaries: Vec<PathBuf>,
+        /// timing (files or directories): what each tool cost
+        #[arg(long, num_args = 1..)]
+        speed: Vec<PathBuf>,
+        /// tool registry (ci/tools.json); with --last-commits and --now, only
+        /// maintained, registered, non-LLM tools are published
+        #[arg(long)]
+        tools: Option<PathBuf>,
+        /// JSON {tool: date of the last upstream commit}
+        #[arg(long)]
+        last_commits: Option<PathBuf>,
+        /// publication date (YYYY-MM-DD)
+        #[arg(long)]
+        now: Option<String>,
+        #[arg(long, default_value_t = 365)]
+        max_idle_days: i64,
     },
     /// DWARF type ground truth (return, parameter and local classes) of a function.
     Signature {
@@ -843,24 +861,7 @@ fn run() -> Result<ExitCode> {
             }
         }
         Cmd::BoundariesSummary { rows: paths } => {
-            let mut rows = Vec::new();
-            for p in paths {
-                let mut files = Vec::new();
-                if p.is_dir() {
-                    rows::walk_sorted(&p, &mut |f| {
-                        if f.extension().is_some_and(|e| e == "jsonl") {
-                            files.push(f.to_path_buf())
-                        }
-                    })?;
-                } else {
-                    files.push(p);
-                }
-                for f in files {
-                    for line in read(&f)?.lines().filter(|l| !l.trim().is_empty()) {
-                        rows.push(serde_json::from_str::<freshbench::boundaries::Row>(line)?);
-                    }
-                }
-            }
+            let rows = freshbench::boundaries::load(&paths)?;
             print_json(&freshbench::boundaries::summarize(&rows))?
         }
         Cmd::Provenance { action } => match action {
@@ -997,6 +998,12 @@ fn run() -> Result<ExitCode> {
             corpus,
             dedup,
             dedup_level,
+            boundaries,
+            speed,
+            tools,
+            last_commits,
+            now,
+            max_idle_days,
         } => {
             let mut meta: freshbench::report::Meta = match meta {
                 Some(p) => serde_json::from_str(&read(&p)?)?,
@@ -1043,8 +1050,43 @@ fn run() -> Result<ExitCode> {
                     table.len()
                 ));
             }
+            let mut brows = freshbench::boundaries::load(&boundaries)?;
+            let mut trows = freshbench::speed::load(&speed)?;
+            if let Some(reg) = &tools {
+                let registry: std::collections::BTreeMap<String, freshbench::policy::ToolInfo> =
+                    serde_json::from_str(&read(reg)?)?;
+                let last: std::collections::BTreeMap<String, String> = match &last_commits {
+                    Some(p) => serde_json::from_str(&read(p)?)?,
+                    None => Default::default(),
+                };
+                let now = now.context("--now is required with --tools")?;
+                let present: std::collections::BTreeSet<String> = table
+                    .values()
+                    .flat_map(|m| m.keys().cloned())
+                    .chain(brows.iter().map(|r| r.tool.clone()))
+                    .chain(trows.iter().map(|r| r.tool.clone()))
+                    .collect();
+                let (keep_tools, notes) = freshbench::policy::publishable(
+                    &present,
+                    &registry,
+                    &last,
+                    &now,
+                    max_idle_days,
+                )?;
+                for m in table.values_mut() {
+                    m.retain(|t, _| keep_tools.contains(t));
+                }
+                table.retain(|_, m| !m.is_empty() || corpus.is_some());
+                brows.retain(|r| keep_tools.contains(&r.tool));
+                trows.retain(|r| keep_tools.contains(&r.tool));
+                meta.notes.extend(notes);
+            }
+            let extras = freshbench::report::Extras {
+                boundaries: (!brows.is_empty()).then(|| freshbench::boundaries::summarize(&brows)),
+                speed: (!trows.is_empty()).then(|| freshbench::speed::summarize(&trows)),
+            };
             std::fs::create_dir_all(&out)?;
-            let files = freshbench::report::site(&table, &meta, resamples, keep);
+            let files = freshbench::report::site_with(&table, &meta, resamples, keep, &extras);
             for (name, body) in &files {
                 std::fs::write(out.join(name), body)?;
             }

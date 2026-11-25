@@ -4,7 +4,7 @@ name: pages
 on:
   workflow_dispatch:
     inputs:
-      evaluate_runs: { description: "JSON list of evaluate run ids whose eval-* artifacts to publish", required: true }
+      evaluate_runs: { description: "JSON list of evaluate run ids whose eval-* and bound-* artifacts to publish", required: true }
       corpus: { description: "corpus line shown on the page (milestone, dataset revision)", required: true }
 permissions: { contents: read, actions: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: false }
@@ -25,7 +25,7 @@ jobs:
         run: |
           mkdir -p site-src/rows
           for id in $(echo '${{ inputs.evaluate_runs }}' | jq -r '.[]'); do
-            gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -D "dl/$id"
+            gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -p 'bound-*' -D "dl/$id"
           done
           # every rows/<tool>.jsonl of every artifact, named uniquely
           find dl -path '*/rows/*.jsonl' | sort | while read -r f; do
@@ -36,12 +36,24 @@ jobs:
         run: |
           target/release/freshbench provenance meta dl --corpus '${{ inputs.corpus }}' \
             --note 'evaluate runs: ${{ inputs.evaluate_runs }}' --out meta.json
+      - name: last upstream commit of every registered tool
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          echo '{}' > last.json
+          for t in $(jq -r 'keys[]' ci/tools.json); do
+            repo=$(jq -r --arg t "$t" '.[$t].repo' ci/tools.json)
+            d=$(gh api "repos/$repo/commits?per_page=1" --jq '.[0].commit.committer.date' || echo "")
+            [ -n "$d" ] && jq --arg t "$t" --arg d "$d" '.[$t]=$d' last.json > last.tmp && mv last.tmp last.json
+          done
+          cat last.json
       - name: report, all rows and one function per renamed-clone group
         run: |
-          target/release/freshbench report site-src --out site --meta meta.json
+          POLICY="--tools ci/tools.json --last-commits last.json --now $(date -u +%F)"
+          EXTRA="--boundaries dl --speed dl $POLICY"
+          target/release/freshbench report site-src --out site --meta meta.json $EXTRA
           # DecBench's maintainer asked us to be honest about duplication: every
           # published score also appears with clones removed
-          target/release/freshbench report site-src --out site/dedup --meta meta.json \
+          target/release/freshbench report site-src --out site/dedup --meta meta.json $EXTRA \
             --dedup-level renamed --dedup corpus/m1/duplicates-x86_64.json corpus/m1/duplicates-i686.json \
             corpus/m1/duplicates-aarch64.json corpus/m1/duplicates-armv7.json
           # what each tool cost: CPU and wall time and memory per binary and per function

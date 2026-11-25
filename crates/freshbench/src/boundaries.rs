@@ -374,6 +374,32 @@ pub fn summarize(rows: &[Row]) -> Summary {
     s
 }
 
+/// Boundary rows from files or directories of `*.jsonl` (other lines skipped).
+pub fn load(paths: &[impl AsRef<std::path::Path>]) -> Result<Vec<Row>> {
+    let mut files = Vec::new();
+    for p in paths {
+        let p = p.as_ref();
+        if p.is_dir() {
+            crate::rows::walk_sorted(p, &mut |f| {
+                if f.extension().is_some_and(|e| e == "jsonl") {
+                    files.push(f.to_path_buf())
+                }
+            })?;
+        } else {
+            files.push(p.to_path_buf());
+        }
+    }
+    let mut out = Vec::new();
+    for f in files {
+        for line in std::fs::read_to_string(&f)?.lines() {
+            if let Ok(r) = serde_json::from_str::<Row>(line) {
+                out.push(r);
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
