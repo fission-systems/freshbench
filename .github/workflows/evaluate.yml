@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 120
     outputs: { fission_sha: "${{ steps.ref.outputs.sha }}" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -28,12 +28,16 @@ jobs:
           key: cargo-release-${{ hashFiles('Cargo.lock') }}
       - run: cargo build --release --locked -p freshbench
       - id: ref
+        env:
+          FISSION_REF: ${{ inputs.fission_ref }}
         run: |
           source ci/pins.env
-          ref='${{ inputs.fission_ref }}'
+          ref="$FISSION_REF"
+          # a branch, tag, ref pattern or commit; never an option or shell-special text
+          if [ -n "$ref" ] && ! [[ "$ref" =~ ^[A-Za-z0-9_./+@*][A-Za-z0-9_./+@*-]*$ ]]; then echo "invalid fission_ref: $ref" >&2; exit 1; fi
           if [ -n "$ref" ]; then sha=$(git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; else sha="$FISSION_SHA"; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"; echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: fc
         with: { path: fission-bin, key: "fission-cli-${{ steps.ref.outputs.sha }}" }
       - if: contains(inputs.tools, 'fission') && steps.fc.outputs.cache-hit != 'true'
@@ -42,7 +46,7 @@ jobs:
           git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
           (cd fsrc && cargo build -p fission-cli --release --locked)
           mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/ && cp -r fsrc/utils fission-bin/utils
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: uc
         if: contains(inputs.tools, 'unlace')
         with: { path: unlace-bin, key: "unlace-${{ hashFiles('ci/pins.env') }}" }
@@ -52,7 +56,7 @@ jobs:
           git init -q usrc && git -C usrc fetch -q --depth 1 "$UNLACE_REPO" "$UNLACE_SHA" && git -C usrc checkout -q FETCH_HEAD
           (cd usrc && cargo build --release --locked -p unlace-cli)
           mkdir -p unlace-bin && cp usrc/target/release/unlace unlace-bin/ && cp -r usrc/specs unlace-bin/specs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bins
           path: |
@@ -72,18 +76,20 @@ jobs:
         build: ${{ fromJSON(inputs.builds) }}
     env:
       FB_BUILDS: ${{ matrix.build != '' && format('--builds={0}', matrix.build) || '' }}
+      # ci/setup_tool.sh rejects any name it does not install
+      MATRIX_TOOL: ${{ matrix.tool }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         if: matrix.tool == 'ghidra'
         with: { distribution: temurin, java-version: "21" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: bins, path: "${{ runner.temp }}/bins" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: "qual-${{ matrix.project }}-${{ inputs.arch }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
-      - run: ci/setup_tool.sh ${{ matrix.tool }}
+      - run: ci/setup_tool.sh "$MATRIX_TOOL"
       - name: function boundaries
         if: inputs.track == 'boundaries'
         # --jobs already runs binaries in parallel; one borer call at a time each
@@ -93,13 +99,13 @@ jobs:
           FB="$B/target/release/freshbench"
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
-          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          case "$MATRIX_TOOL" in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
           for v in as-built no-unwind; do
-            o="$RUNNER_TEMP/up/boundaries/${{ matrix.tool }}-$v.jsonl"
-            if [ '${{ matrix.tool }}' = fission ]; then
+            o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
+            if [ "$MATRIX_TOOL" = fission ]; then
               "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
             else
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
             fi
           done
           "$FB" boundaries-summary "$RUNNER_TEMP/up/boundaries" > "$RUNNER_TEMP/up/boundaries/summary.json"
@@ -111,13 +117,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
-          case '${{ matrix.tool }}' in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
-          if [ '${{ matrix.tool }}' = fission ]; then
+          case "$MATRIX_TOOL" in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          if [ "$MATRIX_TOOL" = fission ]; then
             "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool '${{ matrix.tool }}' --adapter $FB_ADAPTER
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
           fi
-          "$FB" rescore "$R" $FB_BUILDS --tool '${{ matrix.tool }}' --out "$R/rows/${{ matrix.tool }}.jsonl"
+          "$FB" rescore "$R" $FB_BUILDS --tool "$MATRIX_TOOL" --out "$R/rows/$MATRIX_TOOL.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
       - name: provenance
         if: always()
@@ -136,6 +142,6 @@ jobs:
             --freshbench-commit "$GITHUB_SHA" --qualify-run "$QUALIFY_RUN" --evaluate-run "$GITHUB_RUN_ID" \
             --arch "$ARCH" --project "$PROJECT" --build "$BUILD" --track "$TRACK" \
             --out "$RUNNER_TEMP/up/provenance.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: "${{ inputs.track == 'boundaries' && 'bound' || 'eval' }}-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }

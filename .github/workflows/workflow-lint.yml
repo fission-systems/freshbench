@@ -2,8 +2,7 @@ name: workflow-lint
 
 # actionlint + zizmor over .github/workflows, and the labeler config check.
 # Advisory: not a required status check. zizmor fails on high-severity
-# findings; known debt in workflows frozen for M1 is listed per file in
-# .github/zizmor.yml, so a new finding anywhere still fails.
+# findings; .github/zizmor.yml suppresses none.
 on:
   pull_request:
   push:

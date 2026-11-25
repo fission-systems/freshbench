@@ -49,9 +49,9 @@ actionlint -shellcheck= -pyflakes=
 pipx run zizmor==1.32.0 --offline --min-severity high --config .github/zizmor.yml .github/workflows
 ```
 
-`.github/zizmor.yml` lists known findings per file in workflows that were frozen during M1. Remove
-an entry when you fix that file; never add one for a new workflow. A linter pass does not replace
-review: when possible, run the workflow on one small project/build before merging. Do not raise
+`.github/zizmor.yml` has no suppressions. Fix a finding in the workflow instead of ignoring it:
+pin actions to a full commit SHA with a version comment, and pass `inputs.*`, `matrix.*` and
+`github.*` values to `run:` through `env:`. A linter pass does not replace review: when possible, run the workflow on one small project/build before merging. Do not raise
 `max-parallel` or remove the concurrency comments without checking the organisation's CI capacity.
 
 ## Labels

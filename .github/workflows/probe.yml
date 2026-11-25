@@ -20,32 +20,49 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: ref
+        env:
+          FISSION_REF: ${{ inputs.fission_ref }}
+          PROBE_BUILD: ${{ inputs.build }}
+          PROBE_BINARY: ${{ inputs.binary }}
+          PROBE_ADDR: ${{ inputs.addr }}
         run: |
+          # fail before the build: names from the prepared tree, a hex/decimal
+          # address, and a branch, tag, ref pattern or commit
+          bad() { echo "invalid $1: $2" >&2; exit 1; }
+          [[ "$PROBE_BUILD" =~ ^[A-Za-z0-9_.+][A-Za-z0-9_.+-]*$ ]] || bad build "$PROBE_BUILD"
+          [[ "$PROBE_BINARY" =~ ^[A-Za-z0-9_.+][A-Za-z0-9_./+-]*$ ]] || bad binary "$PROBE_BINARY"
+          [[ "$PROBE_ADDR" =~ ^[0-9A-Fa-fxX]+$ ]] || bad addr "$PROBE_ADDR"
+          [ -z "$FISSION_REF" ] || [[ "$FISSION_REF" =~ ^[A-Za-z0-9_./+@*][A-Za-z0-9_./+@*-]*$ ]] || bad fission_ref "$FISSION_REF"
           source ci/pins.env
-          ref="${{ inputs.fission_ref }}"; sha="$FISSION_SHA"
+          ref="$FISSION_REF"; sha="$FISSION_SHA"
           if [ -n "$ref" ]; then sha=$(git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; fi
           echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"; echo "FISSION_REPO=$FISSION_REPO" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: c
         with: { path: fsrc/target/release/fission_cli, key: "probe-fission-${{ matrix.os }}-${{ env.FISSION_SHA }}" }
       - run: |
           git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
       - if: steps.c.outputs.cache-hit != 'true'
         run: cd fsrc && cargo build -p fission-cli --release --locked
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: "qual-${{ inputs.project }}-x86_64", path: q, run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
       - name: probe
+        env:
+          PROBE_BUILD: ${{ inputs.build }}
+          PROBE_BINARY: ${{ inputs.binary }}
+          PROBE_ADDR: ${{ inputs.addr }}
+          PROBE_DIAG: ${{ inputs.diag }}
         run: |
           mkdir -p out && tar -xf q/prep.tar -C q
-          B="$PWD/q/prep/${{ inputs.build }}/stripped/${{ inputs.binary }}"
+          B="$PWD/q/prep/$PROBE_BUILD/stripped/$PROBE_BINARY"
           uname -a > out/uname.txt; sha256sum "$B" >> out/uname.txt
           cd fsrc
-          if [ "${{ inputs.diag }}" = 1 ]; then export FISSION_PREVIEW_DIAG=1 FISSION_PREVIEW_DIAG_ADDR=${{ inputs.addr }}; fi
+          if [ "$PROBE_DIAG" = 1 ]; then export FISSION_PREVIEW_DIAG=1 FISSION_PREVIEW_DIAG_ADDR="$PROBE_ADDR"; fi
           FISSION_BENCHMARK_NO_CACHE=1 FISSION_NORM_TRACE=1 ./target/release/fission_cli --no-db decomp "$B" \
-            --addr ${{ inputs.addr }} --json --no-header --no-warnings --prehir --timeout-ms 600000 \
+            --addr "$PROBE_ADDR" --json --no-header --no-warnings --prehir --timeout-ms 600000 \
             > ../out/out.json 2> ../out/trace.txt || echo "exit $?" >> ../out/uname.txt
           gzip -f ../out/trace.txt; ls -la ../out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: "probe-${{ matrix.os }}", path: out }
