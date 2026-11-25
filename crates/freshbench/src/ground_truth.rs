@@ -13,6 +13,7 @@ use crate::{cfg, csyntax, dataset, manifest, score};
 pub struct Entry {
     pub key: RowKey,
     pub source: String,
+    pub source_path: String,
     pub source_sha256: String,
     pub nodes: u32,
     pub edges: u32,
@@ -64,6 +65,7 @@ pub fn build(root: &Path) -> Result<Store> {
                     entries.push(Entry {
                         key: t.key.clone(),
                         source: t.source.clone(),
+                        source_path: t.source_path.clone(),
                         source_sha256: sha.clone(),
                         nodes,
                         edges,
@@ -100,7 +102,40 @@ pub fn load(path: &Path, targets: &[dataset::Target]) -> Result<Index> {
     anyhow::ensure!(index.len() == targets.len(), "ground truth population size mismatch");
     for t in targets {
         let entry = index.get(&t.key).with_context(|| format!("missing ground truth: {}", t.key))?;
-        anyhow::ensure!(entry.source == t.source, "ground truth source mismatch: {}", t.key);
+        anyhow::ensure!(entry.source == t.source && entry.source_path == t.source_path, "ground truth source mismatch: {}", t.key);
     }
     Ok(index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_builds_without_decompiler_or_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let tu = "sources/p/f.c";
+        std::fs::create_dir_all(root.join("sources/p")).unwrap();
+        std::fs::write(root.join(tu), "int f(int x) { if (x) return 1; return 2; }").unwrap();
+        std::fs::create_dir_all(root.join("configs/full")).unwrap();
+        let manifest = serde_json::json!({
+            "binaries": [{
+                "project": "p", "compiler": "gcc", "level": "O0", "binary": "b",
+                "function_info": [{"name": "f", "source_path": tu}]
+            }]
+        });
+        std::fs::write(root.join("configs/full/manifest.json"), manifest.to_string()).unwrap();
+        let store = build(root).unwrap();
+        assert_eq!(store.entries.len(), 1);
+        assert!(store.entries[0].nodes > 2);
+        let path = root.join("ground-truth.json");
+        std::fs::write(&path, serde_json::to_vec(&store).unwrap()).unwrap();
+        let targets = dataset::targets(root).unwrap();
+        assert_eq!(load(&path, &targets).unwrap().len(), 1);
+        let mut stale = store;
+        stale.scorer = "old".into();
+        std::fs::write(&path, serde_json::to_vec(&stale).unwrap()).unwrap();
+        assert!(load(&path, &targets).is_err());
+    }
 }
