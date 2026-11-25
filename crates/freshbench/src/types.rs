@@ -70,18 +70,29 @@ pub struct Signature {
     pub locals: Vec<TypeClass>,
 }
 
-/// Data model of the target: pointer and `long` width.
+/// Data model of the target: pointer, `long` and `long double` storage size
+/// (what DWARF's `DW_AT_byte_size` says on that target).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DataModel {
     pub long: u8,
     pub ptr: u8,
+    pub long_double: u8,
 }
 
 impl DataModel {
+    /// The Linux ELF ABIs of M1: LP64 with a 16-byte `long double` (x86-64:
+    /// x87 extended in 16 bytes; AArch64: IEEE quad), ILP32 with 12 bytes on
+    /// i686 (x87 extended) and 8 on ARMv7 (`long double` is `double`).
     pub fn for_arch(arch: &str) -> DataModel {
-        match arch {
-            "i686" | "armv7" => DataModel { long: 4, ptr: 4 },
-            _ => DataModel { long: 8, ptr: 8 },
+        let (long, ptr, long_double) = match arch {
+            "i686" => (4, 4, 12),
+            "armv7" => (4, 4, 8),
+            _ => (8, 8, 16),
+        };
+        DataModel {
+            long,
+            ptr,
+            long_double,
         }
     }
 }
@@ -140,7 +151,7 @@ pub fn class_of_name(name: &str, dm: DataModel) -> TypeClass {
         "__int128" | "int128_t" | "uint128_t" | "undefined16" => i(16),
         "float" | "float4" => TypeClass::Float(4),
         "double" | "float8" => TypeClass::Float(8),
-        "long double" | "float10" => TypeClass::Float(16),
+        "long double" | "float10" => TypeClass::Float(dm.long_double),
         _ => TypeClass::Unknown,
     }
 }
@@ -304,7 +315,11 @@ mod tests {
     use super::*;
     use crate::csyntax::{output_function, parse};
 
-    const LP64: DataModel = DataModel { long: 8, ptr: 8 };
+    const LP64: DataModel = DataModel {
+        long: 8,
+        ptr: 8,
+        long_double: 16,
+    };
 
     fn sig(code: &str, dm: DataModel) -> Signature {
         let t = parse(code).unwrap();
@@ -379,5 +394,26 @@ mod tests {
             &unk,
         );
         assert!(!u.perfect);
+    }
+
+    /// DecBench #104: an ILP32 target must not be read with LP64 sizes.
+    #[test]
+    fn data_models_per_arch() {
+        let (x64, i686, arm, a64) = (
+            DataModel::for_arch("x86_64"),
+            DataModel::for_arch("i686"),
+            DataModel::for_arch("armv7"),
+            DataModel::for_arch("aarch64"),
+        );
+        assert_eq!(class_of_name("long", x64), TypeClass::Int(8));
+        assert_eq!(class_of_name("unsigned long", i686), TypeClass::Int(4));
+        assert_eq!(class_of_name("long", arm), TypeClass::Int(4));
+        assert_eq!(class_of_name("size_t", arm), TypeClass::Int(4));
+        assert_eq!(class_of_name("size_t", a64), TypeClass::Int(8));
+        assert_eq!(class_of_name("long long", arm), TypeClass::Int(8));
+        assert_eq!(class_of_name("long double", x64), TypeClass::Float(16));
+        assert_eq!(class_of_name("long double", i686), TypeClass::Float(12));
+        assert_eq!(class_of_name("long double", arm), TypeClass::Float(8));
+        assert_eq!(class_of_name("long double", a64), TypeClass::Float(16));
     }
 }

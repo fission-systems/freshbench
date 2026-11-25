@@ -11,9 +11,13 @@
 //!    "fixups" score the fixer, and a fixer written around one decompiler's
 //!    dialect favours that decompiler.
 //! 2. The original function's bytes `[low_pc, high_pc)` and the recompiled
-//!    function are disassembled with `llvm-objdump`; operands that are
-//!    addresses or relocations are normalized away; the two instruction
-//!    sequences are compared with edit distance.
+//!    function are disassembled with `llvm-objdump` and compared instruction
+//!    by instruction with edit distance. Every constant, displacement and
+//!    register must be equal. A branch inside the function is compared by
+//!    its offset from the function's start. Only an instruction that carries
+//!    a **relocation** in the recompiled object may differ, and only in the
+//!    operand the linker fills in (`same_insn`): the object does not know
+//!    that address yet, the linked original does.
 //!
 //! Scores: `compiles`, `similarity` (1 - edit distance / longer length, over
 //! normalized instructions) and `exact` (identical sequences). A function that
@@ -35,6 +39,8 @@ pub struct Toolchain {
     /// the build's optimization flags, e.g. ["-O2", "-fno-inline"]
     pub flags: Vec<String>,
     pub objdump: PathBuf,
+    /// x86_64, i686, aarch64 or armv7 (disassembly syntax)
+    pub arch: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -66,49 +72,166 @@ fn compile(tc: &Toolchain, src: &Path, obj: &Path) -> Result<(bool, String)> {
     ))
 }
 
-/// Normalized instruction lines from `llvm-objdump -d --no-show-raw-insn` text:
-/// mnemonic and operands, with addresses (`0x...`, `<sym+off>`, `# comments`) removed.
-pub fn normalize_disassembly(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
+/// One disassembled instruction (or literal-pool word).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Insn {
+    /// mnemonic and operands as printed; constants kept; a code address with a
+    /// `<sym+off>` annotation becomes `@+off` when it lies inside the function
+    /// (so a branch is compared by where it goes) and `ADDR` otherwise
+    pub text: String,
+    /// the object file has a relocation in this instruction: its address
+    /// operand is not known until link time
+    pub reloc: bool,
+}
+
+fn comment_start(arch: &str) -> &'static str {
+    match arch {
+        "aarch64" => "//",
+        "armv7" => "@", // `#` is the immediate marker on ARM, not a comment
+        _ => "#",       // x86 AT&T: immediates are `$n`
+    }
+}
+
+/// Instructions from `llvm-objdump -d [-r] --no-show-raw-insn` text. Nothing a
+/// compiler chose is dropped: immediates, displacements and registers stay.
+pub fn parse_disassembly(text: &str, arch: &str) -> Vec<Insn> {
+    let mut raw: Vec<(u64, String, bool)> = Vec::new();
     for line in text.lines() {
         let Some((addr, rest)) = line.split_once(':') else {
             continue;
         };
-        if addr.trim().is_empty() || !addr.trim().chars().all(|c| c.is_ascii_hexdigit()) {
+        let a = addr.trim();
+        if a.is_empty() || !a.chars().all(|c| c.is_ascii_hexdigit()) {
             continue;
         }
-        let mut s = rest.trim().to_string();
-        if s.is_empty() || s.starts_with('<') {
-            continue;
-        }
-        if let Some(i) = s.find(['#', ';']) {
-            if s.starts_with("j") || s.starts_with("call") || s.starts_with('b') || i > 0 {
-                s.truncate(i);
+        let rest = rest.trim();
+        if rest.starts_with("R_") {
+            // a relocation line belongs to the instruction before it
+            if let Some(last) = raw.last_mut() {
+                last.2 = true;
             }
+            continue;
         }
-        if let Some(i) = s.find('<') {
+        if rest.is_empty() || rest.starts_with('<') {
+            continue;
+        }
+        let mut s = rest.to_string();
+        if let Some(i) = s.find(comment_start(arch)) {
             s.truncate(i);
         }
-        let toks: Vec<String> = s
-            .split_whitespace()
-            .map(|t| {
-                let t = t.trim_end_matches(',');
-                let hexlike = t.trim_start_matches(['$', '#', '-']).starts_with("0x");
-                if hexlike {
-                    "ADDR".to_string()
-                } else {
-                    t.to_string()
-                }
-            })
-            .collect();
-        if !toks.is_empty() {
-            out.push(toks.join(" "));
-        }
+        let Ok(addr) = u64::from_str_radix(a, 16) else {
+            continue;
+        };
+        raw.push((
+            addr,
+            s.split_whitespace().collect::<Vec<_>>().join(" "),
+            false,
+        ));
     }
-    out
+    let (Some(first), Some(last)) = (raw.first().map(|r| r.0), raw.last().map(|r| r.0)) else {
+        return vec![];
+    };
+    raw.into_iter()
+        .map(|(_, s, reloc)| Insn {
+            text: relative_targets(&s, first, last),
+            reloc,
+        })
+        .collect()
 }
 
-pub fn edit_distance(a: &[String], b: &[String]) -> usize {
+/// `0x401136 <f+0x10>` -> `@+0x10` for a target inside `[first, last]`, else `ADDR`.
+fn relative_targets(s: &str, first: u64, last: u64) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(lt) = rest.find('<') {
+        let Some(gt) = rest[lt..].find('>') else {
+            break;
+        };
+        let before = rest[..lt].trim_end();
+        let tok_start = before
+            .rfind(|c: char| !(c.is_ascii_alphanumeric()))
+            .map_or(0, |i| i + 1);
+        let tok = &before[tok_start..];
+        match u64::from_str_radix(tok.trim_start_matches("0x"), 16) {
+            Ok(t) if tok.starts_with("0x") => {
+                out.push_str(&before[..tok_start]);
+                if t >= first && t <= last {
+                    out.push_str(&format!("@+{:#x}", t - first));
+                } else {
+                    out.push_str("ADDR");
+                }
+            }
+            _ => out.push_str(before),
+        }
+        rest = &rest[lt + gt + 1..];
+    }
+    out.push_str(rest);
+    out.trim_end().to_string()
+}
+
+/// `text` with its link-time operands replaced by `N`: address-like numbers
+/// (`ADDR`, `@+off`, displacements, bare addresses) when `addresses`, else
+/// `$n` / `#n` immediates. An elided zero displacement is the same as a
+/// present one (`(%rip)` vs `0x2ecd(%rip)`, `[x8]` vs `[x8, #0xfc0]`).
+fn mask(text: &str, addresses: bool) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i] as char;
+        if text[i..].starts_with("ADDR") || text[i..].starts_with("@+") {
+            let mut j = i + if c == 'A' { 4 } else { 2 };
+            while j < b.len() && (b[j] as char).is_ascii_alphanumeric() {
+                j += 1;
+            }
+            out.push_str(if addresses { "N" } else { &text[i..j] });
+            i = j;
+            continue;
+        }
+        let prev = if i > 0 { b[i - 1] as char } else { ' ' };
+        let starts_number = (c.is_ascii_digit()
+            || (c == '-' && i + 1 < b.len() && (b[i + 1] as char).is_ascii_digit()))
+            && !(prev.is_ascii_alphanumeric() || prev == '_' || prev == '%' || prev == '.');
+        if starts_number {
+            let mut j = i + usize::from(c == '-');
+            while j < b.len() && (b[j] as char).is_ascii_alphanumeric() {
+                j += 1;
+            }
+            let immediate = prev == '$' || prev == '#';
+            out.push_str(if immediate != addresses {
+                "N"
+            } else {
+                &text[i..j]
+            });
+            i = j;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out.replace("N(", "(").replace(", #N]", "]")
+}
+
+fn has_address_operand(text: &str) -> bool {
+    mask(text, true) != text || text.contains("(%")
+}
+
+/// Are the original instruction `a` and the recompiled `b` the same
+/// instruction? Identical text, or - only when `b` carries a relocation -
+/// identical up to the operand the linker fills in: the address operand when
+/// either has one, else the `$`/`#` immediate (`add x0, x0, :lo12:sym`).
+pub fn same_insn(a: &Insn, b: &Insn) -> bool {
+    if a.text == b.text {
+        return true;
+    }
+    if !b.reloc {
+        return false;
+    }
+    let addresses = has_address_operand(&a.text) || has_address_operand(&b.text);
+    mask(&a.text, addresses) == mask(&b.text, addresses)
+}
+
+pub fn edit_distance(a: &[Insn], b: &[Insn]) -> usize {
     let mut prev: Vec<usize> = (0..=b.len()).collect();
     let mut cur = vec![0; b.len() + 1];
     for (i, x) in a.iter().enumerate() {
@@ -116,7 +239,7 @@ pub fn edit_distance(a: &[String], b: &[String]) -> usize {
         for (j, y) in b.iter().enumerate() {
             cur[j + 1] = (prev[j + 1] + 1)
                 .min(cur[j] + 1)
-                .min(prev[j] + usize::from(x != y));
+                .min(prev[j] + usize::from(!same_insn(x, y)));
         }
         std::mem::swap(&mut prev, &mut cur);
     }
@@ -133,6 +256,29 @@ fn objdump(tc: &Toolchain, args: &[String], file: &Path) -> Result<String> {
         bail!("llvm-objdump: {}", String::from_utf8_lossy(&o.stderr));
     }
     Ok(String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// (section name, start, end) of a defined function symbol in an object file;
+/// the Thumb bit is not part of the address.
+fn symbol_range(obj: &Path, name: &str) -> Result<(String, u64, u64)> {
+    use object::{Object, ObjectSection, ObjectSymbol};
+    let data = std::fs::read(obj)?;
+    let f = object::File::parse(&*data)?;
+    let arm = matches!(f.architecture(), object::Architecture::Arm);
+    let sym = f
+        .symbols()
+        .find(|s| s.name() == Ok(name) && s.size() > 0)
+        .with_context(|| format!("no symbol {name} in the recompiled object"))?;
+    let section = match sym.section() {
+        object::SymbolSection::Section(i) => f.section_by_index(i)?.name()?.to_string(),
+        _ => bail!("symbol {name} is not in a section"),
+    };
+    let lo = if arm {
+        sym.address() & !1
+    } else {
+        sym.address()
+    };
+    Ok((section, lo, lo + sym.size()))
 }
 
 /// The name the output defines (what the recompiled object's symbol is called).
@@ -195,15 +341,29 @@ pub fn score(
         ],
         binary,
     )
-    .map(|t| normalize_disassembly(&t));
-    let recompiled = objdump(tc, &[format!("--disassemble-symbols={name}")], &obj)
-        .map(|t| normalize_disassembly(&t));
+    .map(|t| parse_disassembly(&t, &tc.arch));
+    // the recompiled function is cut the same way as the original, by its
+    // address range (symbol value and size), so a literal pool inside the
+    // function is on both sides or on neither
+    let recompiled = symbol_range(&obj, &name).and_then(|(section, lo, hi)| {
+        objdump(
+            tc,
+            &[
+                "-r".to_string(),
+                format!("--section={section}"),
+                format!("--start-address={lo:#x}"),
+                format!("--stop-address={hi:#x}"),
+            ],
+            &obj,
+        )
+        .map(|t| parse_disassembly(&t, &tc.arch))
+    });
     match (original, recompiled) {
         (Ok(a), Ok(b)) => {
             let d = edit_distance(&a, &b);
             let n = a.len().max(b.len()).max(1);
             r.similarity = Some(1.0 - d as f64 / n as f64);
-            r.exact = !a.is_empty() && a == b;
+            r.exact = !a.is_empty() && d == 0 && a.len() == b.len();
             r.original_insns = a.len() as u32;
             r.recompiled_insns = b.len() as u32;
         }
@@ -223,6 +383,7 @@ pub fn image_toolchain(arch: &str, compiler: &str, flags: &str) -> Toolchain {
         ],
         flags: vec![],
         objdump: PathBuf::from("/opt/llvm/bin/llvm-objdump"),
+        arch: arch.to_string(),
     }
 }
 
@@ -230,17 +391,102 @@ pub fn image_toolchain(arch: &str, compiler: &str, flags: &str) -> Toolchain {
 mod tests {
     use super::*;
 
+    fn insns(text: &str, arch: &str) -> Vec<Insn> {
+        parse_disassembly(text, arch)
+    }
+
     #[test]
-    fn normalization_and_distance() {
-        let t = "0000000000000000 <f>:\n       0:      \tleal\t(%rdi,%rdi,2), %eax\n       3:      \tcallq\t0x401020 <puts@plt>\n       8:      \tjmp\t0x10 <f+0x10>\n";
-        assert_eq!(
-            normalize_disassembly(t),
-            ["leal (%rdi,%rdi,2) %eax", "callq ADDR", "jmp ADDR"]
+    fn constants_survive_and_only_relocations_are_wild() {
+        // AArch64: `#` is an immediate, not a comment
+        let a = insns(
+            "0000000000000000 <f>:\n 0:\tmov\tw0, #0x1\n 4:\tret\n",
+            "aarch64",
         );
-        let a: Vec<String> = ["x", "y", "z"].iter().map(|s| s.to_string()).collect();
-        let b: Vec<String> = ["x", "z"].iter().map(|s| s.to_string()).collect();
+        let b = insns(
+            "0000000000000000 <f>:\n 0:\tmov\tw0, #0x2\n 4:\tret\n",
+            "aarch64",
+        );
+        assert_eq!(a[0].text, "mov w0, #0x1");
         assert_eq!(edit_distance(&a, &b), 1);
         assert_eq!(edit_distance(&a, &a), 0);
+        // x86: a hex immediate is a constant too
+        let x = insns(" 0:\taddl\t$0x11, %eax\n", "x86_64");
+        let y = insns(" 0:\taddl\t$0x12, %eax\n", "x86_64");
+        assert!(!same_insn(&x[0], &y[0]));
+    }
+
+    #[test]
+    fn linked_original_against_relocatable_object() {
+        // the linked original: resolved call and GOT load, a branch inside f
+        let orig = insns(
+            "0000000000401130 <f>:\n\
+  401130:\tcmpl\t$0x4, %edi\n\
+  401133:\tjl\t0x40114b <f+0x1b>\n\
+  401135:\tcallq\t0x401030 <ext@plt>\n\
+  40113a:\tmovq\t0x2e9f(%rip), %rcx            # 0x403fe0 <g>\n\
+  401141:\tmovl\t$0x5, 0x2ec5(%rip)            # 0x404010 <h>\n\
+  40114b:\tretq\n",
+            "x86_64",
+        );
+        // the recompiled object: relocations, zero displacements
+        let obj = "0000000000000000 <f>:\n\
+       0:\tcmpl\t$0x4, %edi\n\
+       3:\tjl\t0x1b <f+0x1b>\n\
+       5:\tcallq\t0xa <f+0xa>\n\
+\t\t0000000000000006:  R_X86_64_PLT32\text-0x4\n\
+       a:\tmovq\t(%rip), %rcx            # 0x11 <f+0x11>\n\
+\t\t000000000000000d:  R_X86_64_REX_GOTPCRELX\tg-0x4\n\
+      11:\tmovl\t$0x5, (%rip)            # 0x1b <f+0x1b>\n\
+\t\t0000000000000013:  R_X86_64_PC32\th-0x8\n\
+      1b:\tretq\n";
+        let rec = insns(obj, "x86_64");
+        assert_eq!(rec.iter().filter(|i| i.reloc).count(), 3);
+        assert_eq!(orig[1].text, "jl @+0x1b");
+        assert_eq!(edit_distance(&orig, &rec), 0);
+        // the stored constant is still compared on a relocated instruction
+        let wrong = insns(&obj.replace("$0x5, (%rip)", "$0x6, (%rip)"), "x86_64");
+        assert_eq!(edit_distance(&orig, &wrong), 1);
+        // a branch to another place in the function is a different instruction
+        let moved = insns(
+            &obj.replace("jl\t0x1b <f+0x1b>", "jl\t0x11 <f+0x11>"),
+            "x86_64",
+        );
+        assert_eq!(edit_distance(&orig, &moved), 1);
+        // without a relocation nothing is wild
+        let no_reloc = insns(
+            &obj.replace("\t\t0000000000000006:  R_X86_64_PLT32\text-0x4\n", ""),
+            "x86_64",
+        );
+        assert_eq!(no_reloc.iter().filter(|i| i.reloc).count(), 2);
+        assert_eq!(edit_distance(&orig, &no_reloc), 1);
+    }
+
+    #[test]
+    fn aarch64_page_and_lo12() {
+        let orig = insns(
+            "  400580:\tadrp\tx8, 0x411000 <g>\n  400584:\tldr\tx8, [x8, #0xfc0]\n  400588:\tadd\tw0, w8, #0x2\n  40058c:\tbl\t0x400460 <ext@plt>\n",
+            "aarch64",
+        );
+        let obj =
+            "       0:\tadrp\tx8, 0x0 <f>\n\t\t0000000000000000:  R_AARCH64_ADR_GOT_PAGE\tg\n\
+       4:\tldr\tx8, [x8]\n\t\t0000000000000004:  R_AARCH64_LD64_GOT_LO12_NC\tg\n\
+       8:\tadd\tw0, w8, #0x2\n\
+       c:\tbl\t0xc <f+0xc>\n\t\t000000000000000c:  R_AARCH64_CALL26\text\n";
+        assert_eq!(edit_distance(&orig, &insns(obj, "aarch64")), 0);
+        let wrong = insns(
+            &obj.replace("add\tw0, w8, #0x2", "add\tw0, w8, #0x3"),
+            "aarch64",
+        );
+        assert_eq!(edit_distance(&orig, &wrong), 1);
+        // ARM: `@` starts the comment
+        let arm = insns(
+            "       c:\tblt\t0x28 <f+0x28>           @ imm = #0x14\n      10:\tadd\tr0, r0, #17\n",
+            "armv7",
+        );
+        assert_eq!(arm[1].text, "add r0, r0, #17");
+        assert!(
+            !arm[0].text.contains('@') || arm[0].text.contains("@+") || arm[0].text == "blt ADDR"
+        );
     }
 
     /// Needs an LLVM with an x86-64 ELF target (Homebrew's or the build image's).
@@ -263,6 +509,7 @@ mod tests {
             env: vec![],
             flags: vec!["-O2".into()],
             objdump: llvm.join("llvm-objdump"),
+            arch: "x86_64".into(),
         };
         let d = tempfile::tempdir().unwrap();
         // the "original": compile a source function to an object, use it as the binary
@@ -328,5 +575,63 @@ mod tests {
             hi,
         );
         assert!(!broken.compiles && broken.error.is_some());
+    }
+
+    /// The review's case on every M1 ISA: a function recompiled with another
+    /// constant is not instruction-identical, and one that calls and loads a
+    /// global (relocations) is identical to itself.
+    #[test]
+    fn a_wrong_constant_is_never_exact_on_any_isa() {
+        let Some(llvm) = ["/opt/llvm/bin", "/opt/homebrew/opt/llvm/bin"]
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.join("clang").exists() && p.join("llvm-objdump").exists())
+        else {
+            return;
+        };
+        let src = |k: u32| {
+            format!(
+                "extern int ext(int); extern int g;\nint f(int a)\n{{\n  if (a > 3) g = ext(a) + 17;\n  return a * 3 + {k};\n}}\n"
+            )
+        };
+        for (arch, target) in [
+            ("x86_64", "x86_64-linux-gnu"),
+            ("i686", "i686-linux-gnu"),
+            ("aarch64", "aarch64-linux-gnu"),
+            ("armv7", "armv7-linux-gnueabihf"),
+        ] {
+            let tc = Toolchain {
+                cc: vec![
+                    llvm.join("clang").display().to_string(),
+                    format!("--target={target}"),
+                ],
+                env: vec![],
+                flags: vec!["-O1".into(), "-fPIC".into()],
+                objdump: llvm.join("llvm-objdump"),
+                arch: arch.into(),
+            };
+            let d = tempfile::tempdir().unwrap();
+            let (c, o) = (d.path().join("o.c"), d.path().join("o.o"));
+            std::fs::write(&c, src(1)).unwrap();
+            assert!(Command::new(&tc.cc[0])
+                .args(&tc.cc[1..])
+                .args(["-O1", "-fPIC", "-c"])
+                .arg(&c)
+                .arg("-o")
+                .arg(&o)
+                .status()
+                .unwrap()
+                .success());
+            let data = std::fs::read(&o).unwrap();
+            let f = object::File::parse(&*data).unwrap();
+            use object::{Object, ObjectSymbol};
+            let sym = f.symbols().find(|s| s.name() == Ok("f")).unwrap();
+            let (lo, hi) = (sym.address() & !1, (sym.address() & !1) + sym.size());
+            let same = score(&tc, &src(1), "f", &o, lo, hi);
+            assert!(same.compiles && same.exact, "{arch}: {same:?}");
+            let wrong = score(&tc, &src(2), "f", &o, lo, hi);
+            assert!(wrong.compiles && !wrong.exact, "{arch}: {wrong:?}");
+            assert!(wrong.similarity.unwrap() < 1.0, "{arch}: {wrong:?}");
+        }
     }
 }
