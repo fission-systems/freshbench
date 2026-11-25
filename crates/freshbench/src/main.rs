@@ -194,6 +194,11 @@ enum Cmd {
         /// only functions present in every build (the matched track)
         #[arg(long)]
         matched: bool,
+        /// the corpus root (its `truth/`): every selected function is a row,
+        /// also one no tool has a result for, so the denominator is the corpus
+        /// and not the union of the result files
+        #[arg(long)]
+        corpus: Option<PathBuf>,
         /// a `freshbench duplicates` report (all groups: --top 1000000): keep one
         /// function per clone group
         #[arg(long)]
@@ -727,6 +732,7 @@ fn run() -> Result<ExitCode> {
             resamples,
             keep,
             matched,
+            corpus,
             dedup,
             dedup_level,
         } => {
@@ -735,6 +741,26 @@ fn run() -> Result<ExitCode> {
                 None => Default::default(),
             };
             let mut table = rows::load_table(&root)?;
+            if let Some(c) = &corpus {
+                let before = table.len();
+                let targets = freshbench::dataset::targets(c)?;
+                let known: std::collections::BTreeSet<_> =
+                    targets.iter().map(|t| t.key.clone()).collect();
+                let stray = table.keys().filter(|k| !known.contains(*k)).count();
+                anyhow::ensure!(
+                    stray == 0,
+                    "{stray} result rows are not functions of the corpus at {}",
+                    c.display()
+                );
+                for t in targets {
+                    table.entry(t.key).or_default();
+                }
+                meta.notes.push(format!(
+                    "denominator: the corpus's {} selected functions ({} had no result from any tool)",
+                    table.len(),
+                    table.len() - before
+                ));
+            }
             let all = table.len();
             if let Some(d) = &dedup {
                 let rep: freshbench::clones::Report = serde_json::from_str(&read(d)?)?;

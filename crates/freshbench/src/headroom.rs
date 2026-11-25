@@ -356,7 +356,11 @@ mod tests {
         );
         tags.insert(key("d"), vec!["over_noded".to_string()]);
         let h = compute(&table(), "me", Some(&tags), 5);
-        assert_eq!(h.by_band["<6"].rows, 3);
+        assert_eq!(
+            h.by_band["3-5"].rows + h.by_band[bands::STRAIGHT_LINE].rows,
+            3
+        );
+        assert_eq!(h.by_band[bands::STRAIGHT_LINE].rows, 1);
         assert_eq!(h.by_band["51-100"].uncovered, 1);
         assert_eq!(h.by_band[">100"].gap, 3.0);
         assert_eq!(h.by_outcome["no_output"].rows, 1);
