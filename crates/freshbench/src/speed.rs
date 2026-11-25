@@ -125,14 +125,23 @@ pub fn summarize(rows: &[Timing]) -> Summary {
     s
 }
 
-/// Timing lines from `timing.jsonl` files and boundary rows under the paths.
+/// Timing lines from every `timing.jsonl` and boundary row (with its usage)
+/// under the given directories, and from the files given (a boundary file is
+/// one in a `boundaries` directory; any other file is read as timings). The
+/// kind of a file comes from its path, never from whether a line happens to
+/// parse: every line must parse as that kind, so a damaged file is an error,
+/// not a shorter list. A binary's timing found twice with the same content is
+/// kept once; twice with different content (two runs mixed, or a run resumed
+/// with `--force`) is an error, since adding them would count it twice.
 pub fn load(paths: &[impl AsRef<Path>]) -> Result<Vec<Timing>> {
     let mut files = Vec::new();
     for p in paths {
         let p = p.as_ref();
         if p.is_dir() {
             crate::rows::walk_sorted(p, &mut |f| {
-                if f.extension().is_some_and(|e| e == "jsonl") {
+                if f.file_name().is_some_and(|n| n == "timing.jsonl")
+                    || crate::boundaries::is_boundary_file(f)
+                {
                     files.push(f.to_path_buf())
                 }
             })?;
@@ -140,17 +149,32 @@ pub fn load(paths: &[impl AsRef<Path>]) -> Result<Vec<Timing>> {
             files.push(p.to_path_buf());
         }
     }
-    let mut out = Vec::new();
+    type Key = (String, String, String, String, String, String, String);
+    let mut out: BTreeMap<Key, Timing> = BTreeMap::new();
+    let mut conflicts = Vec::new();
+    let mut put = |t: Timing| {
+        let k = (
+            t.tool.clone(),
+            t.track.clone(),
+            t.project.clone(),
+            t.arch.clone(),
+            t.compiler.clone(),
+            t.config.clone(),
+            t.binary.clone(),
+        );
+        match out.get(&k) {
+            Some(old) if *old != t => conflicts.push(format!("{k:?}")),
+            Some(_) => {}
+            None => {
+                out.insert(k, t);
+            }
+        }
+    };
     for f in files {
-        let text = std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?;
-        for line in text.lines().filter(|l| !l.trim().is_empty()) {
-            // a timing line, or a boundary row that carries its usage; other
-            // JSON lines (score rows) are not timings
-            if let Ok(t) = serde_json::from_str::<Timing>(line) {
-                out.push(t);
-            } else if let Ok(b) = serde_json::from_str::<crate::boundaries::Row>(line) {
+        if crate::boundaries::is_boundary_file(&f) {
+            for b in crate::boundaries::load(&[&f])? {
                 if let Some(usage) = b.usage {
-                    out.push(Timing {
+                    put(Timing {
                         tool: b.tool,
                         track: format!("boundaries {}", b.variant),
                         project: b.project,
@@ -166,9 +190,26 @@ pub fn load(paths: &[impl AsRef<Path>]) -> Result<Vec<Timing>> {
                     });
                 }
             }
+            continue;
+        }
+        let text = std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?;
+        for (i, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let t: Timing = serde_json::from_str(line)
+                .with_context(|| format!("{}:{}: not a timing line", f.display(), i + 1))?;
+            put(t);
         }
     }
-    Ok(out)
+    if !conflicts.is_empty() {
+        anyhow::bail!(
+            "{} timings occur twice with different content, e.g. {}",
+            conflicts.len(),
+            conflicts[0]
+        );
+    }
+    Ok(out.into_values().collect())
 }
 
 pub fn render(s: &Summary) -> String {
@@ -258,5 +299,72 @@ mod tests {
         let line = serde_json::to_string(&rows[0]).unwrap();
         assert!(line.contains("\"cpu_s\":10.0") && !line.contains("\"usage\""));
         assert_eq!(serde_json::from_str::<Timing>(&line).unwrap(), rows[0]);
+    }
+
+    /// Silent data loss: a damaged timing or boundary line is an error, files
+    /// are told apart by path (score rows are never read as timings), an
+    /// artifact collected twice counts once and two runs mixed are refused.
+    #[test]
+    fn loading_is_strict_about_damage_and_duplicates() {
+        let d = tempfile::tempdir().unwrap();
+        let art = |name: &str| d.path().join(name);
+        let timing = |binary: &str, cpu: f64| {
+            serde_json::to_string(&Timing {
+                tool: "t".into(),
+                track: "decompile".into(),
+                project: "p".into(),
+                arch: "x86_64".into(),
+                compiler: "gcc".into(),
+                config: "O0".into(),
+                binary: binary.into(),
+                functions: 3,
+                calls: 1,
+                failed_calls: 0,
+                jobs: 1,
+                usage: Usage {
+                    wall_s: cpu,
+                    cpu_s: cpu,
+                    max_rss_mb: 1.0,
+                },
+            })
+            .unwrap()
+        };
+        let put = |p: std::path::PathBuf, text: String| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        let tfile = |a: &str| art(a).join("results/t/gcc-O0/p/timing.jsonl");
+        put(
+            tfile("eval-1"),
+            format!("{}\n{}\n", timing("a", 1.0), timing("b", 2.0)),
+        );
+        // a score row next to it: not a timing, skipped by path
+        put(
+            art("eval-1").join("rows/t.jsonl"),
+            r#"{"project":"p","tool":"t","outcome":"scored"}"#.to_string() + "\n",
+        );
+        assert_eq!(load(&[d.path()]).unwrap().len(), 2);
+        // the same artifact downloaded twice: counted once
+        put(tfile("eval-2"), format!("{}\n", timing("a", 1.0)));
+        assert_eq!(load(&[d.path()]).unwrap().len(), 2);
+        // another run's numbers for the same binary: refused, not added
+        put(tfile("eval-2"), format!("{}\n", timing("a", 9.0)));
+        let e = format!("{:#}", load(&[d.path()]).unwrap_err());
+        assert!(e.contains("twice"), "{e}");
+        // a truncated line: an error naming the file and line, not one fewer
+        put(
+            tfile("eval-2"),
+            format!("{}\n{{\"tool\":\"t\",\n", timing("c", 1.0)),
+        );
+        let e = format!("{:#}", load(&[d.path()]).unwrap_err());
+        assert!(e.contains("timing.jsonl:2"), "{e}");
+        std::fs::remove_file(tfile("eval-2")).unwrap();
+        // a damaged boundary file is an error for both loaders
+        put(
+            art("bound-1").join("boundaries/t-as-built.jsonl"),
+            "{not json\n".into(),
+        );
+        assert!(load(&[d.path()]).is_err());
+        assert!(crate::boundaries::load(&[d.path()]).is_err());
     }
 }
