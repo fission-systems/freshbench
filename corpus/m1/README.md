@@ -58,25 +58,34 @@ Distinct is not unique either: projects copy code between their own files.
 `freshbench duplicates` compares the selected definitions on their source
 tokens, since hashing compiled bytes misses copies (the same source compiles
 to different bytes in different binaries) and conflates different sources.
-On x86-64 (7,810 functions, 71,472 rows; `duplicates-x86_64.json`):
+Preprocessed text differs per architecture, so the audit is run on each
+(`duplicates-<arch>.json`, every group listed):
 
-| level | what counts as a copy | redundant functions | redundant rows | of which ≥ 50 tokens |
-|---|---|---:|---:|---:|
-| exact | same tokens; own name, comments and layout aside | 266 (3.4%) | 2,415 (3.4%) | 64 |
-| renamed | also any consistent renaming of identifiers | 964 (12.3%) | 8,922 (12.5%) | 259 |
-| shape | also any literal | 1,259 (16.1%) | 11,951 (16.7%) | 413 |
+| architecture | functions | rows | exact copies | renamed copies | shape copies |
+|---|---:|---:|---:|---:|---:|
+| x86-64 | 7,810 | 71,472 | 266 (2,415 rows) | 964 (8,922 rows) | 1,259 (11,951 rows) |
+| i686 | 7,811 | 71,497 | 267 (2,404) | 967 (8,916) | 1,263 (11,944) |
+| AArch64 | 7,617 | 71,446 | 264 (2,397) | 930 (8,781) | 1,218 (11,796) |
+| ARMv7 | 7,609 | 71,460 | 263 (2,389) | 929 (8,786) | 1,216 (11,792) |
+| all | | 285,875 | 9,605 rows (3.4%) | 35,405 rows (12.4%) | 47,483 rows (16.6%) |
+
+* exact: the same tokens; own name, comments and layout aside.
+* renamed: also any consistent renaming of identifiers. About 260 of these
+  per architecture are 50 tokens or longer.
+* shape: also any literal.
 
 "Redundant" is a group's size minus one. Nearly all groups stay inside one
 project: one project copies helpers into each of its programs (one
 234-token function eight times), another generates 122 accessors of the
-same 13 tokens. After removing renamed copies, M1 holds about 6,850 distinct
-functions per architecture.
+same 13 tokens. After removing renamed copies, M1 holds about 6,680 to 6,850
+distinct functions per architecture.
 
-Against DecBench (`--against` its 5,404 preprocessed sources): 7 functions
-are exact copies of a DecBench function and 312 are renamed copies. All of
-them are under 50 tokens (`return 0;`-sized initializers and wrappers). The
-selection excludes exact copies by token fingerprint including the name, so
-these 7 differ from their DecBench twin only in the name.
+Against DecBench (`--against` its 5,404 preprocessed sources): 7 or 8
+functions per architecture are exact copies of a DecBench function and 282
+to 312 are renamed copies. All of them are under 50 tokens (`return 0;`-sized
+initializers and wrappers). The selection excludes exact copies by token
+fingerprint including the name, so the exact ones differ from their DecBench
+twin only in the name.
 
 For scale: DecBench's full set has 96,103 rows and 24,269 distinct
 (project, name) pairs over 3 configurations, not audited for copies the
@@ -88,11 +97,12 @@ compilers and optimization levels, on fewer distinct functions.
 Reproduce (x86-64 sources and truth fetched as above):
 
 ```bash
-freshbench duplicates data/m1 --arch x86_64 --against <decbench-dataset>/sources
+freshbench duplicates data/m1 --arch x86_64 --top 1000000 --against <decbench-dataset>/sources
 ```
 
 Results that report a single score over M1 must also report it on one
-representative per renamed-clone group.
+representative per renamed-clone group (`report --dedup` with the four
+files; a row of an architecture no file covers is an error).
 
 ## Projects
 

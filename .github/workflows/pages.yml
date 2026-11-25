@@ -59,7 +59,8 @@ jobs:
           # DecBench's maintainer asked us to be honest about duplication: every
           # published score also appears with clones removed
           target/release/freshbench report site-src --out site/dedup --meta meta.json \
-            --dedup corpus/m1/duplicates-x86_64.json --dedup-level renamed
+            --dedup-level renamed --dedup corpus/m1/duplicates-x86_64.json corpus/m1/duplicates-i686.json \
+            corpus/m1/duplicates-aarch64.json corpus/m1/duplicates-armv7.json
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

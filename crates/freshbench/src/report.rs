@@ -288,38 +288,49 @@ pub fn matched(table: &Table) -> Table {
 }
 
 /// Drop the rows of functions that `freshbench duplicates` found to be copies
-/// (every member of a clone group but the first, at `level`).
+/// (every member of a clone group but the first, at `level`). Each report
+/// covers one architecture (or all, when it names none); a row of an
+/// architecture no report covers is an error, not silently kept.
 pub fn dedup(
     table: &Table,
-    report: &crate::clones::Report,
+    reports: &[crate::clones::Report],
     level: crate::clones::Level,
 ) -> anyhow::Result<Table> {
-    let l = report
-        .levels
-        .iter()
-        .find(|l| l.level == level)
-        .ok_or_else(|| anyhow::anyhow!("no {level:?} level in the duplicates report"))?;
-    anyhow::ensure!(
-        l.top.len() == l.groups,
-        "the duplicates report lists {} of {} groups; rerun it with --top 1000000",
-        l.top.len(),
-        l.groups
-    );
-    let drop: std::collections::HashSet<(String, String, String)> = l
-        .top
-        .iter()
-        .flat_map(|g| g.members.iter().skip(1))
-        .map(|f| (f.project.clone(), f.source.clone(), f.name.clone()))
-        .collect();
-    Ok(table
-        .iter()
-        .filter(|(_, per)| {
-            per.values()
-                .next()
-                .is_none_or(|r| !drop.contains(&r.identity()))
-        })
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect())
+    use std::collections::{BTreeMap, HashSet};
+    type Id = (String, String, String);
+    let mut drop: BTreeMap<Option<&str>, HashSet<Id>> = BTreeMap::new();
+    for report in reports {
+        let l = report
+            .levels
+            .iter()
+            .find(|l| l.level == level)
+            .ok_or_else(|| anyhow::anyhow!("no {level:?} level in the duplicates report"))?;
+        anyhow::ensure!(
+            l.top.len() == l.groups,
+            "the duplicates report lists {} of {} groups; rerun it with --top 1000000",
+            l.top.len(),
+            l.groups
+        );
+        let set = drop.entry(report.arch.as_deref()).or_default();
+        for f in l.top.iter().flat_map(|g| g.members.iter().skip(1)) {
+            set.insert((f.project.clone(), f.source.clone(), f.name.clone()));
+        }
+    }
+    let mut out = Table::new();
+    for (k, per) in table {
+        let set = drop
+            .get(&Some(k.arch.as_str()))
+            .or_else(|| drop.get(&None))
+            .ok_or_else(|| anyhow::anyhow!("no duplicates report covers {}", k.arch))?;
+        if per
+            .values()
+            .next()
+            .is_none_or(|r| !set.contains(&r.identity()))
+        {
+            out.insert(k.clone(), per.clone());
+        }
+    }
+    Ok(out)
 }
 
 pub fn esc(s: &str) -> String {
@@ -794,6 +805,7 @@ mod tests {
             tokens: 9,
         };
         let rep = crate::clones::Report {
+            arch: None,
             rows: 5,
             functions: 3,
             unreadable: 0,
@@ -812,10 +824,24 @@ mod tests {
             }],
             against: vec![],
         };
-        let d = dedup(&t, &rep, crate::clones::Level::Renamed).unwrap();
+        let d = dedup(
+            &t,
+            std::slice::from_ref(&rep),
+            crate::clones::Level::Renamed,
+        )
+        .unwrap();
         assert_eq!(d.len(), 3);
         assert!(d.keys().all(|k| k.function != "h"));
-        assert!(dedup(&t, &rep, crate::clones::Level::Exact).is_err());
+        assert!(dedup(&t, std::slice::from_ref(&rep), crate::clones::Level::Exact).is_err());
+        // a report for one architecture does not speak for another
+        let mut x86 = rep;
+        x86.arch = Some("x86_64".into());
+        let e = dedup(
+            &t,
+            std::slice::from_ref(&x86),
+            crate::clones::Level::Renamed,
+        );
+        assert!(format!("{:#}", e.unwrap_err()).contains("armv7"));
     }
 
     /// DecBench #6: a perfect on a source without control flow is reported
