@@ -173,19 +173,25 @@ fn median(v: &mut [f64]) -> f64 {
 }
 
 /// Fill `out` with every tool's distance; returns the rows left out.
-fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distance>) -> u64 {
+fn distances(
+    table: &Table,
+    tools: &[String],
+    out: &mut BTreeMap<String, Distance>,
+    truth: Option<&crate::ground_truth::Index>,
+) -> u64 {
     let mut all: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
     let mut lower: BTreeMap<&str, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
     let mut unmeasured = 0;
-    for per in table.values() {
-        let Some((n, e)) = per.values().find_map(|r| {
+    for (key, per) in table {
+        let size = truth.and_then(|index| index.get(key)).map(|t| (t.nodes, t.edges));
+        let Some((n, e)) = size.or_else(|| per.values().find_map(|r| {
             let g = r.ged.as_ref()?;
             Some((g.source_nodes?, g.source_edges?))
-        }) else {
+        })) else {
             unmeasured += 1;
             continue;
         };
-        let size = f64::from(n + e);
+        let size = f64::from(n) + f64::from(e);
         let branching = bands::band(Some(n)) != bands::STRAIGHT_LINE;
         for t in tools {
             let d = per.get(t).and_then(|r| r.scored_ged());
@@ -242,6 +248,14 @@ fn distances(table: &Table, tools: &[String], out: &mut BTreeMap<String, Distanc
 }
 
 pub fn summarize(table: &Table, resamples: usize) -> Summary {
+    summarize_with_truth(table, resamples, None)
+}
+
+pub fn summarize_with_truth(
+    table: &Table,
+    resamples: usize,
+    truth: Option<&crate::ground_truth::Index>,
+) -> Summary {
     let mut s = Summary::default();
     let mut tools: Vec<String> = table.values().flat_map(|p| p.keys().cloned()).collect();
     tools.sort();
@@ -257,12 +271,13 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
         if common {
             s.common_rows += 1;
         }
-        let band = per
-            .values()
-            .find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes))
+        let band = truth
+            .and_then(|index| index.get(key))
+            .map(|t| t.nodes)
+            .or_else(|| per.values().find_map(|r| r.ged.as_ref().and_then(|g| g.source_nodes)))
             .map(|n| bands::band(Some(n)))
             .unwrap_or(bands::UNKNOWN);
-        let branching = band != bands::STRAIGHT_LINE;
+        let branching = band != bands::STRAIGHT_LINE && band != bands::UNKNOWN;
         for tool in &tools {
             let o = s.overall.entry(tool.clone()).or_default();
             o.rows += 1;
@@ -367,7 +382,7 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             }
         }
     }
-    s.distance_unmeasured = distances(table, &tools, &mut s.distance);
+    s.distance_unmeasured = distances(table, &tools, &mut s.distance, truth);
     for (tool, o) in s.overall.iter_mut() {
         o.perfect_rate = if o.rows > 0 {
             o.perfect as f64 / o.rows as f64
@@ -910,7 +925,18 @@ pub fn site_with(
     keep: usize,
     x: &Extras,
 ) -> Vec<(String, String)> {
-    let s = summarize(table, resamples);
+    site_with_truth(table, meta, resamples, keep, x, None)
+}
+
+pub fn site_with_truth(
+    table: &Table,
+    meta: &Meta,
+    resamples: usize,
+    keep: usize,
+    x: &Extras,
+    truth: Option<&crate::ground_truth::Index>,
+) -> Vec<(String, String)> {
+    let s = summarize_with_truth(table, resamples, truth);
     let mut out = vec![
         ("index.html".to_string(), render_index_with(&s, meta, x)),
         (
@@ -1159,6 +1185,25 @@ mod tests {
         assert_eq!((a.branching_rows, a.branching_perfect), (1, 0));
         assert_eq!(a.branching_perfect_rate, 0.0);
         assert_eq!(s.by["band"][bands::STRAIGHT_LINE]["a"].perfect, 1);
+    }
+
+    #[test]
+    fn source_truth_keeps_rows_unscored_by_every_tool_in_distance() {
+        let mut t = table();
+        let key = row("p3", "x86_64", "missing", "a", None, 3).key;
+        t.entry(key.clone()).or_default();
+        let truth = [(key.clone(), crate::ground_truth::Entry {
+            key,
+            source: "f.c".into(),
+            source_sha256: String::new(),
+            nodes: 4,
+            edges: 5,
+        })].into_iter().collect();
+        let s = summarize_with_truth(&t, 20, Some(&truth));
+        assert_eq!(s.distance_unmeasured, 0);
+        assert_eq!(s.distance["a"].rows, 3);
+        assert_eq!(s.distance["a"].charged, 1);
+        assert_eq!(s.distance["a"].mean, 14.0 / 3.0);
     }
 
     #[test]
