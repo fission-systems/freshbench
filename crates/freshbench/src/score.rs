@@ -18,6 +18,14 @@ pub const SCORER: &str = concat!(
     env!("FRESHBENCH_SCORER_SRC")
 );
 
+/// The scorer identity a row carries: [`SCORER`] and the GED search budget.
+/// The budget decides which distances are exact and how tight an upper bound
+/// is, so rows scored under two budgets are two metric definitions and
+/// `load_table` must not put them in one table.
+pub fn scorer_id(budget: u64) -> String {
+    format!("{SCORER} ged-budget={budget}")
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct FunctionScore {
     pub ged: GedScore,

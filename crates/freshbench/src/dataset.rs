@@ -451,7 +451,7 @@ fn score_tu(
             types: None,
             recompile: None,
             tags: vec![],
-            scorer: score::SCORER.to_string(),
+            scorer: score::scorer_id(budget),
             failure: None,
             source: Some(t.source.clone()),
             evidence: None,
@@ -970,6 +970,33 @@ mod tests {
             rescore(d.path(), "t", None, 1000, &ScoreCache::default(), &[]).unwrap_err()
         );
         assert!(e.contains("gcc-Os/binaries/bin"), "{e}");
+    }
+
+    /// Rows scored under two GED budgets are two metric definitions: they
+    /// carry different scorer ids, so `load_table` refuses to mix them.
+    #[test]
+    fn rows_from_two_ged_budgets_do_not_mix() {
+        let d = tempfile::tempdir().unwrap();
+        tree(d.path());
+        let rows_dir = d.path().join("rows");
+        std::fs::create_dir_all(&rows_dir).unwrap();
+        let write = |tool: &str, budget: u64| {
+            let rows = rescore(d.path(), "t", None, budget, &ScoreCache::default(), &[]).unwrap();
+            let text: String = rows
+                .into_iter()
+                .map(|mut r| {
+                    r.tool = tool.into();
+                    serde_json::to_string(&r).unwrap() + "\n"
+                })
+                .collect();
+            std::fs::write(rows_dir.join(format!("{tool}.jsonl")), text).unwrap();
+        };
+        write("a", 1000);
+        write("b", 1000);
+        assert!(crate::rows::load_table(d.path()).is_ok());
+        write("b", 2000);
+        let e = format!("{:#}", crate::rows::load_table(d.path()).unwrap_err());
+        assert!(e.contains("different scorers"), "{e}");
     }
 
     #[test]
