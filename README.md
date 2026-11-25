@@ -146,8 +146,41 @@ Results are grouped by size band, outcome and shape tag. Each group lists
 example rows, worst first. These are similarity gaps, not correctness
 defects. Open the output before acting on one.
 
-Other commands: `bands`, `determinism`, `score` (one function), `cfg` (print
+Other commands: `sweep` (below), `boundaries`, `duplicates`, `bands`, `determinism`, `score` (one function), `cfg` (print
 the graph FreshBench builds), `callsites`, `manifest build|verify|summary`.
+
+## Sweep (one Fission build over the corpus)
+
+The quality loop for a decompiler under development (`sweep.rs`):
+
+```bash
+freshbench sweep run data/m1 --cli target/release/fission_cli --repo ~/Fission --label main
+freshbench sweep report runs/main          # scores, failures, timing
+freshbench sweep diff runs/main runs/fix   # output hashes first, then scores on changed rows
+```
+
+* `run` writes `runs/<label>/`: `meta.json` (CLI sha256, git commit, scorer id,
+  function-set id, every session's wall time), one checkpoint per binary
+  under `bin/`, and `rows.jsonl`. An interrupted run continues from its
+  checkpoints; a resume with another CLI, scorer or function set is refused.
+  `--builds`, `--only` narrow the run; `--jobs 0` (default) runs half the
+  cores' worth of binaries at once.
+* A call that crashes or times out is bisected until the failing function is
+  alone; the other functions of the binary keep their output.
+* The scorer is the `freshbench` binary: its id is a hash of the scoring
+  sources, written into every row, and `diff` refuses runs scored by
+  different scorers. Scores are cached by content under `runs/score-cache.jsonl`.
+* `diff` compares the sha256 of each output first. Identical outputs are not
+  compared on score (and are flagged if their scores differ). On changed rows
+  it reports perfects gained and lost, the same on functions with control
+  flow, Joern and type perfects, the distance delta and the rows that moved
+  most.
+* `report` gives the perfect count next to the total distance, split by
+  architecture, compiler, level and size band.
+
+Measured on one M1 project (12 binaries, 3,600 functions, 14 cores): 75 s to
+decompile at 7 binaries at once, 53 s to score cold and about 1 s from the
+cache; a resumed run decompiles only what has no checkpoint.
 
 ## Corpus
 

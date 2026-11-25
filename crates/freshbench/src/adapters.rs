@@ -31,6 +31,8 @@ pub enum Tool {
         cli: PathBuf,
         resource_root: Option<PathBuf>,
         function_timeout_ms: u64,
+        /// RAYON_NUM_THREADS for each fission_cli (when several run at once)
+        rayon_threads: Option<usize>,
     },
     /// Any adapter following the script contract.
     Script { name: String, command: Vec<String> },
@@ -141,8 +143,12 @@ fn call(
             cli,
             resource_root,
             function_timeout_ms,
+            rayon_threads,
         } => {
             let mut c = Command::new(cli);
+            if let Some(n) = rayon_threads {
+                c.env("RAYON_NUM_THREADS", n.to_string());
+            }
             c.arg("--no-db").arg("decomp").arg(binary).args([
                 "--json",
                 "--no-header",
@@ -238,7 +244,66 @@ fn call(
     }
 }
 
-/// Decompile `funcs` (address -> name) of one binary; failed calls are retried per function.
+/// What happened while one binary was decompiled.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CallStats {
+    /// tool invocations (1 when the whole binary went through at once)
+    pub calls: u32,
+    /// invocations that crashed or timed out
+    pub failed_calls: u32,
+}
+
+/// Decompile `addrs` in one call; a call that crashes or times out is bisected
+/// until the failing function is alone, so one bad function costs that
+/// function and never the rest of the binary. A function is blamed only when
+/// it fails by itself. A subset's time limit is `function_timeout` per
+/// function, at most `binary_timeout`.
+fn bisect(
+    tool: &Tool,
+    binary: &Path,
+    addrs: &[u64],
+    base: u64,
+    (binary_timeout, function_timeout): (Duration, Duration),
+    stats: &mut CallStats,
+    out: &mut BTreeMap<u64, Result<String, String>>,
+) {
+    let limit = function_timeout
+        .saturating_mul(addrs.len() as u32)
+        .min(binary_timeout)
+        .max(function_timeout);
+    stats.calls += 1;
+    match call(tool, binary, addrs, base, limit) {
+        Ok(m) => out.extend(m),
+        Err(e) => {
+            stats.failed_calls += 1;
+            if addrs.len() == 1 {
+                out.insert(addrs[0], Err(format!("{e:#}")));
+            } else {
+                let (l, r) = addrs.split_at(addrs.len() / 2);
+                bisect(
+                    tool,
+                    binary,
+                    l,
+                    base,
+                    (binary_timeout, function_timeout),
+                    stats,
+                    out,
+                );
+                bisect(
+                    tool,
+                    binary,
+                    r,
+                    base,
+                    (binary_timeout, function_timeout),
+                    stats,
+                    out,
+                );
+            }
+        }
+    }
+}
+
+/// Decompile `funcs` (address -> name) of one binary; a failed call is bisected.
 pub fn decompile_binary(
     tool: &Tool,
     binary: &Path,
@@ -247,28 +312,43 @@ pub fn decompile_binary(
     binary_timeout: Duration,
     function_timeout: Duration,
 ) -> Result<Vec<Record>> {
+    decompile_binary_stats(
+        tool,
+        binary,
+        binary_name,
+        funcs,
+        binary_timeout,
+        function_timeout,
+    )
+    .map(|(r, _)| r)
+}
+
+/// [`decompile_binary`] with the number of tool calls it took.
+pub fn decompile_binary_stats(
+    tool: &Tool,
+    binary: &Path,
+    binary_name: &str,
+    funcs: &BTreeMap<u64, String>,
+    binary_timeout: Duration,
+    function_timeout: Duration,
+) -> Result<(Vec<Record>, CallStats)> {
     let data = std::fs::read(binary)?;
     let base = elf_base(&data)?;
     let addrs: Vec<u64> = funcs.keys().copied().collect();
-    let mut got: BTreeMap<u64, Result<String, String>> =
-        match call(tool, binary, &addrs, base, binary_timeout) {
-            Ok(m) => m,
-            Err(e) => {
-                let whole = format!("{e:#}");
-                let mut m = BTreeMap::new();
-                for a in &addrs {
-                    let r = match call(tool, binary, &[*a], base, function_timeout) {
-                        Ok(mut one) => one
-                            .remove(a)
-                            .unwrap_or_else(|| Err("missing from output".into())),
-                        Err(e1) => Err(format!("{e1:#} (whole-binary call: {whole})")),
-                    };
-                    m.insert(*a, r);
-                }
-                m
-            }
-        };
-    Ok(funcs
+    let mut got = BTreeMap::new();
+    let mut stats = CallStats::default();
+    if !addrs.is_empty() {
+        bisect(
+            tool,
+            binary,
+            &addrs,
+            base,
+            (binary_timeout, function_timeout),
+            &mut stats,
+            &mut got,
+        );
+    }
+    let recs = funcs
         .iter()
         .map(|(a, name)| {
             let r = got
@@ -286,7 +366,8 @@ pub fn decompile_binary(
                 error,
             }
         })
-        .collect())
+        .collect();
+    Ok((recs, stats))
 }
 
 /// The functions `tool`'s own analysis finds in `binary`, no addresses given
@@ -494,5 +575,48 @@ else echo "{\"address\":\"$a\",\"code\":\"int f(void){return 1;}\",\"error\":nul
         assert_eq!(recs[0].code.as_deref(), Some("int f(void){return 1;}"));
         assert_eq!(recs[1].code, None);
         assert_eq!(recs[1].error.as_deref(), Some("boom"));
+    }
+
+    /// One function crashes the tool whenever it is in the batch: bisection
+    /// names it and every other function keeps its output.
+    #[cfg(unix)]
+    #[test]
+    fn a_crashing_function_is_bisected_out() {
+        let d = tempfile::tempdir().unwrap();
+        let script = d.path().join("run");
+        std::fs::write(
+            &script,
+            r#"#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in --addresses) A="$2"; shift 2;; --out) O="$2"; shift 2;; *) shift 2;; esac; done
+grep -qx 0x50 "$A" && { echo "Segmentation fault" >&2; exit 139; }
+: > "$O"; while read a; do echo "{\"address\":\"$a\",\"code\":\"int f(void){return 1;}\",\"error\":null}" >> "$O"; done < "$A"
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let tool = Tool::Script {
+            name: "fake".into(),
+            command: vec![script.to_string_lossy().into_owned()],
+        };
+        let funcs: BTreeMap<u64, String> =
+            (1..=16u64).map(|i| (i * 0x10, format!("f{i}"))).collect();
+        let (recs, stats) = decompile_binary_stats(
+            &tool,
+            &std::env::current_exe().unwrap(),
+            "me",
+            &funcs,
+            Duration::from_secs(20),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        let failed: Vec<_> = recs.iter().filter(|r| r.code.is_none()).collect();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].address, 0x50);
+        assert_eq!(failure_kind(failed[0].error.as_deref().unwrap()), "crash");
+        assert_eq!(recs.iter().filter(|r| r.code.is_some()).count(), 15);
+        // 16 functions, one culprit: one failing call per level, not 16 retries
+        assert_eq!(stats.failed_calls, 5);
+        assert!(stats.calls <= 9, "{stats:?}");
     }
 }

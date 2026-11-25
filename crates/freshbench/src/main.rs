@@ -169,6 +169,12 @@ enum Cmd {
     /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
     /// `boundaries` rows (files or directories of *.jsonl); JSON.
     BoundariesSummary { rows: Vec<PathBuf> },
+    /// The Fission quality sweep: decompile a corpus with one fission_cli, score
+    /// it, and keep a run directory that can be resumed, reported and compared.
+    Sweep {
+        #[command(subcommand)]
+        action: SweepCmd,
+    },
     /// Merge a prepared tree (`prepare --out`) into a corpus root with
     /// arch-qualified builds: binaries/ stripped/ truth/ sources/<arch>/ projects/.
     Assemble {
@@ -265,6 +271,64 @@ enum Cmd {
         function: String,
         #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
         delta: i64,
+    },
+}
+
+#[derive(Subcommand)]
+enum SweepCmd {
+    /// Decompile every selected function under ROOT and score it. Resumes from
+    /// the run's per-binary checkpoints.
+    Run {
+        root: PathBuf,
+        /// the fission_cli to measure
+        #[arg(long)]
+        cli: PathBuf,
+        /// the Fission checkout it was built from (commit, `utils/` resources)
+        #[arg(long)]
+        repo: PathBuf,
+        /// the run's name: results go to <runs>/<label>
+        #[arg(long)]
+        label: String,
+        #[arg(long, default_value = "runs")]
+        runs: PathBuf,
+        #[arg(long)]
+        resource_root: Option<PathBuf>,
+        /// binaries at once; each fission_cli gets cores/jobs threads. 0 = half
+        /// the cores (on 14 cores: 7 at once took 75 s where 4 took 131 s and
+        /// 12 took 86 s, same outputs)
+        #[arg(long, default_value_t = 0)]
+        jobs: usize,
+        /// only these arch-qualified builds (comma list)
+        #[arg(long, value_delimiter = ',')]
+        builds: Vec<String>,
+        /// only binaries whose `<build>/<project>/<binary>` contains this
+        #[arg(long)]
+        only: Option<String>,
+        #[arg(long, default_value_t = 1800)]
+        binary_timeout_s: u64,
+        #[arg(long, default_value_t = 300)]
+        function_timeout_s: u64,
+        #[arg(long, default_value_t = freshbench::ged::DEFAULT_BUDGET)]
+        budget: u64,
+        /// decompile again what is already checkpointed
+        #[arg(long)]
+        force: bool,
+    },
+    /// Scores, failures and timing of one run (markdown; `--json` for the numbers).
+    Report {
+        run: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Compare two runs: output hashes first, scores only on rows whose output changed.
+    Diff {
+        a: PathBuf,
+        b: PathBuf,
+        #[arg(long)]
+        json: bool,
+        /// rows listed in each direction
+        #[arg(long, default_value_t = 15)]
+        keep: usize,
     },
 }
 
@@ -500,6 +564,7 @@ fn run() -> Result<ExitCode> {
                     cli: fission_cli.context("--fission-cli is required for fission")?,
                     resource_root,
                     function_timeout_ms: function_timeout_s * 1000,
+                    rayon_threads: None,
                 }
             } else {
                 anyhow::ensure!(
@@ -610,6 +675,7 @@ fn run() -> Result<ExitCode> {
                     cli: fission_cli.context("--fission-cli is required for fission")?,
                     resource_root,
                     function_timeout_ms: 0,
+                    rayon_threads: None,
                 }
             } else {
                 anyhow::ensure!(
@@ -713,6 +779,59 @@ fn run() -> Result<ExitCode> {
             }
             print_json(&freshbench::boundaries::summarize(&rows))?
         }
+        Cmd::Sweep { action } => match action {
+            SweepCmd::Run {
+                root,
+                cli,
+                repo,
+                label,
+                runs,
+                resource_root,
+                jobs,
+                builds,
+                only,
+                binary_timeout_s,
+                function_timeout_s,
+                budget,
+                force,
+            } => {
+                let run = freshbench::sweep::run(&freshbench::sweep::RunArgs {
+                    root,
+                    cli,
+                    repo,
+                    label,
+                    runs,
+                    resource_root,
+                    jobs,
+                    builds,
+                    only,
+                    binary_timeout_s,
+                    function_timeout_s,
+                    budget,
+                    force,
+                })?;
+                print!(
+                    "{}",
+                    freshbench::sweep::render_report(&freshbench::sweep::report(&run)?)
+                );
+            }
+            SweepCmd::Report { run, json } => {
+                let r = freshbench::sweep::report(&run)?;
+                if json {
+                    print_json(&r)?
+                } else {
+                    print!("{}", freshbench::sweep::render_report(&r))
+                }
+            }
+            SweepCmd::Diff { a, b, json, keep } => {
+                let d = freshbench::sweep::diff(&a, &b, keep)?;
+                if json {
+                    print_json(&d)?
+                } else {
+                    print!("{}", freshbench::sweep::render_diff(&d))
+                }
+            }
+        },
         Cmd::Assemble {
             prepared,
             out,

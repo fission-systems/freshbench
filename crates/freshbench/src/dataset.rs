@@ -164,9 +164,13 @@ pub type Output = (String, Option<String>);
 
 /// Decompiled code of one tool, keyed by row.
 pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, Output>> {
-    let base = root.join("results").join(tool);
+    records_in(&root.join("results").join(tool))
+}
+
+/// Records under `base/<build>/<project>/records.jsonl.gz`.
+pub fn records_in(base: &Path) -> Result<HashMap<RowKey, Output>> {
     let mut files = Vec::new();
-    for build in sorted_dir(&base)? {
+    for build in sorted_dir(base)? {
         let Ok((arch, compiler, config)) = split_build(&build) else {
             continue;
         };
@@ -344,6 +348,20 @@ pub fn rescore(
     cache: &ScoreCache,
     builds: &[String],
 ) -> Result<Vec<Row>> {
+    let code = records(root, tool)?;
+    rescore_records(root, &code, tool, limit_tus, budget, cache, builds)
+}
+
+/// [`rescore`] with the records given (a sweep keeps them outside the corpus).
+pub fn rescore_records(
+    root: &Path,
+    code: &HashMap<RowKey, Output>,
+    tool: &str,
+    limit_tus: Option<usize>,
+    budget: u64,
+    cache: &ScoreCache,
+    builds: &[String],
+) -> Result<Vec<Row>> {
     let mut targets = targets(root)?;
     if !builds.is_empty() {
         targets.retain(|t| {
@@ -351,7 +369,6 @@ pub fn rescore(
             builds.contains(&b)
         });
     }
-    let code = records(root, tool)?;
     let mut by_tu: BTreeMap<&str, Vec<&Target>> = BTreeMap::new();
     for t in &targets {
         by_tu.entry(t.source_path.as_str()).or_default().push(t);
@@ -367,7 +384,7 @@ pub fn rescore(
     let mut rows: Vec<Row> = pool.install(|| {
         groups
             .par_iter()
-            .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, &code, tool, budget, cache, &sigs))
+            .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, code, tool, budget, cache, &sigs))
             .collect()
     });
     rows.sort_by(|a, b| a.key.cmp(&b.key));
