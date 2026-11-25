@@ -202,6 +202,12 @@ enum Cmd {
         #[arg(long)]
         license: Option<PathBuf>,
     },
+    /// Materialize source CFG dimensions without running any decompiler.
+    GroundTruth {
+        root: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Static results site (index.html, gaps-<tool>.html, summary.json) from result rows.
     Report {
         root: PathBuf,
@@ -222,6 +228,9 @@ enum Cmd {
         /// and not the union of the result files
         #[arg(long)]
         corpus: Option<PathBuf>,
+        /// Independent source CFG store; requires the matching corpus.
+        #[arg(long, requires = "corpus")]
+        ground_truth: Option<PathBuf>,
         /// `freshbench duplicates` reports (all groups: --top 1000000), one per
         /// architecture: keep one function per clone group
         #[arg(long, num_args = 1..)]
@@ -988,6 +997,12 @@ fn run() -> Result<ExitCode> {
                 out.display()
             );
         }
+        Cmd::GroundTruth { root, out } => {
+            let store = freshbench::ground_truth::build(&root)?;
+            let writer = std::io::BufWriter::new(std::fs::File::create(&out)?);
+            serde_json::to_writer(writer, &store)?;
+            eprintln!("{} ground truth rows", store.entries.len());
+        }
         Cmd::Report {
             root,
             out,
@@ -996,6 +1011,7 @@ fn run() -> Result<ExitCode> {
             keep,
             matched,
             corpus,
+            ground_truth,
             dedup,
             dedup_level,
             boundaries,
@@ -1010,6 +1026,7 @@ fn run() -> Result<ExitCode> {
                 None => Default::default(),
             };
             let mut table = rows::load_table(&root)?;
+            let mut truth_index = None;
             if let Some(c) = &corpus {
                 let before = table.len();
                 let targets = freshbench::dataset::targets(c)?;
@@ -1021,6 +1038,30 @@ fn run() -> Result<ExitCode> {
                     "{stray} result rows are not functions of the corpus at {}",
                     c.display()
                 );
+                if let Some(path) = &ground_truth {
+                    let index = freshbench::ground_truth::load(path, &targets)?;
+                    for (key, per) in &table {
+                        let t = &index[key];
+                        for row in per.values() {
+                            anyhow::ensure!(
+                                row.scorer == freshbench::score::SCORER,
+                                "result scorer does not match ground truth: {key}"
+                            );
+                            anyhow::ensure!(
+                                row.source.as_ref().is_none_or(|s| s == &t.source),
+                                "result source identity disagrees with ground truth: {key}"
+                            );
+                            if let Some(g) = &row.ged {
+                                anyhow::ensure!(
+                                    g.source_nodes == Some(t.nodes) && g.source_edges == Some(t.edges),
+                                    "result source CFG disagrees with ground truth: {key}"
+                                );
+                            }
+                        }
+                    }
+                    meta.notes.push(format!("independent source CFG ground truth: {} rows", index.len()));
+                    truth_index = Some(index);
+                }
                 for t in targets {
                     table.entry(t.key).or_default();
                 }
@@ -1086,7 +1127,7 @@ fn run() -> Result<ExitCode> {
                 speed: (!trows.is_empty()).then(|| freshbench::speed::summarize(&trows)),
             };
             std::fs::create_dir_all(&out)?;
-            let files = freshbench::report::site_with(&table, &meta, resamples, keep, &extras);
+            let files = freshbench::report::site_with_truth(&table, &meta, resamples, keep, &extras, truth_index.as_ref());
             for (name, body) in &files {
                 std::fs::write(out.join(name), body)?;
             }
