@@ -4,9 +4,7 @@ Copyright 2026 the FreshBench authors
 FreshBench's metric families (control-flow graph edit distance against the
 source, type recovery against DWARF, recompilation byte match, Union of
 perfect scores) follow DecBench by Noelo-Lab (https://github.com/Noelo-Lab/decbench).
-No DecBench code is included. FreshBench v1 (tag v1) used DecBench and
-rust-joern (Apache-2.0, https://github.com/Noelo-Lab/rust-joern) as
-external dependencies.
+No DecBench code is included.
 
 rust-joern (crates/rust-joern) is vendored from https://github.com/Noelo-Lab/rust-joern
 under the Apache License 2.0 (crates/rust-joern/LICENSE); see crates/rust-joern/VENDORED.md
