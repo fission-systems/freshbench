@@ -143,6 +143,10 @@ pub struct Overlap {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Report {
+    /// the architecture audited (`--arch`); preprocessed text differs per
+    /// architecture, so clone groups are per architecture
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
     pub rows: usize,
     pub functions: usize,
     /// functions whose definition could not be read back (counted, not grouped)
@@ -316,6 +320,7 @@ pub fn audit(
         }
     }
     Ok(Report {
+        arch: arch.map(str::to_string),
         rows,
         functions: fns.len(),
         unreadable,

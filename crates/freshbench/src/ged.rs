@@ -943,4 +943,137 @@ mod tests {
         let l2 = blocks(2, &[(0, 1), (1, 1)]);
         assert_eq!(isomorphic(&l1, &l2, ISO_CAP), Some(false));
     }
+
+    /// GED by trying every node mapping; written apart from `mapping_cost` so
+    /// the search and its own cost function are both checked against it.
+    fn brute_force(a: &Graph, b: &Graph) -> u64 {
+        fn go(
+            a: &Graph,
+            b: &Graph,
+            u: usize,
+            map: &mut Vec<Option<usize>>,
+            used: &mut Vec<bool>,
+            best: &mut u64,
+        ) {
+            if u == a.nodes() {
+                let mut cost = 0u64;
+                for (x, m) in map.iter().enumerate() {
+                    match m {
+                        None => cost += 1, // node deleted
+                        Some(y) => cost += u64::from(a.labels[x] != b.labels[*y]),
+                    }
+                }
+                cost += used.iter().filter(|x| !**x).count() as u64; // nodes inserted
+                let mapped: std::collections::HashSet<(usize, usize)> = a
+                    .edges
+                    .iter()
+                    .filter_map(|&(x, y)| Some((map[x as usize]?, map[y as usize]?)))
+                    .collect();
+                let eb: std::collections::HashSet<(usize, usize)> = b
+                    .edges
+                    .iter()
+                    .map(|&(x, y)| (x as usize, y as usize))
+                    .collect();
+                let kept = mapped.intersection(&eb).count() as u64;
+                cost += (a.edges.len() as u64 - kept) + (b.edges.len() as u64 - kept);
+                *best = (*best).min(cost);
+                return;
+            }
+            map[u] = None;
+            go(a, b, u + 1, map, used, best);
+            for v in 0..b.nodes() {
+                if !used[v] {
+                    used[v] = true;
+                    map[u] = Some(v);
+                    go(a, b, u + 1, map, used, best);
+                    used[v] = false;
+                }
+            }
+            map[u] = None;
+        }
+        let mut best = u64::MAX;
+        go(
+            a,
+            b,
+            0,
+            &mut vec![None; a.nodes()],
+            &mut vec![false; b.nodes()],
+            &mut best,
+        );
+        best
+    }
+
+    /// Differential test: on 400 pseudo-random pairs of small graphs the
+    /// engine's GED equals exhaustive search, is exact, is symmetric, respects
+    /// its lower bound, and is 0 exactly when the graphs are isomorphic.
+    #[test]
+    fn ged_equals_exhaustive_search_on_small_graphs() {
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = |m: u64| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) % m
+        };
+        let random_graph = |next: &mut dyn FnMut(u64) -> u64| {
+            let n = 2 + next(4) as usize; // 2..=5 nodes
+            let mut labels = vec![Label::Block; n];
+            labels[0] = Label::Entry;
+            labels[n - 1] = Label::Exit;
+            let mut edges = Vec::new();
+            for x in 0..n as u32 {
+                for y in 0..n as u32 {
+                    if next(100) < 30 {
+                        edges.push((x, y)); // self loops and back edges included
+                    }
+                }
+            }
+            Graph { labels, edges }
+        };
+        let mut zeros = 0;
+        for _ in 0..400 {
+            let a = random_graph(&mut next);
+            // half the pairs are a relabelled copy with at most one edge changed,
+            // so GED 0 and GED 1 are well represented
+            let b = if next(2) == 0 {
+                random_graph(&mut next)
+            } else {
+                let n = a.nodes() as u32;
+                let rot = 1 + next(n as u64) as u32;
+                let p = |x: u32| {
+                    if x == 0 || x == n - 1 {
+                        x
+                    } else {
+                        1 + (x - 1 + rot) % (n - 2).max(1)
+                    }
+                };
+                let mut e: Vec<_> = a.edges.iter().map(|&(x, y)| (p(x), p(y))).collect();
+                if next(2) == 0 && !e.is_empty() {
+                    e.pop();
+                }
+                e.sort_unstable();
+                e.dedup();
+                let mut labels = vec![Label::Block; n as usize];
+                labels[0] = Label::Entry;
+                labels[n as usize - 1] = Label::Exit;
+                Graph { labels, edges: e }
+            };
+            let want = brute_force(&a, &b);
+            let d = distance(&a, &b);
+            assert_eq!(d.value, want, "{a:?} vs {b:?}");
+            assert!(d.exact, "{a:?} vs {b:?}");
+            assert!(d.lower_bound <= d.value);
+            assert_eq!(distance(&b, &a).value, want, "symmetry: {a:?} vs {b:?}");
+            assert_eq!(
+                isomorphic(&a, &b, ISO_CAP),
+                Some(want == 0),
+                "{a:?} vs {b:?}"
+            );
+            zeros += usize::from(want == 0);
+        }
+        assert!(
+            zeros > 20 && zeros < 380,
+            "the pairs cover both cases: {zeros}"
+        );
+    }
 }

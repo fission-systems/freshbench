@@ -199,10 +199,10 @@ enum Cmd {
         /// and not the union of the result files
         #[arg(long)]
         corpus: Option<PathBuf>,
-        /// a `freshbench duplicates` report (all groups: --top 1000000): keep one
-        /// function per clone group
-        #[arg(long)]
-        dedup: Option<PathBuf>,
+        /// `freshbench duplicates` reports (all groups: --top 1000000), one per
+        /// architecture: keep one function per clone group
+        #[arg(long, num_args = 1..)]
+        dedup: Vec<PathBuf>,
         #[arg(long, value_enum, default_value = "renamed")]
         dedup_level: freshbench::clones::Level,
     },
@@ -762,9 +762,12 @@ fn run() -> Result<ExitCode> {
                 ));
             }
             let all = table.len();
-            if let Some(d) = &dedup {
-                let rep: freshbench::clones::Report = serde_json::from_str(&read(d)?)?;
-                table = freshbench::report::dedup(&table, &rep, dedup_level)?;
+            if !dedup.is_empty() {
+                let reps: Vec<freshbench::clones::Report> = dedup
+                    .iter()
+                    .map(|d| Ok(serde_json::from_str(&read(d)?)?))
+                    .collect::<Result<_>>()?;
+                table = freshbench::report::dedup(&table, &reps, dedup_level)?;
                 meta.notes.push(format!(
                     "one function per {dedup_level:?} clone group: {} of {all} rows",
                     table.len()
