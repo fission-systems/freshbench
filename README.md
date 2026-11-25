@@ -16,6 +16,25 @@ is preserved at tag [`v1`](../../tree/v1) and in
 [`sjkim1127/freshbench`](https://huggingface.co/datasets/sjkim1127/freshbench).
 v1 numbers and v2 numbers are not comparable.
 
+## M1 leaderboard
+
+The GitHub Pages workflow ([pages](../../actions/workflows/pages.yml)) builds
+the public leaderboard from completed `evaluate` runs. Supply their run IDs
+as a JSON array. It downloads only the pinned M1 target manifests (not the
+13.56 GB corpus), verifies their SHA-256 digests and checks that at least two
+registered non-LLM tools have a row for every M1 target. Explicit failed or
+unsupported rows count; absent result rows do not pass the publication gate.
+
+Leave `deploy` false to inspect the generated `leaderboard-preview` artifact
+first. Enable GitHub Pages with GitHub Actions as its source, then run with
+`deploy` true to publish. The intended site is
+https://fission-systems.github.io/freshbench/. The all-row and renamed-clone
+deduplicated views link to each other and expose JSON summaries, metrics,
+and per-tool improvement targets. Function boundaries and timing are shown
+when their artifacts are supplied. GED is a structural metric, not a
+correctness guarantee; rows with unknown source graph size are explicitly
+reported outside the distance aggregate.
+
 ## Prior work
 
 FreshBench's metric families follow [DecBench](https://github.com/Noelo-Lab/decbench)
