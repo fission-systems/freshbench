@@ -93,6 +93,11 @@ pub struct ToolSummary {
     pub strict_perfect: u64,
     /// GED 0 on both CFG families
     pub cfg_agreement: u64,
+    /// outputs not scored because no line maps to an instruction of the function
+    pub no_line_mappings: u64,
+    /// output lines with a valid instruction address, and all non-blank lines
+    pub mapped_lines: u64,
+    pub code_lines: u64,
     /// recompiled to the same instructions (byte match, auxiliary)
     pub recompile_exact: u64,
     /// rows a recompilation was attempted on, and how many compiled
@@ -280,6 +285,12 @@ pub fn summarize(table: &Table, resamples: usize) -> Summary {
             o.union_perfect += u64::from(r.union_perfect());
             o.strict_perfect += u64::from(r.strict_perfect());
             o.cfg_agreement += u64::from(r.cfg_agreement());
+            o.no_line_mappings +=
+                u64::from(r.tags.iter().any(|t| t == crate::dataset::NO_LINE_MAPPINGS));
+            if let Some(e) = &r.evidence {
+                o.mapped_lines += u64::from(e.mapped_lines);
+                o.code_lines += u64::from(e.code_lines);
+            }
             if let Some(rc) = &r.recompile {
                 o.recompile_rows += 1;
                 o.recompile_compiles += u64::from(rc.compiles);
@@ -562,10 +573,12 @@ that skips hard functions is not rewarded. Read the mean next to the median: a f
 <b>Function boundaries</b>: start F1 of the functions a tool finds by itself in the stripped binary, as built and with the unwind tables \
 removed (they hand out every boundary on x86-64 and AArch64); <b>ends</b>: share of true functions whose end it also found exactly, \
 without unwind tables. <b>Cost</b>: CPU milliseconds per function to decompile (the tool's whole process tree). \
+<b>Line mappings</b>: share of output lines the tool maps to an instruction of the function, and outputs with no mapped line, which are not \
+scored (every tool must say which instructions its lines came from). \
 Lower distance and cost, higher F1 and ends are better.</p>",
     );
     b += "<table><tr><th>tool</th><th>GED distance</th><th>with control flow</th><th>start F1 as built</th>\
-<th>start F1 no unwind</th><th>ends, no unwind</th><th>cost (CPU ms / fn)</th><th>peak memory</th></tr>";
+<th>start F1 no unwind</th><th>ends, no unwind</th><th>cost (CPU ms / fn)</th><th>peak memory</th><th>line mappings</th></tr>";
     let mut order: Vec<&String> = s.tools.iter().collect();
     order.sort_by(|a, b| {
         let d = |t: &String| s.distance.get(t).map_or(f64::MAX, |d| d.mean);
@@ -588,7 +601,7 @@ Lower distance and cost, higher F1 and ends are better.</p>",
             "<tr><td><a href=\"gaps-{f}.html\">{n}</a></td>\
 <td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
 <td>{:.1} <span class=mute>med {:.0} · {}/{} at 0</span></td>\
-<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             d.mean,
             d.median,
             num(d.at_zero),
@@ -606,6 +619,14 @@ Lower distance and cost, higher F1 and ends are better.</p>",
                 .unwrap_or_else(|| "-".into()),
             sp.map(|v| format!("{:.0} MB", v.max_rss_mb))
                 .unwrap_or_else(|| "-".into()),
+            s.overall
+                .get(t)
+                .map(|o| format!(
+                    "{} of lines <span class=mute>· {} outputs unmapped</span>",
+                    pct(o.mapped_lines as f64 / o.code_lines.max(1) as f64),
+                    num(o.no_line_mappings)
+                ))
+                .unwrap_or_default(),
             f = esc(&file_safe(t)),
             n = esc(t),
         );
