@@ -35,14 +35,14 @@ jobs:
             cp "$f" "site-src/rows/$(echo "$f" | tr '/' '_')"
           done
           ls site-src/rows | wc -l
-      - name: fetch pinned M1 truth (no binaries or source files)
+      - name: fetch pinned M1 truth and sources (no binaries)
         run: |
           python -m pip install 'huggingface_hub==0.36.0'
           python - <<'PY'
           from huggingface_hub import snapshot_download
           from ci.leaderboard_gate import REVISION
           snapshot_download(repo_id="sjkim1127/freshbench-v2", repo_type="dataset",
-                            revision=REVISION, allow_patterns=["m1/truth/*"],
+                            revision=REVISION, allow_patterns=["m1/truth/*", "m1/sources/*"],
                             local_dir="corpus-data")
           PY
       - name: meta (from the runs' own provenance, not the current pins)
@@ -58,7 +58,9 @@ jobs:
         run: |
           python ci/leaderboard_gate.py --corpus corpus-data/m1 \
             --manifest corpus/m1/manifest.jsonl.gz --rows site-src/rows \
-            --meta meta.json --registry ci/tools.json
+            --meta meta.json --registry ci/tools.json --verify-sources
+      - name: materialize source CFG ground truth
+        run: target/release/freshbench ground-truth corpus-data/m1 --out ground-truth.json
       - name: last upstream commit of every registered tool
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
@@ -72,7 +74,7 @@ jobs:
       - name: report, all rows and one function per renamed-clone group
         run: |
           POLICY="--tools ci/tools.json --last-commits last.json --now $(date -u +%F)"
-          EXTRA="--corpus corpus-data/m1 --boundaries dl --speed dl $POLICY"
+          EXTRA="--corpus corpus-data/m1 --ground-truth ground-truth.json --boundaries dl --speed dl $POLICY"
           target/release/freshbench report site-src --out site --meta meta.json $EXTRA
           # DecBench's maintainer asked us to be honest about duplication: every
           # published score also appears with clones removed
@@ -80,8 +82,8 @@ jobs:
             --dedup-level renamed --dedup corpus/m1/duplicates-x86_64.json corpus/m1/duplicates-i686.json \
             corpus/m1/duplicates-aarch64.json corpus/m1/duplicates-armv7.json
           # Policy filtering must not leave an empty or single-tool ranking.
-          jq -e '.summary.rows == 285875 and (.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/summary.json >/dev/null
-          jq -e '(.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/dedup/summary.json >/dev/null
+          jq -e '.summary.rows == 285875 and .summary.distance_unmeasured == 0 and (.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/summary.json >/dev/null
+          jq -e '.summary.distance_unmeasured == 0 and (.summary.tools | length) >= 2 and (.summary.distance | length) >= 2' site/dedup/summary.json >/dev/null
           # Link both populations without depending on an absolute site URL.
           python - <<'PY'
           from pathlib import Path
