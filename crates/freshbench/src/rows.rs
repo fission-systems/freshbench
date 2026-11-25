@@ -176,6 +176,24 @@ impl Row {
             || self.recompile.as_ref().is_some_and(|r| r.exact)
     }
 
+    /// GED 0 from an output whose function parsed without error recovery.
+    pub fn strict_perfect(&self) -> bool {
+        self.scored_ged() == Some(0.0) && !self.tags.iter().any(|t| t == "parse_recovered")
+    }
+
+    /// GED 0 on both CFG families.
+    pub fn cfg_agreement(&self) -> bool {
+        self.scored_ged() == Some(0.0) && self.scored_joern_ged() == Some(0.0)
+    }
+
+    /// Perfect on every metric that applies to the row: both CFG families,
+    /// types where there is DWARF truth, recompilation where it was run.
+    pub fn intersection_perfect(&self) -> bool {
+        self.cfg_agreement()
+            && self.types.as_ref().is_none_or(|t| t.perfect)
+            && self.recompile.as_ref().is_none_or(|r| r.exact)
+    }
+
     pub fn types_perfect(&self) -> bool {
         self.outcome == Outcome::Scored && self.types.as_ref().is_some_and(|t| t.perfect)
     }
@@ -357,6 +375,9 @@ pub struct RecompileLine {
     #[serde(flatten)]
     pub key: RowKey,
     pub tool: String,
+    /// sha256 of the output text that was recompiled (the row's `code_sha256`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_sha256: Option<String>,
     pub recompile: crate::recompile::RecompileScore,
 }
 
@@ -390,6 +411,7 @@ pub fn load_table(root: &Path) -> Result<Table> {
             conflicts[0]
         );
     }
+    let mut stale = Vec::new();
     for path in row_files(root)?
         .into_iter()
         .filter(|p| is_recompile_file(p))
@@ -400,10 +422,34 @@ pub fn load_table(root: &Path) -> Result<Table> {
                 continue;
             }
             let l: RecompileLine = serde_json::from_str(&line)?;
-            if let Some(r) = t.get_mut(&l.key).and_then(|m| m.get_mut(&l.tool)) {
-                r.recompile = Some(l.recompile);
+            let Some(r) = t.get_mut(&l.key).and_then(|m| m.get_mut(&l.tool)) else {
+                continue;
+            };
+            // a recompile score belongs to one output text: an older side file
+            // must not attach to a newer decompilation of the same row
+            if l.code_sha256.is_some() && l.code_sha256 != r.code_sha256 {
+                stale.push(format!("{} {}", l.tool, l.key));
+                continue;
+            }
+            match &r.recompile {
+                Some(old) if *old != l.recompile => {
+                    anyhow::bail!(
+                        "two recompile scores for {} {} ({})",
+                        l.tool,
+                        l.key,
+                        path.display()
+                    )
+                }
+                _ => r.recompile = Some(l.recompile),
             }
         }
+    }
+    if !stale.is_empty() {
+        anyhow::bail!(
+            "{} recompile scores are for another output than the row's, e.g. {}",
+            stale.len(),
+            stale[0]
+        );
     }
     Ok(t)
 }
@@ -482,5 +528,45 @@ mod tests {
         // another tool scored by another scorer version
         std::fs::write(rows.join("b.jsonl"), line("u", 2.0, "s2")).unwrap();
         assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("scorers"));
+    }
+
+    /// A recompile side file from an older decompilation of the same row is refused.
+    #[test]
+    fn stale_recompile_scores_are_refused() {
+        let mut r = parse_row(r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","decompiled":true,"ged":0.0}"#).unwrap();
+        r.code_sha256 = Some("new".into());
+        let d = tempfile::tempdir().unwrap();
+        let rows = d.path().join("rows");
+        std::fs::create_dir_all(&rows).unwrap();
+        std::fs::write(
+            rows.join("t.jsonl"),
+            serde_json::to_string(&r).unwrap() + "\n",
+        )
+        .unwrap();
+        let side = |sha: &str, exact: bool| {
+            serde_json::to_string(&RecompileLine {
+                key: r.key.clone(),
+                tool: "t".into(),
+                code_sha256: Some(sha.into()),
+                recompile: crate::recompile::RecompileScore {
+                    compiles: true,
+                    exact,
+                    ..Default::default()
+                },
+            })
+            .unwrap()
+                + "\n"
+        };
+        std::fs::write(rows.join("t.recompile.jsonl"), side("new", true)).unwrap();
+        let t = load_table(d.path()).unwrap();
+        assert!(t[&r.key]["t"].recompile.as_ref().unwrap().exact);
+        assert!(t[&r.key]["t"].union_perfect() && !t[&r.key]["t"].intersection_perfect());
+        // scored for another output text
+        std::fs::write(rows.join("t.recompile.jsonl"), side("old", true)).unwrap();
+        assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("another output"));
+        // two different scores for the same output
+        std::fs::write(rows.join("t.recompile.jsonl"), side("new", true)).unwrap();
+        std::fs::write(rows.join("u.recompile.jsonl"), side("new", false)).unwrap();
+        assert!(format!("{:#}", load_table(d.path()).unwrap_err()).contains("two recompile"));
     }
 }

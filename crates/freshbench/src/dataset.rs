@@ -498,17 +498,30 @@ fn score_tu(
                 manifest::sha256_bytes(serde_json::to_string(s).unwrap_or_default().as_bytes())
             })
             .unwrap_or_default();
+        // every input of the score is in the key: the two source graphs
+        // themselves (a definition's token fingerprint does not pin the CFG a
+        // parser builds from the whole translation unit), the DWARF signature,
+        // and the target's data model (`long` is 4 bytes on i686 and ARMv7,
+        // so the same output text has another type class there)
+        let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
+        let dm = crate::types::DataModel::for_arch(&t.key.arch);
+        let graph_id = |g: &cfg::Graph| manifest::sha256_bytes(format!("{g:?}").as_bytes());
         let key = ScoreCache::key(
             budget,
             &t.key.function,
-            &format!("{src_fp}|{truth_id}"),
+            &format!(
+                "{src_fp}|{truth_id}|long{}ptr{}ld{}|fb:{}|joern:{}",
+                dm.long,
+                dm.ptr,
+                dm.long_double,
+                graph_id(sg),
+                jg.map(graph_id).unwrap_or_default()
+            ),
             &out_sha,
         );
         let c = match cache.get(&key) {
             Some(c) => c,
             None => {
-                let jg = joern_src.get(&t.key.function).and_then(|g| g.as_ref());
-                let dm = crate::types::DataModel::for_arch(&t.key.arch);
                 // a parser or builder panic on one output costs that row only
                 let c = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     score_output(
@@ -682,6 +695,7 @@ pub fn recompile_all(
                 crate::rows::RecompileLine {
                     key: t.key.clone(),
                     tool: tool.to_string(),
+                    code_sha256: Some(manifest::sha256_bytes(code[&t.key].0.as_bytes())),
                     recompile: score,
                 }
             })
@@ -741,6 +755,35 @@ mod tests {
             let rec = Record { binary: "bin".into(), function: "f".into(), address: 0x10, code: Some(code.into()), error: None };
             write_records(&root.join("results/t").join(&build).join("p/records.jsonl.gz"), &[rec]).unwrap();
         }
+    }
+
+    /// The same output for the same source on a 32-bit target is another
+    /// score (`long` is 4 bytes there): it must not come from the cache.
+    #[test]
+    fn cache_does_not_cross_data_models() {
+        let d = tempfile::tempdir().unwrap();
+        tree(d.path());
+        // make the O3 build an i686 build with the same output text
+        let m = d.path().join("gcc-O3/manifest.json");
+        let mut pb: PreparedBuild = serde_json::from_slice(&std::fs::read(&m).unwrap()).unwrap();
+        pb.arch = "i686".into();
+        std::fs::write(&m, serde_json::to_vec(&pb).unwrap()).unwrap();
+        std::fs::rename(
+            d.path().join("results/t/gcc-O3"),
+            d.path().join("results/t/i686-gcc-O3"),
+        )
+        .unwrap();
+        let c = ScoreCache::default();
+        let rows = rescore(d.path(), "t", None, 1000, &c, &[]).unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows.iter().filter(|r| r.key.arch == "i686").count(), 1);
+        assert_eq!(
+            (
+                c.hits.load(Ordering::Relaxed),
+                c.misses.load(Ordering::Relaxed)
+            ),
+            (0, 3)
+        );
     }
 
     #[test]
