@@ -168,7 +168,7 @@ impl Starts {
         }
         match &self.decoded {
             Some(v) => v.binary_search(&a).is_ok(),
-            None => (a - self.low) % self.align == 0,
+            None => (a - self.low).is_multiple_of(self.align),
         }
     }
 }
