@@ -24,7 +24,7 @@ clap = { version = "4.6", features = ["derive"] }
 flate2 = "1.1"
 libc = "0.2"
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder"] }
-gimli = { version = "0.33", default-features = false, features = ["read", "std"] }
+gimli = { version = "0.34", default-features = false, features = ["read", "std"] }
 object = { version = "0.39", default-features = false, features = ["read", "std", "compression"] }
 rayon = "1.12"
 rust-joern = { path = "../rust-joern" }

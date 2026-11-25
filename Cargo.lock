@@ -8,7 +8,7 @@ version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e567177890eb1617b1f774005b66b26b2377afd138a2ca37aae7d8f0c81429d4"
 dependencies = [
- "gimli 0.34.0",
+ "gimli",
 ]
 
 [[package]]
@@ -456,7 +456,7 @@ dependencies = [
  "anyhow",
  "clap",
  "flate2",
- "gimli 0.33.0",
+ "gimli",
  "iced-x86",
  "libc",
  "object 0.39.1",
@@ -544,18 +544,12 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf7f043f89559805f8c7cacc432749b2fa0d0a0a9ee46ce47164ed5ba7f126c"
-dependencies = [
- "stable_deref_trait",
-]
-
-[[package]]
-name = "gimli"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1033caf0b349c518623b5396bfb2cf0bddf44f0306d543a250e5743297aafd10"
+dependencies = [
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "hashbrown"
