@@ -41,6 +41,27 @@ say so and fix the cause.
 
 ## Review
 
-No workflow linter is configured. Review YAML changes carefully and, when possible, run the
-workflow on one small project/build before merging. Do not raise `max-parallel` or remove the
-concurrency comments without checking the organisation's CI capacity.
+`workflows/workflow-lint.yml` runs actionlint and zizmor (high severity fails) on every PR. It is
+advisory, not a required check. Run it locally before pushing a workflow change:
+
+```bash
+actionlint -shellcheck= -pyflakes=
+pipx run zizmor==1.32.0 --offline --min-severity high --config .github/zizmor.yml .github/workflows
+```
+
+`.github/zizmor.yml` lists known findings per file in workflows that were frozen during M1. Remove
+an entry when you fix that file; never add one for a new workflow. A linter pass does not replace
+review: when possible, run the workflow on one small project/build before merging. Do not raise
+`max-parallel` or remove the concurrency comments without checking the organisation's CI capacity.
+
+## Labels
+
+- `labels.json` is the managed label catalog. Labels are additive: never delete, rename or
+  recolor an existing label from automation. `ci/sync_github_labels.py` (or the
+  `sync-managed-labels` workflow, `apply=false` to preview) creates the missing ones only.
+- `area:*` labels are added to PRs from changed paths (`labeler.yml`, `label-areas.yml`); add an
+  area the paths miss by hand. Fork and Dependabot PRs are not auto-labeled.
+  `python -m unittest ci.test_labeler` checks every glob matches a tracked file.
+- `priority:P0`-`P3`, `status:*`, `type:*` and `risk:*` are manual. Use `risk:semantic` for any
+  change that moves `score::SCORER`, a pin or a metric definition, and `risk:fairness` for anything
+  that can favour one tool.

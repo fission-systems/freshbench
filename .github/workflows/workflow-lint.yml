@@ -1,0 +1,43 @@
+name: workflow-lint
+
+# actionlint + zizmor over .github/workflows, and the labeler config check.
+# Advisory: not a required status check. zizmor fails on high-severity
+# findings; known debt in workflows frozen for M1 is listed per file in
+# .github/zizmor.yml, so a new finding anywhere still fails.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths: ['.github/**', 'ci/test_labeler.py', 'ci/sync_github_labels.py']
+
+permissions: {}
+
+concurrency:
+  group: workflow-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Labeler globs and label catalog
+        run: python3 -m unittest ci.test_labeler
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Lint GitHub workflows
+        run: '"$(go env GOPATH)/bin/actionlint" -shellcheck= -pyflakes='
+
+      # Workflow security: unpinned actions, template injection into shell,
+      # over-broad token permissions. High severity fails the job.
+      - name: Audit GitHub workflows (zizmor)
+        run: pipx run zizmor==1.32.0 --offline --min-severity high --format github --config .github/zizmor.yml .github/workflows

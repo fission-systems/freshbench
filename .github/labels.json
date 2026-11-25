@@ -1,0 +1,162 @@
+[
+  {
+    "name": "priority:P0",
+    "color": "b60205",
+    "description": "Potential critical measurement, fairness or publication risk; triage required"
+  },
+  {
+    "name": "priority:P1",
+    "color": "b60205",
+    "description": "High-priority correctness or reproducibility improvement"
+  },
+  {
+    "name": "priority:P2",
+    "color": "b60205",
+    "description": "Normal improvement or research"
+  },
+  {
+    "name": "priority:P3",
+    "color": "b60205",
+    "description": "Deferred or low-priority work"
+  },
+  {
+    "name": "area:scorer",
+    "color": "1d76db",
+    "description": "freshbench crate: scoring, CLI, ground-truth prep and reports (src changes move score::SCORER)"
+  },
+  {
+    "name": "area:rust-joern",
+    "color": "1d76db",
+    "description": "Vendored rust-joern parser and CFG crate (hashed into score::SCORER)"
+  },
+  {
+    "name": "area:adapters",
+    "color": "1d76db",
+    "description": "Decompiler adapters and tool installation"
+  },
+  {
+    "name": "area:corpus",
+    "color": "1d76db",
+    "description": "Corpus build images, qualification, manifests and ground truth"
+  },
+  {
+    "name": "area:selection",
+    "color": "1d76db",
+    "description": "Candidate selection, exclusion and DecBench overlap"
+  },
+  {
+    "name": "area:evaluation",
+    "color": "1d76db",
+    "description": "Evaluate/probe workflows and sweep execution"
+  },
+  {
+    "name": "area:publication",
+    "color": "1d76db",
+    "description": "Leaderboard gate, run list, tool registry, Pages and report rendering"
+  },
+  {
+    "name": "area:pins",
+    "color": "1d76db",
+    "description": "ci/pins.env version contract; a change is a benchmark change"
+  },
+  {
+    "name": "area:telemetry",
+    "color": "1d76db",
+    "description": "Opt-in Sentry reporting and event scrubbing"
+  },
+  {
+    "name": "area:ci",
+    "color": "1d76db",
+    "description": "Workflows, CI scripts, hooks and repository automation"
+  },
+  {
+    "name": "area:docs",
+    "color": "1d76db",
+    "description": "Documentation, agent guides and README assets"
+  },
+  {
+    "name": "type:refactor",
+    "color": "c5def5",
+    "description": "Mechanical refactoring without intended semantic change"
+  },
+  {
+    "name": "type:performance",
+    "color": "c5def5",
+    "description": "Measured optimization"
+  },
+  {
+    "name": "type:test",
+    "color": "c5def5",
+    "description": "Test and validation infrastructure"
+  },
+  {
+    "name": "type:research",
+    "color": "c5def5",
+    "description": "Experimental research"
+  },
+  {
+    "name": "type:maintenance",
+    "color": "c5def5",
+    "description": "Maintenance and governance"
+  },
+  {
+    "name": "status:needs-repro",
+    "color": "fbca04",
+    "description": "Reported defect candidate not yet reproduced"
+  },
+  {
+    "name": "status:confirmed",
+    "color": "fbca04",
+    "description": "Reproduced or independently established with recorded evidence"
+  },
+  {
+    "name": "status:blocked",
+    "color": "fbca04",
+    "description": "Explicit prerequisite or blocker"
+  },
+  {
+    "name": "status:ready",
+    "color": "fbca04",
+    "description": "Triaged with actionable scope and acceptance criteria"
+  },
+  {
+    "name": "risk:semantic",
+    "color": "d93f0b",
+    "description": "May change scores, metric definitions or rows' comparability across runs"
+  },
+  {
+    "name": "risk:fairness",
+    "color": "d93f0b",
+    "description": "May favour or disadvantage one decompiler"
+  },
+  {
+    "name": "risk:data-loss",
+    "color": "d93f0b",
+    "description": "May affect results, artifacts, truth data or provenance integrity"
+  },
+  {
+    "name": "risk:concurrency",
+    "color": "d93f0b",
+    "description": "May affect determinism, --jobs independence or concurrent state"
+  },
+  {
+    "name": "risk:breaking",
+    "color": "d93f0b",
+    "description": "Potentially incompatible row JSON, CLI or adapter contract change"
+  },
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something isn't working"
+  },
+  {
+    "name": "enhancement",
+    "color": "a2eeef",
+    "description": "New feature or request"
+  },
+  {
+    "name": "documentation",
+    "color": "0075ca",
+    "description": "Improvements or additions to documentation"
+  }
+]
