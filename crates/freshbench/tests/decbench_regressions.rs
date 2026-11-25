@@ -77,12 +77,10 @@ fn decbench_006_degenerate_source_cfg_is_not_evidence() {
 #[test]
 fn decbench_008_missing_results_stay_in_the_denominator() {
     let row = |f: &str, tool: &str, ged: f64| {
-        let mut r = freshbench::rows::parse_row(&format!(
-            r#"{{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"{f}","tool":"{tool}","decompiled":true,"ged":{ged}}}"#
+        freshbench::rows::parse_row(&format!(
+            r#"{{"project":"p","arch":"x86_64","compiler":"gcc","config":"O0","binary":"b","function":"{f}","tool":"{tool}","outcome":"scored","scorer":"s","ged":{{"value":{ged},"exact":true}}}}"#
         ))
-        .unwrap();
-        r.scorer = "s".into();
-        r
+        .unwrap()
     };
     let mut t = freshbench::rows::Table::new();
     for r in [row("f", "a", 0.0), row("g", "a", 5.0), row("f", "b", 0.0)] {

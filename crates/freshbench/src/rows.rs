@@ -1,9 +1,6 @@
 //! Result rows: one decompiler's result on one function.
 //!
-//! The v2 row is FreshBench's own JSON contract ([`Row`]). Rows of the v1
-//! dataset (DecBench-scored, `ged` + `ged_meta`) are read into the same type so
-//! the headroom report can run on both; v1 numbers are DecBench's and are never
-//! mixed with v2 numbers in one table.
+//! FreshBench's native JSON contract ([`Row`]); only native result rows are accepted.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -15,7 +12,7 @@ use anyhow::{bail, Context, Result};
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 
-/// Architectures of the corpus; `x86_64` builds keep v1's unprefixed names.
+/// Architectures of the corpus; `x86_64` builds use unprefixed names.
 pub const ARCHES: [&str; 4] = ["x86_64", "i686", "aarch64", "armv7"];
 pub const COMPILERS: [&str; 4] = ["gcc", "clang", "msvc", "mingw"];
 
@@ -127,7 +124,7 @@ pub struct Row {
     pub recompile: Option<crate::recompile::RecompileScore>,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Scorer that produced the numbers ("freshbench-2.x", or "decbench-v1").
+    /// Scorer that produced the numbers.
     #[serde(default)]
     pub scorer: String,
     /// Why there is no output (`NoOutput` rows): `adapters::failure_kind`,
@@ -202,93 +199,11 @@ impl Row {
     }
 }
 
-/// A v1 (DecBench-scored) row as published in the v1 dataset.
-#[derive(Deserialize)]
-struct V1Row {
-    project: String,
-    compiler: String,
-    config: String,
-    binary: String,
-    function: String,
-    tool: String,
-    #[serde(default)]
-    arch: Option<String>,
-    #[serde(default)]
-    address: Option<u64>,
-    #[serde(default)]
-    decompiled: bool,
-    #[serde(default)]
-    code_sha256: Option<String>,
-    #[serde(default)]
-    ged: Option<f64>,
-    #[serde(default)]
-    ged_meta: Option<V1GedMeta>,
-}
-
-#[derive(Deserialize, Default)]
-struct V1GedMeta {
-    source_nodes: Option<u32>,
-    source_edges: Option<u32>,
-    decompiled_nodes: Option<u32>,
-    decompiled_edges: Option<u32>,
-    method: Option<String>,
-}
-
-impl From<V1Row> for Row {
-    fn from(v: V1Row) -> Row {
-        let outcome = if !v.decompiled {
-            Outcome::NoOutput
-        } else if v.ged.is_none() {
-            Outcome::Unscored
-        } else {
-            Outcome::Scored
-        };
-        let meta = v.ged_meta.unwrap_or_default();
-        let ged = v.ged.map(|value| GedScore {
-            value,
-            exact: false,
-            lower_bound: None,
-            method: meta.method.clone().unwrap_or_default(),
-            source_nodes: meta.source_nodes,
-            source_edges: meta.source_edges,
-            output_nodes: meta.decompiled_nodes,
-            output_edges: meta.decompiled_edges,
-        });
-        Row {
-            key: RowKey {
-                project: v.project,
-                arch: v.arch.unwrap_or_else(|| "x86_64".into()),
-                compiler: v.compiler,
-                config: v.config,
-                binary: v.binary,
-                function: v.function,
-            },
-            tool: v.tool,
-            outcome,
-            address: v.address,
-            code_sha256: v.code_sha256,
-            ged,
-            joern_ged: None,
-            types: None,
-            recompile: None,
-            tags: vec![],
-            scorer: "decbench-v1".into(),
-            failure: None,
-            source: None,
-            evidence: None,
-        }
-    }
-}
-
-/// Parse one JSON line as a v2 row, or as a v1 row when it has no `outcome`.
+/// Parse one native result row.
 pub fn parse_row(line: &str) -> Result<Row> {
-    let v: serde_json::Value = serde_json::from_str(line)?;
-    if v.get("outcome").is_some() {
-        Ok(serde_json::from_value(v)?)
-    } else {
-        let r: V1Row = serde_json::from_value(v)?;
-        Ok(r.into())
-    }
+    let row: Row = serde_json::from_str(line)?;
+    anyhow::ensure!(!row.scorer.is_empty(), "missing scorer identity");
+    Ok(row)
 }
 
 pub fn open_lines(path: &Path) -> Result<Box<dyn BufRead>> {
@@ -305,13 +220,9 @@ pub fn open_lines(path: &Path) -> Result<Box<dyn BufRead>> {
 
 /// Row files under a dataset or run tree, in sorted order.
 ///
-/// Dataset tree: `results/function_results.jsonl` (v1) or `results/rows/*.jsonl[.gz]` (v2).
+/// Dataset tree: `results/rows/*.jsonl[.gz]`.
 /// Run tree: every `rows.jsonl` / `rows.jsonl.gz` below the root.
 pub fn row_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let flat = root.join("results").join("function_results.jsonl");
-    if flat.exists() {
-        return Ok(vec![flat]);
-    }
     let mut out = Vec::new();
     walk_sorted(root, &mut |p| {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -481,20 +392,17 @@ mod tests {
         assert!(split_build("aarch64-O2").is_err());
     }
 
+    fn native_row() -> Row {
+        parse_row(r#"{"project":"p","arch":"x86_64","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","outcome":"scored","scorer":"s","ged":{"value":1.0,"exact":true}}"#).unwrap()
+    }
+
     #[test]
-    fn v1_and_v2_rows_parse() {
-        let v1 = r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t",
-            "decompiled":true,"ged":3.0,"ged_meta":{"source_nodes":5,"source_edges":6,"decompiled_nodes":7}}"#;
-        let r = parse_row(v1).unwrap();
-        assert_eq!(r.outcome, Outcome::Scored);
-        assert_eq!(r.key.arch, "x86_64");
-        assert_eq!(r.scored_ged(), Some(3.0));
-        assert_eq!(r.ged.as_ref().unwrap().output_nodes, Some(7));
-        assert_eq!(r.scorer, "decbench-v1");
-        let none = r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","decompiled":false}"#;
-        assert_eq!(parse_row(none).unwrap().outcome, Outcome::NoOutput);
-        let v2 = serde_json::to_string(&r).unwrap();
-        assert_eq!(parse_row(&v2).unwrap(), r);
+    fn native_rows_roundtrip_and_reject_missing_outcome() {
+        let r = native_row();
+        assert_eq!(parse_row(&serde_json::to_string(&r).unwrap()).unwrap(), r);
+        let mut json = serde_json::to_value(&r).unwrap();
+        json.as_object_mut().unwrap().remove("outcome");
+        assert!(parse_row(&json.to_string()).is_err());
     }
 
     #[test]
@@ -513,7 +421,7 @@ mod tests {
     #[test]
     fn load_table_refuses_mixed_runs() {
         let line = |tool: &str, ged: f64, scorer: &str| {
-            let mut r = parse_row(r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","decompiled":true,"ged":1.0}"#).unwrap();
+            let mut r = native_row();
             r.tool = tool.into();
             r.ged.as_mut().unwrap().value = ged;
             r.scorer = scorer.into();
@@ -537,7 +445,7 @@ mod tests {
     /// A recompile side file from an older decompilation of the same row is refused.
     #[test]
     fn stale_recompile_scores_are_refused() {
-        let mut r = parse_row(r#"{"project":"p","compiler":"gcc","config":"O0","binary":"b","function":"f","tool":"t","decompiled":true,"ged":0.0}"#).unwrap();
+        let mut r = native_row();
         r.code_sha256 = Some("new".into());
         let d = tempfile::tempdir().unwrap();
         let rows = d.path().join("rows");
