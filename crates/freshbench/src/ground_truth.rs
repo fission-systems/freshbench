@@ -54,8 +54,9 @@ pub fn build(root: &Path) -> Result<Store> {
                     let (nodes, edges) = match dimensions.get(name) {
                         Some(&dims) => dims,
                         None => {
-                            let def = defs.get(name).copied().flatten()
-                                .with_context(|| format!("missing source definition {sp}:{name}"))?;
+                            let def = defs.get(name).copied().flatten().with_context(|| {
+                                format!("missing source definition {sp}:{name}")
+                            })?;
                             let graph = cfg::build(def, &text);
                             let dims = (graph.nodes() as u32, graph.edges.len() as u32);
                             dimensions.insert(name, dims);
@@ -89,20 +90,34 @@ pub fn build(root: &Path) -> Result<Store> {
 /// Require the same scorer and exactly the corpus population, even if the
 /// report is subsequently filtered by tool, clone group or build.
 pub fn load(path: &Path, targets: &[dataset::Target]) -> Result<Index> {
-    let store: Store = serde_json::from_reader(std::io::BufReader::new(
-        std::fs::File::open(path)?,
-    ))?;
-    anyhow::ensure!(store.scorer == score::SCORER, "ground truth scorer mismatch");
+    let store: Store =
+        serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(path)?))?;
+    anyhow::ensure!(
+        store.scorer == score::SCORER,
+        "ground truth scorer mismatch"
+    );
     let mut index = Index::new();
     for entry in store.entries {
         anyhow::ensure!(entry.nodes > 0, "empty source CFG: {}", entry.key);
         let key = entry.key.clone();
-        anyhow::ensure!(index.insert(key.clone(), entry).is_none(), "duplicate ground truth: {key}");
+        anyhow::ensure!(
+            index.insert(key.clone(), entry).is_none(),
+            "duplicate ground truth: {key}"
+        );
     }
-    anyhow::ensure!(index.len() == targets.len(), "ground truth population size mismatch");
+    anyhow::ensure!(
+        index.len() == targets.len(),
+        "ground truth population size mismatch"
+    );
     for t in targets {
-        let entry = index.get(&t.key).with_context(|| format!("missing ground truth: {}", t.key))?;
-        anyhow::ensure!(entry.source == t.source && entry.source_path == t.source_path, "ground truth source mismatch: {}", t.key);
+        let entry = index
+            .get(&t.key)
+            .with_context(|| format!("missing ground truth: {}", t.key))?;
+        anyhow::ensure!(
+            entry.source == t.source && entry.source_path == t.source_path,
+            "ground truth source mismatch: {}",
+            t.key
+        );
     }
     Ok(index)
 }
@@ -125,7 +140,11 @@ mod tests {
                 "function_info": [{"name": "f", "source_path": tu}]
             }]
         });
-        std::fs::write(root.join("configs/full/manifest.json"), manifest.to_string()).unwrap();
+        std::fs::write(
+            root.join("configs/full/manifest.json"),
+            manifest.to_string(),
+        )
+        .unwrap();
         let store = build(root).unwrap();
         assert_eq!(store.entries.len(), 1);
         assert!(store.entries[0].nodes > 2);
