@@ -1,0 +1,52 @@
+name: mirror-base-image
+# One-time copy of the native x86-64 build image (the FROM of build/Dockerfile.cross) from a
+# personal GHCR namespace into the organisation's. The source is fixed by digest here, not an
+# input: the job can only ever copy that one image. `imagetools create --prefer-index=false`
+# copies the manifest bytes unchanged (the default would wrap the single manifest in a new
+# index with a different digest), and the job fails unless the destination serves the same
+# digest. A new GHCR package starts private; visibility is a package setting, not a token scope.
+on:
+  workflow_dispatch:
+    inputs:
+      tag: { description: "destination tag", required: true, default: "base" }
+permissions: {}
+concurrency:
+  group: mirror-base-image
+  cancel-in-progress: false
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions: { packages: write }
+    env:
+      SRC_IMAGE: ghcr.io/sjkim1127/freshbench-build
+      SRC_DIGEST: sha256:f7a2626e8d294c14c379fdf61b8d3bd0276fdb78ed6f6adf75e3b3b71b1b10d7
+      DST_IMAGE: ghcr.io/fission-systems/freshbench-build
+    steps:
+      - name: login
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      - name: copy
+        env:
+          IMAGE_TAG: ${{ inputs.tag }}
+        run: |
+          # Docker's tag grammar
+          if ! [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then echo "invalid image tag: $IMAGE_TAG" >&2; exit 1; fi
+          docker buildx version
+          docker buildx imagetools create --prefer-index=false --tag "$DST_IMAGE:$IMAGE_TAG" "$SRC_IMAGE@$SRC_DIGEST"
+      - name: verify digest
+        env:
+          IMAGE_TAG: ${{ inputs.tag }}
+        run: |
+          src=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$SRC_IMAGE@$SRC_DIGEST")
+          tag=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$DST_IMAGE:$IMAGE_TAG")
+          # hash the bytes the destination serves for the digest, not just the digest it reports
+          raw="sha256:$(docker buildx imagetools inspect --raw "$DST_IMAGE@$SRC_DIGEST" | sha256sum | cut -d' ' -f1)"
+          printf 'expected %s\nsource   %s\ndst tag  %s\ndst raw  %s\n' "$SRC_DIGEST" "$src" "$tag" "$raw"
+          if [ "$src" != "$SRC_DIGEST" ] || [ "$tag" != "$SRC_DIGEST" ] || [ "$raw" != "$SRC_DIGEST" ]; then
+            echo "::error::destination digest differs from source $SRC_DIGEST" >&2; exit 1
+          fi
+          echo "$DST_IMAGE@$SRC_DIGEST"
+          echo "mirrored \`$DST_IMAGE@$SRC_DIGEST\` (tag \`$IMAGE_TAG\`)" >> "$GITHUB_STEP_SUMMARY"
