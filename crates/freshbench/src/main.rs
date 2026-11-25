@@ -486,7 +486,7 @@ fn run() -> Result<ExitCode> {
                 .collect();
             // one job per binary, largest first so a long one starts early;
             // results are collected in a fixed order, so output does not depend on --jobs
-            let mut work: Vec<(usize, &String)> = units
+            let work: Vec<(usize, &String)> = units
                 .iter()
                 .enumerate()
                 .flat_map(|(i, u)| u.targets.binaries.keys().map(move |b| (i, b)))
