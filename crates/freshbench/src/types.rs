@@ -68,6 +68,9 @@ pub struct Signature {
     pub ret: Option<TypeClass>,
     pub params: Vec<TypeClass>,
     pub locals: Vec<TypeClass>,
+    /// locals that live in one stack slot: (frame-base offset, class), sorted
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_slots: Vec<(i64, TypeClass)>,
 }
 
 /// Data model of the target: pointer, `long` and `long double` storage size
@@ -270,8 +273,110 @@ pub struct TypeScore {
     pub locals_truth: u32,
     pub locals_output: u32,
     pub locals_matched: u32,
-    /// arity, every parameter class and the return class right
+    /// DWARF locals in one stack slot (the ones evidence can be matched to)
+    #[serde(default)]
+    pub slots_truth: u32,
+    /// the tool reported a return type (scored in `return_right` only then)
+    #[serde(default)]
+    pub return_reported: bool,
+    /// evidence: arity, every parameter class and every stack-slot local right
+    /// (register locals have no slot to match and are left out, as in
+    /// DecBench's type metric; the return type is not part of it, since most
+    /// tools do not report one). Text (legacy): arity, parameters and return.
     pub perfect: bool,
+}
+
+/// Class of a type as a tool reports it in its evidence (`char *`,
+/// `unsigned int`, `int[4]`, `struct s`): the declarator part decides pointer
+/// and array, the rest is a type name. Only the reported type string is read,
+/// never the output's C text.
+pub fn class_of_type_string(t: &str, dm: DataModel) -> TypeClass {
+    let t = t.trim();
+    if t.contains("(*") || t.ends_with('*') || t.contains("* ") || t.contains("*const") {
+        return TypeClass::Ptr;
+    }
+    if t.contains('[') {
+        return TypeClass::Array;
+    }
+    class_of_name(t, dm)
+}
+
+/// Types scored from the tool's evidence: parameters matched to DWARF by ABI
+/// position (`arg_index`), the return by the reported return type, locals by
+/// stack slot after one calibration shift (the most common offset difference;
+/// the tool's frame convention differs from DWARF's frame base). Register
+/// locals are not matched (no slot to match on); they stay in `locals_truth`.
+pub fn compare_evidence(
+    truth: &Signature,
+    ev: &crate::evidence::Evidence,
+    dm: DataModel,
+) -> TypeScore {
+    let class = |t: &str| class_of_type_string(t, dm);
+    let mut by_arg: BTreeMap<u32, TypeClass> = BTreeMap::new();
+    for v in &ev.variables {
+        if let Some(i) = v.arg_index {
+            by_arg.entry(i).or_insert_with(|| class(&v.type_name));
+        }
+    }
+    let params_right = truth
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, c)| **c != TypeClass::Unknown && by_arg.get(&(*i as u32)) == Some(c))
+        .count() as u32;
+    let ret = ev.return_type.as_deref().map(class);
+    let return_right = truth.ret.is_some() && truth.ret == ret && ret != Some(TypeClass::Unknown);
+    let slots: Vec<(i64, TypeClass)> = ev
+        .variables
+        .iter()
+        .filter(|v| v.arg_index.is_none())
+        .filter_map(|v| Some((v.stack_offset?, class(&v.type_name))))
+        .collect();
+    // the shift that lines up the most slots
+    let mut votes: BTreeMap<i64, u32> = BTreeMap::new();
+    for (t, _) in &truth.local_slots {
+        for (o, _) in &slots {
+            *votes.entry(t - o).or_default() += 1;
+        }
+    }
+    let shift = votes
+        .iter()
+        .max_by(|a, b| a.1.cmp(b.1).then(b.0.abs().cmp(&a.0.abs())))
+        .map(|(s, _)| *s);
+    let locals_matched = match shift {
+        None => 0,
+        Some(sh) => truth
+            .local_slots
+            .iter()
+            .filter(|(t, c)| {
+                *c != TypeClass::Unknown && slots.iter().any(|(o, oc)| o + sh == *t && oc == c)
+            })
+            .count() as u32,
+    };
+    let params_output = by_arg.len() as u32;
+    let slots_truth = truth
+        .local_slots
+        .iter()
+        .filter(|(_, c)| *c != TypeClass::Unknown)
+        .count() as u32;
+    TypeScore {
+        params_truth: truth.params.len() as u32,
+        params_output,
+        params_right,
+        return_right,
+        locals_truth: truth.locals.len() as u32,
+        locals_output: ev
+            .variables
+            .iter()
+            .filter(|v| v.arg_index.is_none())
+            .count() as u32,
+        locals_matched,
+        slots_truth,
+        return_reported: ret.is_some(),
+        perfect: params_output == truth.params.len() as u32
+            && params_right == truth.params.len() as u32
+            && locals_matched == slots_truth,
+    }
 }
 
 pub fn compare(truth: &Signature, out: &Signature) -> TypeScore {
@@ -306,6 +411,8 @@ pub fn compare(truth: &Signature, out: &Signature) -> TypeScore {
         locals_truth: truth.locals.len() as u32,
         locals_output: out.locals.len() as u32,
         locals_matched,
+        slots_truth: 0,
+        return_reported: true,
         perfect: arity && params_right == truth.params.len() as u32 && return_right,
     }
 }
@@ -390,6 +497,7 @@ mod tests {
                 ret: Some(TypeClass::Unknown),
                 params: vec![TypeClass::Unknown; 2],
                 locals: vec![],
+                local_slots: vec![],
             },
             &unk,
         );
@@ -415,5 +523,72 @@ mod tests {
         assert_eq!(class_of_name("long double", i686), TypeClass::Float(12));
         assert_eq!(class_of_name("long double", arm), TypeClass::Float(8));
         assert_eq!(class_of_name("long double", a64), TypeClass::Float(16));
+    }
+
+    /// Types from evidence: parameters by ABI position, locals by stack slot
+    /// after one shift, nothing read from the C text.
+    #[test]
+    fn types_from_evidence() {
+        use crate::evidence::{Evidence, Variable};
+        let truth = Signature {
+            ret: Some(TypeClass::Int(4)),
+            params: vec![TypeClass::Ptr, TypeClass::Int(8)],
+            locals: vec![TypeClass::Int(4), TypeClass::Array, TypeClass::Int(8)],
+            // frame-base offsets (CFA-relative); the third local is in a register
+            local_slots: vec![(-36, TypeClass::Int(4)), (-32, TypeClass::Array)],
+        };
+        let var = |name: &str, ty: &str, arg: Option<u32>, slot: Option<i64>| Variable {
+            name: name.into(),
+            type_name: ty.into(),
+            arg_index: arg,
+            stack_offset: slot,
+            ..Default::default()
+        };
+        // the tool's frame is 16 bytes off the CFA; it lists params out of order
+        let ev = Evidence {
+            variables: vec![
+                var("b", "unsigned long", Some(1), None),
+                var("a", "char *", Some(0), None),
+                var("x", "int", None, Some(-20)),
+                var("buf", "char[8]", None, Some(-16)),
+                var("tmp", "long", None, None),
+            ],
+            ..Default::default()
+        };
+        let s = compare_evidence(&truth, &ev, DataModel::for_arch("x86_64"));
+        assert_eq!((s.params_right, s.params_output), (2, 2));
+        assert_eq!((s.locals_matched, s.slots_truth, s.locals_truth), (2, 2, 3));
+        assert!(s.perfect && !s.return_reported);
+        // on ILP32 `unsigned long` is 4 bytes: the second parameter is wrong
+        let s32 = compare_evidence(&truth, &ev, DataModel::for_arch("i686"));
+        assert!(!s32.perfect && s32.params_right == 1);
+        // a missing parameter breaks arity; a wrong slot type breaks the locals
+        let mut short = ev.clone();
+        short.variables.remove(0);
+        assert!(!compare_evidence(&truth, &short, DataModel::for_arch("x86_64")).perfect);
+        let mut wrong = ev.clone();
+        wrong.variables[2].type_name = "short".into();
+        let w = compare_evidence(&truth, &wrong, DataModel::for_arch("x86_64"));
+        assert!(!w.perfect && w.locals_matched == 1);
+        // a reported return type is scored on its own
+        let mut r = ev.clone();
+        r.return_type = Some("int".into());
+        let rr = compare_evidence(&truth, &r, DataModel::for_arch("x86_64"));
+        assert!(rr.return_reported && rr.return_right);
+    }
+
+    #[test]
+    fn type_strings_from_evidence() {
+        let dm = DataModel::for_arch("x86_64");
+        assert_eq!(class_of_type_string("char *", dm), TypeClass::Ptr);
+        assert_eq!(class_of_type_string("long long * *", dm), TypeClass::Ptr);
+        assert_eq!(class_of_type_string("void (*)(int)", dm), TypeClass::Ptr);
+        assert_eq!(class_of_type_string("char[8]", dm), TypeClass::Array);
+        assert_eq!(
+            class_of_type_string("const unsigned int", dm),
+            TypeClass::Int(4)
+        );
+        assert_eq!(class_of_type_string("struct pt", dm), TypeClass::Struct);
+        assert_eq!(class_of_type_string("undefined8", dm), TypeClass::Int(8));
     }
 }

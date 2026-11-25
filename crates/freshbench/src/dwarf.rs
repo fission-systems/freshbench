@@ -161,6 +161,7 @@ impl<'a> Cx<'a, '_> {
         direct: bool,
         params: &mut Vec<TypeClass>,
         locals: &mut Vec<TypeClass>,
+        slots: &mut Vec<(i64, TypeClass)>,
     ) -> gimli::Result<()> {
         let mut ch = node.children();
         while let Some(c) = ch.next()? {
@@ -171,15 +172,51 @@ impl<'a> Cx<'a, '_> {
                 }
                 gimli::DW_TAG_variable => {
                     if self.has_runtime_location(unit, &d) {
-                        locals.push(self.class_of_type(self.entry_type(unit, d.offset()), 0));
+                        let class = self.class_of_type(self.entry_type(unit, d.offset()), 0);
+                        if let Some(off) = fbreg(&d) {
+                            slots.push((off, class.clone()));
+                        }
+                        locals.push(class);
                     }
                 }
-                gimli::DW_TAG_lexical_block => self.collect(unit, c, false, params, locals)?,
+                gimli::DW_TAG_lexical_block => {
+                    self.collect(unit, c, false, params, locals, slots)?
+                }
                 _ => {} // inlined subroutines and nested types are not this function's variables
             }
         }
         Ok(())
     }
+}
+
+/// The frame-base offset of a variable whose location is a single
+/// `DW_OP_fbreg <sleb128>` expression.
+fn fbreg(die: &gimli::DebuggingInformationEntry<R<'_>>) -> Option<i64> {
+    let Some(AttributeValue::Exprloc(e)) = die.attr_value(gimli::DW_AT_location) else {
+        return None;
+    };
+    let b = e.0.slice();
+    if b.first() != Some(&0x91) {
+        return None;
+    }
+    let (mut v, mut shift, mut i) = (0i64, 0u32, 1usize);
+    loop {
+        let byte = *b.get(i)?;
+        v |= i64::from(byte & 0x7f) << shift;
+        shift += 7;
+        i += 1;
+        if byte & 0x80 == 0 {
+            if shift < 64 && byte & 0x40 != 0 {
+                v |= -1i64 << shift;
+            }
+            break;
+        }
+        if shift >= 63 {
+            return None;
+        }
+    }
+    // only a bare fbreg: anything after it computes another address
+    (i == b.len()).then_some(v)
 }
 
 /// low_pc -> high_pc of every subprogram that has both.
@@ -269,16 +306,18 @@ pub fn signatures(data: &[u8]) -> Result<HashMap<u64, Signature>> {
         }
         for (low, off) in subprograms {
             let ret = cx.class_of_type(cx.entry_type(ui, off), 0);
-            let (mut params, mut locals) = (Vec::new(), Vec::new());
+            let (mut params, mut locals, mut slots) = (Vec::new(), Vec::new(), Vec::new());
             let mut tree = unit.entries_tree(Some(off))?;
-            cx.collect(ui, tree.root()?, true, &mut params, &mut locals)?;
+            cx.collect(ui, tree.root()?, true, &mut params, &mut locals, &mut slots)?;
             locals.sort();
+            slots.sort();
             out.insert(
                 low,
                 Signature {
                     ret: Some(ret),
                     params,
                     locals,
+                    local_slots: slots,
                 },
             );
         }

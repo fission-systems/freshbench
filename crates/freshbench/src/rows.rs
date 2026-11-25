@@ -138,6 +138,9 @@ pub struct Row {
     /// the identity of a function across builds (`report --matched/--dedup`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// what of the tool's line mappings and variable addresses was valid
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<crate::evidence::Checked>,
 }
 
 impl Row {
@@ -272,6 +275,7 @@ impl From<V1Row> for Row {
             scorer: "decbench-v1".into(),
             failure: None,
             source: None,
+            evidence: None,
         }
     }
 }

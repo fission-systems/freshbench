@@ -156,11 +156,13 @@ struct Rec {
     code: Option<String>,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    evidence: Option<crate::evidence::Evidence>,
 }
 
-/// What a tool's run left for one row: its code (empty when none) and the
-/// error the adapter recorded.
-pub type Output = (String, Option<String>);
+/// What a tool's run left for one row: its code (empty when none), the
+/// error the adapter recorded, and the tool's line mappings and variables.
+pub type Output = (String, Option<String>, Option<crate::evidence::Evidence>);
 
 /// Decompiled code of one tool, keyed by row.
 pub fn records(root: &Path, tool: &str) -> Result<HashMap<RowKey, Output>> {
@@ -199,7 +201,7 @@ pub fn records_in(base: &Path) -> Result<HashMap<RowKey, Output>> {
                     binary: r.binary,
                     function: r.function,
                 };
-                v.push((key, (r.code.unwrap_or_default(), r.error)));
+                v.push((key, (r.code.unwrap_or_default(), r.error, r.evidence)));
             }
             Ok(v)
         })
@@ -378,18 +380,55 @@ pub fn rescore_records(
         .take(limit_tus.unwrap_or(usize::MAX))
         .collect();
     let sigs = SignatureCache::default();
+    let starts = instruction_starts(root, &targets);
     // Recursive-descent parsers and the CFG builder recurse with the nesting of the
     // text; deeply nested decompiler output overflows a default thread stack.
     let pool = big_stack_pool()?;
     let mut rows: Vec<Row> = pool.install(|| {
         groups
             .par_iter()
-            .flat_map_iter(|(sp, ts)| score_tu(root, sp, ts, code, tool, budget, cache, &sigs))
+            .flat_map_iter(|(sp, ts)| {
+                score_tu(root, sp, ts, code, tool, budget, cache, &sigs, &starts)
+            })
             .collect()
     });
     rows.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(rows)
 }
+
+/// (unstripped binary, function low_pc) -> where an instruction of that
+/// function may start. Each binary is read once.
+pub type StartsMap = HashMap<(String, u64), crate::evidence::Starts>;
+
+pub fn instruction_starts(root: &Path, targets: &[Target]) -> StartsMap {
+    let mut by_bin: BTreeMap<&str, Vec<(&str, u64)>> = BTreeMap::new();
+    for t in targets {
+        if let (Some(b), Some(a)) = (&t.binary_path, t.address) {
+            by_bin
+                .entry(b.as_str())
+                .or_default()
+                .push((t.key.arch.as_str(), a));
+        }
+    }
+    by_bin
+        .par_iter()
+        .flat_map_iter(|(bin, fns)| {
+            let data = std::fs::read(root.join(bin)).unwrap_or_default();
+            let ranges = crate::dwarf::ranges(&data).unwrap_or_default();
+            fns.iter()
+                .filter_map(|(arch, low)| {
+                    let st =
+                        crate::evidence::starts_in(&data, arch, *low, ranges.get(low).copied())?;
+                    Some(((bin.to_string(), *low), st))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Tag of an output that is not scored because no line maps to an instruction
+/// of the function.
+pub const NO_LINE_MAPPINGS: &str = "no_line_mappings";
 
 /// A rayon pool whose threads have a 512 MiB stack (address space, not memory).
 pub fn big_stack_pool() -> Result<rayon::ThreadPool> {
@@ -440,6 +479,7 @@ fn score_tu(
     budget: u64,
     cache: &ScoreCache,
     sigs: &SignatureCache,
+    starts: &StartsMap,
 ) -> Vec<Row> {
     let tu = std::fs::read(root.join(sp))
         .map(|b| String::from_utf8_lossy(&b).into_owned())
@@ -470,18 +510,19 @@ fn score_tu(
             scorer: score::SCORER.to_string(),
             failure: None,
             source: Some(t.source.clone()),
+            evidence: None,
         };
         let Some(text) = code
             .get(&t.key)
-            .map(|(c, _)| c)
+            .map(|(c, _, _)| c)
             .filter(|c| !c.trim().is_empty())
         else {
             row.failure = Some(
                 match code.get(&t.key) {
                     // the run never produced a record for this row
                     None => "no_record",
-                    Some((_, Some(e))) => crate::adapters::failure_kind(e),
-                    Some((_, None)) => "empty",
+                    Some((_, Some(e), _)) => crate::adapters::failure_kind(e),
+                    Some((_, None, _)) => "empty",
                 }
                 .to_string(),
             );
@@ -490,6 +531,30 @@ fn score_tu(
         };
         let out_sha = manifest::sha256_bytes(text.as_bytes());
         row.code_sha256 = Some(out_sha.clone());
+        // the tool's evidence, every address checked against the function's
+        // instructions; without one line that maps to an instruction of this
+        // function the output is not scored (DecBench's line-mapping contract)
+        let mut ev = code.get(&t.key).and_then(|(_, _, e)| e.clone());
+        let st = match (&t.binary_path, t.address) {
+            (Some(b), Some(a)) => starts.get(&(b.clone(), a)),
+            _ => None,
+        };
+        let checked = match (&mut ev, st) {
+            (Some(e), Some(st)) => crate::evidence::validate(e, st),
+            _ => crate::evidence::Checked::default(),
+        };
+        let mut checked = checked;
+        checked.code_lines = text.lines().filter(|l| !l.trim().is_empty()).count() as u32;
+        row.evidence = Some(checked.clone());
+        if checked.mapped_lines == 0 {
+            row.outcome = Outcome::Unscored;
+            row.tags = vec![NO_LINE_MAPPINGS.into()];
+            out.push(row);
+            continue;
+        }
+        let ev = ev.unwrap_or_default();
+        let ev_sha =
+            manifest::sha256_bytes(serde_json::to_string(&ev).unwrap_or_default().as_bytes());
         let src = src_cache.entry(t.key.function.as_str()).or_insert_with(|| {
             let def = defs.get(&t.key.function).copied().flatten()?;
             let t = tu.as_deref()?;
@@ -534,7 +599,7 @@ fn score_tu(
                 graph_id(sg),
                 jg.map(graph_id).unwrap_or_default()
             ),
-            &out_sha,
+            &format!("{out_sha}|{ev_sha}"),
         );
         let c = match cache.get(&key) {
             Some(c) => c,
@@ -550,6 +615,7 @@ fn score_tu(
                         text,
                         &t.key.function,
                         budget,
+                        &ev,
                     )
                 }))
                 .unwrap_or_else(|_| Cached {
@@ -584,6 +650,7 @@ pub fn score_output(
     text: &str,
     function: &str,
     budget: u64,
+    ev: &crate::evidence::Evidence,
 ) -> Cached {
     let unscored = |tag: &str| Cached {
         outcome: Outcome::Unscored,
@@ -619,7 +686,11 @@ pub fn score_output(
             output_edges: Some(jog.edges.len() as u32),
         })
     });
-    let types = truth.map(|t| crate::types::compare(t, &crate::types::from_source(odef, text, dm)));
+    // types come from the tool's evidence only, never from the C text; a tool
+    // that reports no variables and no return type has no type score
+    let types = truth
+        .filter(|_| !ev.variables.is_empty() || ev.return_type.is_some())
+        .map(|t| crate::types::compare_evidence(t, ev, dm));
     Cached {
         outcome: Outcome::Scored,
         joern_ged,
@@ -662,7 +733,8 @@ pub fn recompile_all(
     let todo: Vec<&Target> = targets
         .iter()
         .filter(|t| {
-            code.get(&t.key).is_some_and(|(c, _)| !c.trim().is_empty())
+            code.get(&t.key)
+                .is_some_and(|(c, _, _)| !c.trim().is_empty())
                 && t.binary_path.is_some()
                 && t.address.is_some()
         })
@@ -767,9 +839,20 @@ mod tests {
                 )]
                 .into(),
             };
-            std::fs::create_dir_all(root.join(&build)).unwrap();
+            std::fs::create_dir_all(root.join(&build).join("binaries")).unwrap();
             std::fs::write(root.join(&build).join("manifest.json"), serde_json::to_vec(&pb).unwrap()).unwrap();
-            let rec = Record { binary: "bin".into(), function: "f".into(), address: 0x10, code: Some(code.into()), error: None };
+            // the function's bytes: push rbp; mov eax, 1; ret
+            let elf = crate::evidence::test_elf(0x10, &[0x55, 0xb8, 1, 0, 0, 0, 0xc3]);
+            std::fs::write(root.join(&build).join("binaries/bin"), elf).unwrap();
+            // the tool maps line 3 to the `mov` and line 4 to an address inside it
+            let ev = crate::evidence::Evidence {
+                line_mappings: vec![
+                    crate::evidence::LineMap { line: 3, addresses: vec![0x11] },
+                    crate::evidence::LineMap { line: 4, addresses: vec![0x12] },
+                ],
+                ..Default::default()
+            };
+            let rec = Record { binary: "bin".into(), function: "f".into(), address: 0x10, code: Some(code.into()), error: None, evidence: Some(ev) };
             write_records(&root.join("results/t").join(&build).join("p/records.jsonl.gz"), &[rec]).unwrap();
         }
     }
@@ -801,6 +884,52 @@ mod tests {
             ),
             (0, 3)
         );
+    }
+
+    /// Every output must map at least one line to an instruction of its
+    /// function; otherwise it is not scored (DecBench's line-mapping contract).
+    #[test]
+    fn outputs_without_valid_line_mappings_are_not_scored() {
+        let d = tempfile::tempdir().unwrap();
+        tree(d.path());
+        let rewrite = |config: &str, ev: Option<crate::evidence::Evidence>| {
+            let p = d
+                .path()
+                .join(format!("results/t/gcc-{config}/p/records.jsonl.gz"));
+            let mut r: Vec<Record> = {
+                use std::io::BufRead;
+                std::io::BufReader::new(flate2::read::GzDecoder::new(
+                    std::fs::File::open(&p).unwrap(),
+                ))
+                .lines()
+                .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+                .collect()
+            };
+            r[0].evidence = ev;
+            write_records(&p, &r).unwrap();
+        };
+        // O3: no evidence at all; Os: an address in the middle of an instruction
+        rewrite("O3", None);
+        rewrite(
+            "Os",
+            Some(crate::evidence::Evidence {
+                line_mappings: vec![crate::evidence::LineMap {
+                    line: 2,
+                    addresses: vec![0x12, 0x99],
+                }],
+                ..Default::default()
+            }),
+        );
+        let rows = rescore(d.path(), "t", None, 1000, &ScoreCache::default(), &[]).unwrap();
+        let by = |c: &str| rows.iter().find(|r| r.key.config == c).unwrap();
+        assert_eq!(by("O2").outcome, Outcome::Scored);
+        assert_eq!(by("O2").evidence.as_ref().unwrap().mapped_lines, 1);
+        assert_eq!(by("O2").evidence.as_ref().unwrap().dropped_addresses, 1);
+        for c in ["O3", "Os"] {
+            assert_eq!(by(c).outcome, Outcome::Unscored, "{c}");
+            assert_eq!(by(c).tags, [NO_LINE_MAPPINGS]);
+            assert!(by(c).code_sha256.is_some());
+        }
     }
 
     #[test]

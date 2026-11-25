@@ -171,11 +171,31 @@ impl Starts {
     }
 }
 
+/// The instruction starts of the function `[low, high)` of an unstripped
+/// binary (`high` None: to the end of its section). None when `low` is in no
+/// section with bytes.
+pub fn starts_in(data: &[u8], arch: &str, low: u64, high: Option<u64>) -> Option<Starts> {
+    use object::{Object, ObjectSection};
+    let f = object::File::parse(data).ok()?;
+    let s = f
+        .sections()
+        .find(|s| s.file_range().is_some() && s.address() <= low && low < s.address() + s.size())?;
+    let end = s.address() + s.size();
+    let high = high.unwrap_or(end).min(end).max(low);
+    let bytes = s.data().ok()?;
+    let a = (low - s.address()) as usize;
+    let b = ((high - s.address()) as usize).min(bytes.len());
+    Some(Starts::new(arch, low, high, &bytes[a.min(b)..b]))
+}
+
 /// What survived validation.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Checked {
     /// output lines with at least one valid instruction address
     pub mapped_lines: u32,
+    /// non-blank lines of the output (the mapping coverage's denominator)
+    #[serde(default)]
+    pub code_lines: u32,
     pub valid_addresses: u32,
     pub dropped_addresses: u32,
 }
@@ -197,6 +217,33 @@ pub fn validate(ev: &mut Evidence, starts: &Starts) -> Checked {
         keep(&mut v.addresses, &mut c);
     }
     c
+}
+
+/// Test helper: an x86-64 ELF executable whose `.text` holds `code` at `addr`.
+#[cfg(test)]
+pub fn test_elf(addr: u64, code: &[u8]) -> Vec<u8> {
+    use object::write::{Object, Symbol, SymbolSection};
+    use object::{
+        Architecture, BinaryFormat, Endianness, SectionKind, SymbolFlags, SymbolKind, SymbolScope,
+    };
+    let mut o = Object::new(BinaryFormat::Elf, Architecture::X86_64, Endianness::Little);
+    let text = o.section_id(object::write::StandardSection::Text);
+    // pad so the code lands at `addr` inside the section
+    let mut bytes = vec![0x90u8; addr as usize];
+    bytes.extend_from_slice(code);
+    o.set_section_data(text, bytes, 1);
+    o.add_symbol(Symbol {
+        name: b"f".to_vec(),
+        value: addr,
+        size: code.len() as u64,
+        kind: SymbolKind::Text,
+        scope: SymbolScope::Linkage,
+        weak: false,
+        section: SymbolSection::Section(text),
+        flags: SymbolFlags::None,
+    });
+    let _ = SectionKind::Text;
+    o.write().unwrap()
 }
 
 #[cfg(test)]
@@ -263,5 +310,9 @@ mod tests {
         assert!(a64.contains(0x404) && !a64.contains(0x406));
         let t2 = Starts::new("armv7", 0x400, 0x410, &[]);
         assert!(t2.contains(0x406) && !t2.contains(0x407));
+        // from a binary: the section holding the function
+        let elf = test_elf(0x10, &code);
+        let s = starts_in(&elf, "x86_64", 0x10, None).unwrap();
+        assert!(s.contains(0x10) && s.contains(0x14) && !s.contains(0x12));
     }
 }
