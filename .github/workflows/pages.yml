@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       evaluate_runs: { description: "JSON list of evaluate run ids whose eval-* and bound-* artifacts to publish", required: true }
-      corpus: { description: "corpus line shown on the page (milestone, dataset revision)", required: true }
+      deploy: { description: "Publish to GitHub Pages (false = downloadable preview)", type: boolean, default: false }
 permissions: { contents: read, actions: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: false }
 jobs:
@@ -21,10 +21,13 @@ jobs:
           key: cargo-release-${{ hashFiles('Cargo.lock') }}
       - run: cargo build --release --locked -p freshbench
       - name: collect rows
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          EVALUATE_RUNS: "${{ inputs.evaluate_runs }}"
         run: |
           mkdir -p site-src/rows
-          for id in $(echo '${{ inputs.evaluate_runs }}' | jq -r '.[]'); do
+          jq -e 'type == "array" and length > 0 and all(.[]; tostring | test("^[0-9]+$"))' <<< "$EVALUATE_RUNS" >/dev/null
+          for id in $(jq -r '.[]' <<< "$EVALUATE_RUNS"); do
             gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -p 'bound-*' -D "dl/$id"
           done
           # every rows/<tool>.jsonl of every artifact, named uniquely
@@ -32,10 +35,30 @@ jobs:
             cp "$f" "site-src/rows/$(echo "$f" | tr '/' '_')"
           done
           ls site-src/rows | wc -l
-      - name: meta (from the runs' own provenance, not the current pins)
+      - name: fetch pinned M1 truth (no binaries or source files)
         run: |
-          target/release/freshbench provenance meta dl --corpus '${{ inputs.corpus }}' \
-            --note 'evaluate runs: ${{ inputs.evaluate_runs }}' --out meta.json
+          python -m pip install 'huggingface_hub==0.36.0'
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+          from ci.leaderboard_gate import REVISION
+          snapshot_download(repo_id="sjkim1127/freshbench-v2", repo_type="dataset",
+                            revision=REVISION, allow_patterns=["m1/truth/*"],
+                            local_dir="corpus-data")
+          PY
+      - name: meta (from the runs' own provenance, not the current pins)
+        env:
+          EVALUATE_RUNS: "${{ inputs.evaluate_runs }}"
+        run: |
+          REVISION=$(python -c 'from ci.leaderboard_gate import REVISION; print(REVISION)')
+          target/release/freshbench provenance meta dl --corpus "M1 · dataset $REVISION" \
+            --note "evaluate runs: $EVALUATE_RUNS" --out meta.json
+          jq '.title = "FreshBench M1 Leaderboard"' meta.json > meta.tmp
+          mv meta.tmp meta.json
+      - name: validate publication inputs
+        run: |
+          python ci/leaderboard_gate.py --corpus corpus-data/m1 \
+            --manifest corpus/m1/manifest.jsonl.gz --rows site-src/rows \
+            --meta meta.json --registry ci/tools.json
       - name: last upstream commit of every registered tool
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
@@ -49,7 +72,7 @@ jobs:
       - name: report, all rows and one function per renamed-clone group
         run: |
           POLICY="--tools ci/tools.json --last-commits last.json --now $(date -u +%F)"
-          EXTRA="--boundaries dl --speed dl $POLICY"
+          EXTRA="--corpus corpus-data/m1 --boundaries dl --speed dl $POLICY"
           target/release/freshbench report site-src --out site --meta meta.json $EXTRA
           # DecBench's maintainer asked us to be honest about duplication: every
           # published score also appears with clones removed
@@ -59,9 +82,13 @@ jobs:
           # what each tool cost: CPU and wall time and memory per binary and per function
           target/release/freshbench speed dl > site/speed.md
           target/release/freshbench speed dl --json > site/speed.json
+      - uses: actions/upload-artifact@v4
+        with: { name: leaderboard-preview, path: site, if-no-files-found: error }
       - uses: actions/upload-pages-artifact@v3
+        if: inputs.deploy
         with: { path: site }
   deploy:
+    if: inputs.deploy
     needs: build
     runs-on: ubuntu-24.04
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
