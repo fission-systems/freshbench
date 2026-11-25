@@ -92,7 +92,7 @@ fn comment_start(arch: &str) -> &'static str {
     match arch {
         "aarch64" => "//",
         "armv7" => " @", // `#` is the immediate marker on ARM, not a comment
-        _ => "#",       // x86 AT&T: immediates are `$n`
+        _ => "#",        // x86 AT&T: immediates are `$n`
     }
 }
 
@@ -112,7 +112,8 @@ pub fn parse_disassembly(text: &str, arch: &str) -> Vec<Insn> {
         if rest.starts_with("R_") {
             // a relocation line belongs to the instruction before it
             if let Some(last) = raw.last_mut() {
-                last.2.push(rest.split_whitespace().collect::<Vec<_>>().join(" "));
+                last.2
+                    .push(rest.split_whitespace().collect::<Vec<_>>().join(" "));
             }
             continue;
         }
@@ -162,9 +163,28 @@ fn control_transfer(text: &str) -> bool {
     let mnemonic = text.split_whitespace().next().unwrap_or("");
     mnemonic.starts_with("call")
         || mnemonic.starts_with('j')
-        || matches!(mnemonic, "b" | "bl" | "blx" | "b.w" | "b.n" | "cbz" | "cbnz" | "tbz" | "tbnz")
+        || matches!(
+            mnemonic,
+            "b" | "bl" | "blx" | "b.w" | "b.n" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
         || mnemonic.starts_with("b.")
-        || matches!(mnemonic, "beq" | "bne" | "bgt" | "bge" | "blt" | "ble" | "bhi" | "bls" | "bcc" | "bcs" | "bmi" | "bpl" | "bvs" | "bvc")
+        || matches!(
+            mnemonic,
+            "beq"
+                | "bne"
+                | "bgt"
+                | "bge"
+                | "blt"
+                | "ble"
+                | "bhi"
+                | "bls"
+                | "bcc"
+                | "bcs"
+                | "bmi"
+                | "bpl"
+                | "bvs"
+                | "bvc"
+        )
 }
 
 /// Accept only known direct-control relocation forms for linked originals.
@@ -174,8 +194,8 @@ fn direct_relocation_target(record: &str) -> Option<&str> {
     let (kind, target) = record.split_once(' ')?;
     match kind {
         "R_X86_64_PLT32" | "R_X86_64_PC32" => target.strip_suffix("-0x4"),
-        "R_386_PC32" | "R_386_PLT32" | "R_AARCH64_CALL26" | "R_AARCH64_JUMP26"
-        | "R_ARM_CALL" | "R_ARM_JUMP24" | "R_ARM_THM_CALL" | "R_ARM_THM_JUMP24" => {
+        "R_386_PC32" | "R_386_PLT32" | "R_AARCH64_CALL26" | "R_AARCH64_JUMP26" | "R_ARM_CALL"
+        | "R_ARM_JUMP24" | "R_ARM_THM_CALL" | "R_ARM_THM_JUMP24" => {
             (!target.contains('+') && !target.contains('-')).then_some(target)
         }
         _ => None,
@@ -487,8 +507,14 @@ mod tests {
         let a = insns(" 1000: callq 0x2000 <foo@plt>\n", "x86_64");
         let b = insns(" 1000: callq 0x3000 <bar@plt>\n", "x86_64");
         assert_eq!(edit_distance(&a, &b), 1);
-        let same = insns(" 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 foo-0x4\n", "x86_64");
-        let wrong = insns(" 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 bar-0x4\n", "x86_64");
+        let same = insns(
+            " 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 foo-0x4\n",
+            "x86_64",
+        );
+        let wrong = insns(
+            " 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 bar-0x4\n",
+            "x86_64",
+        );
         assert_eq!(edit_distance(&a, &same), 0);
         assert_eq!(edit_distance(&a, &wrong), 1);
         assert_eq!(edit_distance(&same, &wrong), 1);
