@@ -1184,6 +1184,19 @@ mod tests {
     }
 
     #[test]
+    fn generated_pages_share_dashboard_theme_and_accessible_tables() {
+        let s = summarize(&table(), 20);
+        let html = render_index(&s, &Meta::default());
+        assert!(html.contains("class=topbar"));
+        assert!(html.contains("data-theme-toggle"));
+        assert!(html.contains("class=table-scroll tabindex=0"));
+        assert!(html.contains("id=main-metrics"));
+        assert!(html.contains("<!-- publication-nav -->"));
+        assert!(html.contains("summary.json"));
+        assert!(html.contains("b&lt;x&gt;"));
+    }
+
+    #[test]
     fn thousands() {
         assert_eq!(num(0), "0");
         assert_eq!(num(1234567), "1,234,567");
