@@ -13,7 +13,8 @@ on:
     inputs:
       evaluate_runs: { description: "JSON list of completed evaluate run IDs; [] for landing page only", default: "[]" }
       deploy: { description: "Publish to GitHub Pages (false = downloadable preview)", type: boolean, default: false }
-permissions: { contents: read, actions: read, pages: write, id-token: write }
+# pages/id-token write only on the two jobs that deploy (bootstrap, deploy)
+permissions: { contents: read, actions: read }
 concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   plan:
@@ -23,7 +24,7 @@ jobs:
       deploy: ${{ steps.p.outputs.deploy }}
       bootstrap: ${{ steps.p.outputs.bootstrap }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { fetch-depth: 0 }
       - id: p
         env:
@@ -55,11 +56,12 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/main' && ((github.event_name == 'push' && needs.plan.outputs.bootstrap == 'true') || (github.event_name == 'workflow_dispatch' && inputs.deploy && (inputs.evaluate_runs == '[]' || inputs.evaluate_runs == '')))
     runs-on: ubuntu-24.04
+    permissions: { contents: read, actions: read, pages: write, id-token: write }
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - name: protect any existing leaderboard
         id: guard
         env:
@@ -92,19 +94,19 @@ jobs:
           cp site-bootstrap/index.html bootstrap-site/index.html
           cp crates/freshbench/src/report.css bootstrap-site/theme.css
           cp crates/freshbench/src/report-theme.js bootstrap-site/theme.js
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         if: steps.guard.outputs.publish == 'true'
         with: { path: bootstrap-site }
       - id: d
         if: steps.guard.outputs.publish == 'true'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
   build:
     needs: plan
     if: needs.plan.outputs.runs != '[]' && needs.plan.outputs.runs != ''
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -186,16 +188,17 @@ jobs:
           # what each tool cost: CPU and wall time and memory per binary and per function
           target/release/freshbench speed dl > site/speed.md
           target/release/freshbench speed dl --json > site/speed.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: leaderboard-preview, path: site, if-no-files-found: error }
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         if: needs.plan.outputs.deploy == 'true'
         with: { path: site }
   deploy:
     if: needs.plan.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
     needs: [plan, build]
     runs-on: ubuntu-24.04
+    permissions: { contents: read, actions: read, pages: write, id-token: write }
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:
       - id: d
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

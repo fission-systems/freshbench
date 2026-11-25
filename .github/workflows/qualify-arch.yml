@@ -13,21 +13,26 @@ jobs:
     runs-on: ubuntu-24.04
     outputs: { repos: "${{ steps.m.outputs.repos }}" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: m
-        run: echo "repos=$(jq -c . '${{ inputs.batch }}')" >> "$GITHUB_OUTPUT"
+        env:
+          QA_BATCH: ${{ inputs.batch }}
+        run: |
+          # a relative path such as selection/m1/m1.json; no option-like or shell-special names
+          if ! [[ "$QA_BATCH" =~ ^[A-Za-z0-9_.+][A-Za-z0-9_./+-]*$ ]]; then echo "invalid batch path: $QA_BATCH" >&2; exit 1; fi
+          echo "repos=$(jq -c . "$QA_BATCH")" >> "$GITHUB_OUTPUT"
   freshbench:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             target
           key: cargo-release-${{ hashFiles('Cargo.lock') }}
       - run: cargo build --release --locked -p freshbench
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: freshbench-bin, path: target/release/freshbench }
   build:
     needs: [plan, freshbench]
@@ -40,20 +45,26 @@ jobs:
         repo: ${{ fromJSON(needs.plan.outputs.repos) }}
         arch: ${{ fromJSON(inputs.arches) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: freshbench-bin, path: "${{ runner.temp }}/fb" }
       - run: chmod +x "$RUNNER_TEMP/fb/freshbench" && echo "FRESHBENCH_BIN=$RUNNER_TEMP/fb/freshbench" >> "$GITHUB_ENV"
       - name: image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
           source ci/pins.env
           docker pull -q "$BUILD_IMAGE_CROSS"
       - name: qualify
+        env:
+          QA_REPO: ${{ matrix.repo }}
+          QA_ARCH: ${{ matrix.arch }}
         run: |
-          r='${{ matrix.repo }}'; r0="${r%@*}"; slug="${r0//\//__}"
+          r="$QA_REPO"; r0="${r%@*}"; slug="${r0//\//__}"
           echo "SLUG=$slug" >> "$GITHUB_ENV"
-          ci/qualify_arch.sh "$r" "$RUNNER_TEMP/q/$slug" '${{ matrix.arch }}'
+          ci/qualify_arch.sh "$r" "$RUNNER_TEMP/q/$slug" "$QA_ARCH"
           cat "$RUNNER_TEMP/q/$slug/status.json"
       - name: pack
         if: always()
@@ -65,6 +76,6 @@ jobs:
           if grep -q '"result": "qualifies"' "$d/status.json"; then
             tar -C "$d" -cf "$RUNNER_TEMP/up/prep.tar" prep status.json license
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: "qual-${{ env.SLUG }}-${{ matrix.arch }}", path: "${{ runner.temp }}/up", retention-days: 90 }
