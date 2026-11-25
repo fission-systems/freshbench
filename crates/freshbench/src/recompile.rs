@@ -82,12 +82,16 @@ pub struct Insn {
     /// the object file has a relocation in this instruction: its address
     /// operand is not known until link time
     pub reloc: bool,
+    /// Symbol annotation of an out-of-function direct control transfer.
+    pub external_target: Option<String>,
+    /// Full relocation records, retaining type, symbol and addend.
+    pub relocations: Vec<String>,
 }
 
 fn comment_start(arch: &str) -> &'static str {
     match arch {
         "aarch64" => "//",
-        "armv7" => "@", // `#` is the immediate marker on ARM, not a comment
+        "armv7" => " @", // `#` is the immediate marker on ARM, not a comment
         _ => "#",       // x86 AT&T: immediates are `$n`
     }
 }
@@ -95,7 +99,7 @@ fn comment_start(arch: &str) -> &'static str {
 /// Instructions from `llvm-objdump -d [-r] --no-show-raw-insn` text. Nothing a
 /// compiler chose is dropped: immediates, displacements and registers stay.
 pub fn parse_disassembly(text: &str, arch: &str) -> Vec<Insn> {
-    let mut raw: Vec<(u64, String, bool)> = Vec::new();
+    let mut raw: Vec<(u64, String, Vec<String>)> = Vec::new();
     for line in text.lines() {
         let Some((addr, rest)) = line.split_once(':') else {
             continue;
@@ -108,7 +112,7 @@ pub fn parse_disassembly(text: &str, arch: &str) -> Vec<Insn> {
         if rest.starts_with("R_") {
             // a relocation line belongs to the instruction before it
             if let Some(last) = raw.last_mut() {
-                last.2 = true;
+                last.2.push(rest.split_whitespace().collect::<Vec<_>>().join(" "));
             }
             continue;
         }
@@ -125,18 +129,57 @@ pub fn parse_disassembly(text: &str, arch: &str) -> Vec<Insn> {
         raw.push((
             addr,
             s.split_whitespace().collect::<Vec<_>>().join(" "),
-            false,
+            Vec::new(),
         ));
     }
     let (Some(first), Some(last)) = (raw.first().map(|r| r.0), raw.last().map(|r| r.0)) else {
         return vec![];
     };
     raw.into_iter()
-        .map(|(_, s, reloc)| Insn {
-            text: relative_targets(&s, first, last),
-            reloc,
+        .map(|(_, s, relocations)| {
+            let external_target = external_target(&s, first, last);
+            Insn {
+                text: relative_targets(&s, first, last),
+                reloc: !relocations.is_empty(),
+                external_target,
+                relocations,
+            }
         })
         .collect()
+}
+
+/// Identify direct branch/call annotations outside the function. Do not treat
+/// an address inside the current function as a symbol reference.
+fn external_target(s: &str, first: u64, last: u64) -> Option<String> {
+    let (before, annotation) = s.split_once('<')?;
+    let symbol = annotation.split_once('>')?.0;
+    let address = before.split_whitespace().last()?.strip_prefix("0x")?;
+    let address = u64::from_str_radix(address, 16).ok()?;
+    (address < first || address > last).then(|| symbol.to_string())
+}
+
+fn control_transfer(text: &str) -> bool {
+    let mnemonic = text.split_whitespace().next().unwrap_or("");
+    mnemonic.starts_with("call")
+        || mnemonic.starts_with('j')
+        || matches!(mnemonic, "b" | "bl" | "blx" | "b.w" | "b.n" | "cbz" | "cbnz" | "tbz" | "tbnz")
+        || mnemonic.starts_with("b.")
+        || matches!(mnemonic, "beq" | "bne" | "bgt" | "bge" | "blt" | "ble" | "bhi" | "bls" | "bcc" | "bcs" | "bmi" | "bpl" | "bvs" | "bvc")
+}
+
+/// Accept only known direct-control relocation forms for linked originals.
+/// x86 PC-relative calls use the conventional -4 addend; ARM direct call
+/// relocations normally have no printed addend. Other forms are not proof.
+fn direct_relocation_target(record: &str) -> Option<&str> {
+    let (kind, target) = record.split_once(' ')?;
+    match kind {
+        "R_X86_64_PLT32" | "R_X86_64_PC32" => target.strip_suffix("-0x4"),
+        "R_386_PC32" | "R_386_PLT32" | "R_AARCH64_CALL26" | "R_AARCH64_JUMP26"
+        | "R_ARM_CALL" | "R_ARM_JUMP24" | "R_ARM_THM_CALL" | "R_ARM_THM_JUMP24" => {
+            (!target.contains('+') && !target.contains('-')).then_some(target)
+        }
+        _ => None,
+    }
 }
 
 /// `0x401136 <f+0x10>` -> `@+0x10` for a target inside `[first, last]`, else `ADDR`.
@@ -221,6 +264,29 @@ fn has_address_operand(text: &str) -> bool {
 /// identical up to the operand the linker fills in: the address operand when
 /// either has one, else the `$`/`#` immediate (`add x0, x0, :lo12:sym`).
 pub fn same_insn(a: &Insn, b: &Insn) -> bool {
+    // Never discard a direct control-transfer target merely because both
+    // addresses were normalized to ADDR or both objects contain placeholders.
+    if control_transfer(&a.text) || control_transfer(&b.text) {
+        if a.reloc || b.reloc {
+            if a.reloc {
+                if a.relocations != b.relocations || !b.reloc {
+                    return false;
+                }
+            } else {
+                let Some(target) = a.external_target.as_deref() else {
+                    return false;
+                };
+                let target = target.strip_suffix("@plt").unwrap_or(target);
+                if b.relocations.len() != 1
+                    || direct_relocation_target(&b.relocations[0]) != Some(target)
+                {
+                    return false;
+                }
+            }
+        } else if a.external_target != b.external_target {
+            return false;
+        }
+    }
     if a.text == b.text {
         return true;
     }
@@ -336,6 +402,7 @@ pub fn score(
     let original = objdump(
         tc,
         &[
+            "-r".to_string(),
             format!("--start-address={low:#x}"),
             format!("--stop-address={high:#x}"),
         ],
@@ -413,6 +480,18 @@ mod tests {
         let x = insns(" 0:\taddl\t$0x11, %eax\n", "x86_64");
         let y = insns(" 0:\taddl\t$0x12, %eax\n", "x86_64");
         assert!(!same_insn(&x[0], &y[0]));
+    }
+
+    #[test]
+    fn external_calls_keep_symbol_identity() {
+        let a = insns(" 1000: callq 0x2000 <foo@plt>\n", "x86_64");
+        let b = insns(" 1000: callq 0x3000 <bar@plt>\n", "x86_64");
+        assert_eq!(edit_distance(&a, &b), 1);
+        let same = insns(" 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 foo-0x4\n", "x86_64");
+        let wrong = insns(" 0: callq 0x5 <f+0x5>\n 1: R_X86_64_PLT32 bar-0x4\n", "x86_64");
+        assert_eq!(edit_distance(&a, &same), 0);
+        assert_eq!(edit_distance(&a, &wrong), 1);
+        assert_eq!(edit_distance(&same, &wrong), 1);
     }
 
     #[test]
