@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""rev.ng adapter (see adapters/README.md). Needs REVNG_BIN (the `revng`
+launcher of the pinned binary distribution) and a Python with PyYAML.
+
+rev.ng is run only as a subprocess, in a throwaway project per binary:
+
+    revng project --storage-provider 'local://?inline' init <binary>
+
+runs rev.ng's `initial-auto-analysis` and leaves its model in `revng.yml`.
+rev.ng loads a dynamic object at its default base (0x400000); the constant
+difference between rev.ng's lowest segment and the ELF's lowest PT_LOAD is
+subtracted from every address rev.ng reports, and added to requested ones.
+
+Address mode: a requested start rev.ng's analysis did not make a function is
+added to the model's `Functions` (`apply-diff`, `Entry` only) and the same
+`initial-auto-analysis` is run again, so the new function gets rev.ng's own
+prototype and stack frame. If that fails the adapter exits non-zero, so
+FreshBench bisects the request until the start rev.ng cannot take is alone
+(a start outside code makes rev.ng's DetectABI assert; its worker crash can
+also leave the command running, which the runner's timeout ends the same
+way). Then `artifact emit-c <entries>` gives one PTML
+document per function. PTML carries, on every C fragment lifted from machine
+code, a `data-action-context-location="/instruction/<fn>/<block>/<insn>"`
+attribute (rev.ng's own markup, used by its `codeSwitch` action and by its
+`edit-c-body` analysis): line N's addresses are the instructions of the
+fragments printed on line N. No instruction region spans a line break.
+`code` is the PTML with the markup stripped (what `revng ptml -p` prints).
+
+Variables come from rev.ng's own markup, never from parsing C:
+* parameters: the prototype span `/cabi-argument/<prototype>/<index>`, whose
+  index is the C ABI position; its type is the span's text without the
+  parameter name (the declaration minus its identifier, i.e. C's type name).
+  A function whose prototype rev.ng left as a raw register list
+  (`/raw-argument/<prototype>/<register>`, `_ABI(raw_...)`) has no ABI
+  positions, so its arguments are not reported.
+* return type: the `/return-value/<prototype>` span (for a raw prototype,
+  rev.ng's struct of return registers).
+* stack locals: the fields of the function's stack frame type
+  (`Function.StackFrame.Type` in the model), each a `/struct-field/<type>/<offset>`
+  span of `artifact emit-type-and-global-header`; `stack_offset` is the field
+  offset in rev.ng's frame struct (one constant shift from DWARF's frame base).
+Register locals (`var_N`) carry no declaration span and no slot; they are
+left out.
+
+List mode (--list-functions): the model's `Functions` after
+`initial-auto-analysis` (rev.ng's own discovery, no hints); `end` is the
+highest `End` of the blocks of the function's own CFG (`artifact emit-cfg`,
+`MainFunction`), or null when rev.ng gives no CFG for it.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tarfile
+import tempfile
+import xml.etree.ElementTree as ET
+
+import yaml
+
+try:
+    Loader = yaml.CSafeLoader
+except AttributeError:  # pure-Python PyYAML
+    Loader = yaml.SafeLoader
+
+STORAGE = "local://?inline"  # the cache lives in the throwaway project directory
+CODE_TYPE = {"x86": "Code_x86", "x86_64": "Code_x86_64", "aarch64": "Code_aarch64", "arm": "Code_arm"}
+MA = re.compile(r"^(0x[0-9a-fA-F]+):(\w+)")
+INSN = re.compile(r"^/instruction/[^/]+/[^/]+/(0x[0-9a-fA-F]+):(\w+)")
+CTX = "data-action-context-location"
+DEF = "data-location-definition"
+
+
+def lowest_load(path):
+    """The lowest PT_LOAD p_vaddr of an ELF file."""
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != b"\x7fELF":
+        raise SystemExit("not an ELF file")
+    is64, e = data[4] == 2, "<" if data[5] == 1 else ">"
+    if is64:
+        (phoff,), (phentsize, phnum) = struct.unpack_from(e + "Q", data, 0x20), struct.unpack_from(e + "HH", data, 0x36)
+    else:
+        (phoff,), (phentsize, phnum) = struct.unpack_from(e + "I", data, 0x1C), struct.unpack_from(e + "HH", data, 0x2A)
+    loads = []
+    for i in range(phnum):
+        o = phoff + i * phentsize
+        p_type = struct.unpack_from(e + "I", data, o)[0]
+        if p_type == 1:
+            loads.append(struct.unpack_from(e + ("Q" if is64 else "I"), data, o + (16 if is64 else 8))[0])
+    return min(loads) if loads else 0
+
+
+class Revng:
+    def __init__(self, cwd):
+        self.cwd = cwd
+        self.bin = os.environ["REVNG_BIN"]
+
+    def run(self, *args):
+        """(ok, stderr tail) of `revng project <args>` in the project directory."""
+        p = subprocess.run([self.bin, "project", "--storage-provider", STORAGE, *args],
+                           cwd=self.cwd, capture_output=True, text=True)
+        return p.returncode == 0, (p.stderr or p.stdout or "")[-600:]
+
+    def model(self):
+        with open(os.path.join(self.cwd, "revng.yml")) as f:
+            return yaml.load(f, Loader=Loader) or {}
+
+    def artifact_tar(self, artifact, objects):
+        """{object key: bytes} of one artifact, or (None, error)."""
+        out = os.path.join(self.cwd, f"{artifact}.tar")
+        if os.path.exists(out):
+            os.remove(out)
+        args = ["artifact", artifact] + ([",".join(objects)] if objects else []) + ["--tar", "-o", out]
+        ok, err = self.run(*args)
+        if not ok or not os.path.exists(out):
+            return None, err
+        got = {}
+        with tarfile.open(out) as t:
+            for m in t.getmembers():
+                if m.isfile():
+                    # members are `/<kind>/<key>` (tar strips the leading slash on extraction only)
+                    got[m.name.rsplit("/", 1)[-1]] = t.extractfile(m).read()
+        return got, None
+
+
+def init_project(tmp, binary):
+    # a copy with a plain name: the model records the path it imported
+    target = os.path.join(tmp, "target")
+    shutil.copyfile(binary, target)
+    r = Revng(tmp)
+    ok, err = r.run("init", "target")
+    if not ok:
+        sys.stderr.write(f"revng project init failed: {err}\n")
+        raise SystemExit(1)
+    return r
+
+
+def segment_delta(model, elf_lo):
+    """rev.ng address - ELF address (rev.ng loads a dynamic object at its own base)."""
+    starts = [int(MA.match(s["StartAddress"]).group(1), 16) for s in model.get("Segments") or []]
+    return (min(starts) - elf_lo) if starts else 0
+
+
+def entries(model):
+    return {f["Entry"] for f in model.get("Functions") or []}
+
+
+# ---------------------------------------------------------------- PTML
+
+def parse_ptml(data):
+    return ET.fromstring(b"<ptml>" + data + b"</ptml>")
+
+
+def text_without(el, skip):
+    """The text of `el` with the subtree `skip` left out."""
+    parts = []
+
+    def walk(e):
+        if e is skip:
+            return
+        if e.text:
+            parts.append(e.text)
+        for c in e:
+            walk(c)
+            if c.tail:
+                parts.append(c.tail)
+
+    walk(el)
+    return "".join(parts)
+
+
+def type_name(decl, name_el):
+    """A declaration span minus its declared identifier (and `;`): C's type name."""
+    t = text_without(decl, name_el).strip().rstrip(";").strip()
+    return re.sub(r"\s+", " ", t)
+
+
+def lines_and_addresses(root, delta):
+    """(plain text, {1-based line: {instruction address}}) of one PTML document.
+    Every non-blank character counts for the `/instruction/...` regions
+    enclosing it."""
+    chunks = []
+
+    def walk(e, ctx):
+        m = INSN.match(e.get(CTX) or "")
+        if m:
+            ctx = ctx | {int(m.group(1), 16) - delta}
+        if e.text:
+            chunks.append((e.text, ctx))
+        for c in e:
+            walk(c, ctx)
+            if c.tail:
+                chunks.append((c.tail, ctx))
+
+    walk(root, frozenset())
+    text, lines, n = [], {}, 1
+    for s, ctx in chunks:
+        text.append(s)
+        if not ctx:
+            n += s.count("\n")
+            continue
+        segs = s.split("\n")
+        for i, seg in enumerate(segs):
+            if i:
+                n += 1
+            if seg.strip():
+                lines.setdefault(n, set()).update(ctx)
+    return "".join(text), lines
+
+
+def prototype_evidence(root):
+    """(variables, return type) from the prototype's own markup."""
+    variables, ret = [], None
+    defs = {}
+    for e in root.iter():
+        d = e.get(DEF)
+        if d:
+            defs.setdefault(d, e)
+    seen = set()
+    for e in root.iter():
+        loc = e.get(CTX) or ""
+        if loc.startswith("/cabi-argument/") and loc not in seen:
+            name_el = defs.get(loc)
+            if name_el is None or name_el is e or not any(x is name_el for x in e.iter()):
+                continue
+            seen.add(loc)
+            variables.append({
+                "name": "".join(name_el.itertext()),
+                "type": type_name(e, name_el),
+                "kind": "arg",
+                "arg_index": int(loc.rsplit("/", 1)[1]),
+                "stack_offset": None,
+            })
+        elif loc.startswith("/return-value/") and ret is None:
+            ret = re.sub(r"\s+", " ", "".join(e.itertext())).strip() or None
+    return variables, ret
+
+
+def struct_fields(header):
+    """{struct type location suffix (`182-StructDefinition`): [(offset, name, type)]}
+    from the `/struct-field/<type>/<offset>` spans of the type header."""
+    out = {}
+    if header is None:
+        return out
+    defs = {}
+    for e in header.iter():
+        d = e.get(DEF)
+        if d and d.startswith("/struct-field/"):
+            defs.setdefault(d, e)
+    for e in header.iter():
+        loc = e.get(CTX) or ""
+        if not loc.startswith("/struct-field/"):
+            continue
+        name_el = defs.get(loc)
+        if name_el is None or name_el is e or not any(x is name_el for x in e.iter()):
+            continue
+        _, _, tid, off = loc.split("/")
+        fields = out.setdefault(tid, {})
+        fields.setdefault(int(off), ("".join(name_el.itertext()), type_name(e, name_el)))
+    return {k: sorted((o, n, t) for o, (n, t) in v.items()) for k, v in out.items()}
+
+
+# ---------------------------------------------------------------- modes
+
+def list_functions(a):
+    elf_lo = lowest_load(a.binary)
+    with tempfile.TemporaryDirectory() as tmp:
+        r = init_project(tmp, a.binary)
+        model = r.model()
+        delta = segment_delta(model, elf_lo)
+        ents = sorted(entries(model), key=lambda s: int(MA.match(s).group(1), 16))
+        cfgs, err = r.artifact_tar("emit-cfg", [])
+        if cfgs is None:
+            sys.stderr.write(f"emit-cfg failed, ends are null: {err}\n")
+            cfgs = {}
+        rows = []
+        for ent in ents:
+            m = MA.match(ent)
+            start = int(m.group(1), 16) - delta
+            end = None
+            doc = cfgs.get(ent)
+            if doc is not None:
+                try:
+                    cfg = yaml.load(doc, Loader=Loader) or {}
+                    ends = [int(MA.match(b["End"]).group(1), 16) for b in (cfg.get("MainFunction") or {}).get("Blocks") or []]
+                    end = max(ends) - delta if ends else None
+                except Exception as e:  # noqa: BLE001 - an unreadable CFG leaves the end unknown
+                    sys.stderr.write(f"cfg {ent}: {type(e).__name__}: {e}\n")
+            if m.group(2) == "Code_arm_thumb":
+                start |= 1
+            rows.append({"start": f"{start:#x}", "end": None if end is None else f"{end:#x}"})
+    with open(a.out, "w") as out:
+        for row in rows:
+            out.write(json.dumps(row) + "\n")
+    return 0
+
+
+def decompile(a):
+    reqs = [l.strip() for l in open(a.addresses) if l.strip()]
+    elf_lo = lowest_load(a.binary)
+    with tempfile.TemporaryDirectory() as tmp:
+        r = init_project(tmp, a.binary)
+        model = r.model()
+        arch = model.get("Architecture")
+        if arch not in CODE_TYPE:
+            sys.stderr.write(f"unsupported architecture {arch!r}\n")
+            return 1
+        delta = segment_delta(model, elf_lo)
+
+        def meta(req):
+            va = int(req, 16)
+            if arch == "arm" and va & 1:
+                return f"{(va & ~1) + delta:#x}:Code_arm_thumb"
+            return f"{va + delta:#x}:{CODE_TYPE[arch]}"
+
+        want = {q: meta(q) for q in reqs}
+        missing = sorted(set(want.values()) - entries(model))
+        if missing:
+            diff = os.path.join(tmp, "add-functions.yml")
+            with open(diff, "w") as f:
+                f.write("---\nChanges:\n")
+                for ma in missing:
+                    f.write(f"  - Path: '/Functions'\n    Add:\n      Entry: \"{ma}\"\n")
+                f.write("...\n")
+            ok, err = r.run("analyze", "apply-diff", "-c", diff, "-o", os.devnull)
+            if ok:
+                ok, err = r.run("analyze", "initial-auto-analysis", "-o", os.devnull)
+            if not ok:
+                # not attributable to one start: let the runner bisect the request
+                sys.stderr.write(f"revng failed after adding {len(missing)} requested starts: {err}\n")
+                return 1
+            model = r.model()
+        have = entries(model)
+        objs = sorted({ma for ma in want.values() if ma in have})
+
+        docs, err = r.artifact_tar("emit-c", objs) if objs else ({}, None)
+        errors = {}
+        if docs is None:
+            # one function can fail the batch: ask for each alone
+            sys.stderr.write(f"emit-c batch failed, one call per function: {err}\n")
+            docs = {}
+            for ma in objs:
+                got, e1 = r.artifact_tar("emit-c", [ma])
+                if got and ma in got:
+                    docs[ma] = got[ma]
+                else:
+                    errors[ma] = f"revng emit-c: {e1}"[-500:]
+        header = None
+        hpath = os.path.join(tmp, "header.ptml")
+        ok, herr = r.run("artifact", "emit-type-and-global-header", "-o", hpath)
+        if ok and os.path.exists(hpath):
+            try:
+                with open(hpath, "rb") as f:
+                    header = parse_ptml(f.read())
+            except ET.ParseError as e:
+                sys.stderr.write(f"type header: {e}\n")
+        else:
+            sys.stderr.write(f"emit-type-and-global-header failed, no stack variables: {herr}\n")
+        fields = struct_fields(header)
+        frames = {}
+        for fn in model.get("Functions") or []:
+            d = ((fn.get("StackFrame") or {}).get("Type") or {}).get("Definition")
+            if d:
+                frames[fn["Entry"]] = d.rsplit("/", 1)[-1]
+
+        with open(a.out, "w") as out:
+            for q in reqs:
+                ma = want[q]
+                line = {"address": q, "code": None, "error": None}
+                if ma not in have:
+                    line["error"] = "revng: no function at address (adding it failed)"
+                elif ma not in docs:
+                    line["error"] = errors.get(ma, "revng emit-c produced no document")
+                else:
+                    try:
+                        root = parse_ptml(docs[ma])
+                        code, lines = lines_and_addresses(root, delta)
+                        variables, ret = prototype_evidence(root)
+                        for off, name, ty in fields.get(frames.get(ma), []):
+                            variables.append({"name": name, "type": ty, "kind": "stack",
+                                              "arg_index": None, "stack_offset": off})
+                        line.update({
+                            "code": code,
+                            "line_mappings": [{"line_number": n, "addresses": sorted(v)} for n, v in sorted(lines.items())],
+                            "variables": variables,
+                            "return_type": ret,
+                        })
+                    except ET.ParseError as e:
+                        line["error"] = f"PTML: {e}"
+                out.write(json.dumps(line) + "\n")
+    return 0
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
+a = ap.parse_args()
+if a.list_functions:
+    # an empty list is an answer, so a stale file must not pass for one
+    if os.path.exists(a.out):
+        os.remove(a.out)
+    sys.exit(list_functions(a))
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
+sys.exit(decompile(a))

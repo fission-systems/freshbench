@@ -38,6 +38,38 @@ case "$tool" in
     echo "UNLACE_BIN=$u/unlace" >> "$GITHUB_ENV"
     echo "UNLACE_SPECS=$u/specs" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/unlace/run" >> "$GITHUB_ENV";;
+  ghidra-rs)
+    # built once by evaluate.yml's build job from adapters/ghidra-rs (crate pinned in its Cargo.lock)
+    g="$RUNNER_TEMP/bins/ghidra-rs-bin/freshbench-ghidra-rs"; chmod +x "$g"
+    echo "GHIDRA_RS_BIN=$g" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$here/adapters/ghidra-rs/run" >> "$GITHUB_ENV";;
+  revng)
+    # fetched once by evaluate.yml's build job (artifact revng-dist); checked again here
+    a="$RUNNER_TEMP/revng-dist/revng.tar.xz"
+    echo "$REVNG_SHA256  $a" | sha256sum -c -
+    mkdir -p "$T/revng"; tar -xJf "$a" -C "$T/revng" --strip-components=1
+    rm -f "$a"   # 4 GB extracted; keep the runner's disk
+    "$T/revng/revng" --version
+    python -m pip install -q "pyyaml==$PYYAML_VERSION"
+    echo "REVNG_BIN=$T/revng/revng" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/revng/run" >> "$GITHUB_ENV";;
+  r2sleigh)
+    # built once by evaluate.yml's build job at R2SLEIGH_SHA (no binary releases)
+    r="$RUNNER_TEMP/bins/r2sleigh-bin"; chmod +x "$r/r2s"
+    "$r/r2s" -q -c i "$r/r2s" >/dev/null  # r2s has no --version; this opens an ELF
+    echo "R2S_BIN=$r/r2s" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/r2sleigh/run" >> "$GITHUB_ENV";;
+  reko)
+    curl -fsSL -o "$T/reko.zip" "$REKO_URL"
+    echo "$REKO_SHA256  $T/reko.zip" | sha256sum -c -
+    curl -fsSL -o "$T/dotnet.tgz" "$DOTNET_RUNTIME_URL"
+    echo "$DOTNET_RUNTIME_SHA512  $T/dotnet.tgz" | sha512sum -c -
+    mkdir -p "$T/reko" "$T/dotnet"
+    unzip -q "$T/reko.zip" -d "$T/reko"; tar -xzf "$T/dotnet.tgz" -C "$T/dotnet"
+    "$T/dotnet/dotnet" "$T/reko/decompile.dll" --version
+    echo "REKO_DIR=$T/reko" >> "$GITHUB_ENV"
+    echo "REKO_DOTNET=$T/dotnet/dotnet" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/reko/run" >> "$GITHUB_ENV";;
   fission) :;;  # built in; see evaluate.yml
   *) echo "unknown tool $tool"; exit 1;;
 esac

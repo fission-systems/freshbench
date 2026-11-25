@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""r2sleigh adapter (see adapters/README.md). Needs R2S_BIN.
+
+r2sleigh's shell `r2s` (radareorg/r2sleigh; a standalone engine that speaks
+radare2's command language, with no radare2 in the process) is run as a
+subprocess, once per binary, with its commands on stdin. Its output is passed
+through; nothing here analyses the binary.
+
+Decompile mode: for each requested address, `pddj <addr>` (the rendering `pdd`
+prints, as JSON) and `pdd <addr>` (what a user is shown: the function's
+definition). `pddj` renders a body at any address it is given, so a requested
+start the survey did not list is decompiled as a function there, as Ghidra's
+and angr's adapters create one. On 32-bit ARM the Thumb bit is cleared.
+
+* `code` is `pdd`'s text, the definition. `pddj`'s `code` is the same
+  definition behind a prelude (includes, typedefs and `static inline` helper
+  definitions) that makes it a translation unit of its own. With
+  R2SLEIGH_CODE=unit the unit is reported instead.
+* `line_mappings` are `pddj`'s `lines` (one-based lines of the unit, each with
+  the instructions it accounts for). For the definition they are moved up by
+  the prelude's line count, the prelude being the unit minus the definition
+  `pdd` printed (r2s's own `Emission::lowest_addresses` rebases them the same
+  way). If the unit does not end with that definition, the unit is reported.
+* `variables` are `pddj`'s: `param` at `arg:<slot>` (the slot in the
+  convention's argument order) -> `arg_index`; `local` at `stack:<offset>`
+  (from r2sleigh's frame base) -> `stack_offset`; `local` at `carrier` -> a
+  register local. `global` names are program objects, not variables of the
+  function, and are left out. `pddj` states no variable size.
+* `return_type` is null: `pddj` gives the return type only inside the
+  `signature` text, and types are never read from C text.
+* A function r2sleigh refuses (`refused` set; e.g. every x86 32-bit and ARM
+  32-bit function: "no equivalence target grades ... C") has `code` null and
+  the refusal in `error`.
+
+List mode (--list-functions): `aaa` then `aflj` (r2s's `aaa` is its `aa`, the
+whole-program survey), r2sleigh's function list as a user sees it. Entries it
+names as imports (`sym.imp.*`, its PLT stubs) are left out. The end is the end
+of the highest block `afb <entry>` prints (exclusive); null where it prints
+none. `aflj`'s `size` is the bytes of the instructions, not the span.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+MARK = re.compile(r"^FBR2S_(BEGIN|MID|END)_(0x[0-9a-f]+)_FBR2S\n", re.M)
+STACK = re.compile(r"^stack:([+-])0x([0-9a-f]+)$")
+BLOCK = re.compile(r"^(0x[0-9a-fA-F]+) (0x[0-9a-fA-F]+) \d+")
+
+
+def is_arm32(path):
+    """32-bit ARM ELF (e_machine 40): bit 0 of a code address is the Thumb bit."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
+def run_r2s(binary, script, timeout=None):
+    """Run `r2s -q <binary>` with the script on stdin; (exit code, stdout, stderr tail)."""
+    with tempfile.TemporaryFile() as err:
+        p = subprocess.run([R2S, "-q", binary], input=script, stdout=subprocess.PIPE, stderr=err,
+                           text=True, errors="replace", timeout=timeout)
+        err.seek(0)
+        text = err.read().decode("utf-8", "replace")
+    return p.returncode, p.stdout, text
+
+
+def segments(stdout):
+    """({(kind, addr): text} after each echo marker up to the next one, the
+    markers printed). Each command's text loses the one newline r2s ends it with."""
+    out, seen, last = {}, set(), None
+    for m in MARK.finditer(stdout):
+        if last is not None:
+            text = stdout[last[1]:m.start()]
+            out[last[0]] = text[:-1] if text.endswith("\n") else text
+        last = ((m.group(1), m.group(2)), m.end())
+        seen.add(last[0])
+    return out, seen
+
+
+def variable(v):
+    kind, loc = v.get("kind"), v.get("location") or ""
+    if kind == "global" or v.get("type") is None:
+        return None
+    rec = {"name": v.get("name") or "", "type": v["type"], "kind": None, "arg_index": None, "stack_offset": None,
+           "size": None}
+    if loc.startswith("arg:"):
+        rec["kind"], rec["arg_index"] = "arg", int(loc[4:])
+    elif STACK.match(loc):
+        m = STACK.match(loc)
+        rec["kind"], rec["stack_offset"] = "stack", (-1 if m.group(1) == "-" else 1) * int(m.group(2), 16)
+    elif loc == "carrier":
+        rec["kind"] = "register"
+    else:
+        return None
+    return rec
+
+
+def record(req, segs, key, unit_mode, err):
+    """One output line for a requested address from its pddj/pdd segments."""
+    raw = segs.get(("BEGIN", key)) or ""
+    line = next((l for l in raw.splitlines() if l.startswith("{")), None)
+    if line is None:
+        # r2s writes a command's error to stderr, naming the address
+        said = [l for l in err.splitlines() if re.search(re.escape(key) + r"\b", l)]
+        return {"address": req, "code": None, "error": ("pddj: " + (said[-1] if said else "printed nothing"))[:500]}
+    try:
+        d = json.loads(line)
+    except ValueError as e:
+        return {"address": req, "code": None, "error": f"r2s: pddj output is not JSON: {e}"}
+    if d.get("refused"):
+        r = d["refused"]
+        return {"address": req, "code": None, "error": f"r2sleigh refused ({r.get('kind')}): {r.get('reason')}"[:500]}
+    unit = d.get("code") or ""
+    code, shift = unit, 0
+    shown = segs.get(("MID", key))
+    if not unit_mode and shown:
+        # pdd may append `/* callee not read: ... */` lines after the definition
+        definition = shown
+        if not unit.endswith(definition):
+            kept = shown.split("\n")
+            while kept and not unit.endswith("\n".join(kept)):
+                kept.pop()
+            definition = "\n".join(kept)
+        if definition and unit.endswith(definition):
+            code = shown
+            shift = unit[:len(unit) - len(definition)].count("\n")
+    lm = []
+    for l in d.get("lines") or []:
+        n = int(l["line"]) - shift
+        if n >= 1:
+            lm.append({"line_number": n, "addresses": [int(a) for a in l.get("addrs") or []]})
+    vs = [x for x in (variable(v) for v in d.get("variables") or []) if x]
+    return {"address": req, "code": code if code.strip() else None,
+            "error": None if code.strip() else "r2s: empty rendering",
+            "line_mappings": lm, "variables": vs, "return_type": None}
+
+
+def decompile(a):
+    reqs = [l.strip() for l in open(a.addresses) if l.strip()]
+    mask = ~1 if is_arm32(a.binary) else ~0
+    unit_mode = os.environ.get("R2SLEIGH_CODE", "definition") == "unit"
+    todo = list(dict.fromkeys(reqs))
+    done = {}
+    while todo:
+        keys = {r: f"{int(r, 16) & mask:#x}" for r in todo}
+        script = "".join(f"?e FBR2S_BEGIN_{k}_FBR2S\npddj {k}\n?e FBR2S_MID_{k}_FBR2S\npdd {k}\n?e FBR2S_END_{k}_FBR2S\n"
+                         for k in keys.values())
+        rc, out, err = run_r2s(a.binary, script)
+        segs, seen = segments(out)
+        rest = []
+        for r in todo:
+            k = keys[r]
+            if ("MID", k) in seen:
+                # pddj answered (pdd's text is used only when its END marker came)
+                if ("END", k) not in seen:
+                    segs.pop(("MID", k), None)
+                done[r] = record(r, segs, k, unit_mode, err)
+            elif ("BEGIN", k) in seen:
+                # r2s ended inside this function: its failure; the rest run again
+                done[r] = {"address": r, "code": None, "error": f"r2s exited {rc} decompiling it: {err.strip()[-400:]}"[:500]}
+            elif rc == 0:
+                done[r] = {"address": r, "code": None, "error": "r2s: no output"}
+            else:
+                rest.append(r)
+        if not seen and rest:
+            # r2s could not open or analyse the binary at all
+            sys.stderr.write(f"r2s exited {rc}: {err[-500:]}\n")
+            return 1
+        todo = rest
+    with open(a.out, "w") as f:
+        for r in reqs:
+            f.write(json.dumps(done[r]) + "\n")
+    return 0
+
+
+def list_functions(a):
+    rc, out, err = run_r2s(a.binary, "aaa\naflj\n")
+    try:
+        entries = json.loads(next(l for l in out.splitlines() if l.startswith("[")))
+    except (StopIteration, ValueError):
+        sys.stderr.write(f"r2s aflj exited {rc}: {err[-500:]}\n")
+        return 1
+    starts = sorted({int(e["addr"]) for e in entries if not str(e.get("name", "")).startswith("sym.imp.")})
+    script = "aaa\n" + "".join(f"?e FBR2S_BEGIN_{s:#x}_FBR2S\nafb {s:#x}\n?e FBR2S_END_{s:#x}_FBR2S\n" for s in starts)
+    rc, out, err = run_r2s(a.binary, script)
+    segs, _ = segments(out)
+    with open(a.out, "w") as f:
+        for s in starts:
+            ends = [int(m.group(2), 16) for m in map(BLOCK.match, segs.get(("BEGIN", f"{s:#x}"), "").splitlines()) if m]
+            end = max(ends) if ends else None
+            f.write(json.dumps({"start": f"{s:#x}", "end": None if end is None else f"{end:#x}"}) + "\n")
+    return 0
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
+a = ap.parse_args()
+R2S = os.environ["R2S_BIN"]
+if a.list_functions:
+    sys.exit(list_functions(a))
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
+sys.exit(decompile(a))

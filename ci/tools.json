@@ -1,8 +1,12 @@
 {
   "fission": { "repo": "fission-systems/Fission" },
-  "ghidra": { "repo": "NationalSecurityAgency/ghidra" },
-  "angr": { "repo": "angr/angr" },
-  "kuna": { "repo": "Noelo-Lab/kuna" },
-  "borer": { "repo": "imjustprism/borer" },
-  "unlace": { "repo": "coleleavitt/unlace" }
+  "ghidra": { "repo": "NationalSecurityAgency/ghidra", "version": "ghidra {GHIDRA_DIR} sha256:{GHIDRA_SHA256}" },
+  "angr": { "repo": "angr/angr", "version": "angr {ANGR_VERSION}" },
+  "kuna": { "repo": "Noelo-Lab/kuna", "version": "kuna {KUNA_TAG} sha256:{KUNA_SHA256}" },
+  "borer": { "repo": "imjustprism/borer", "version": "borer {BORER_TAG} sha256:{BORER_SHA256}" },
+  "unlace": { "repo": "coleleavitt/unlace", "version": "unlace {UNLACE_SHA}" },
+  "ghidra-rs": { "repo": "koute/ghidra-decompiler", "version": "ghidra-rs {GHIDRA_RS_VERSION} sha256:{GHIDRA_RS_CRATE_SHA256}" },
+  "revng": { "repo": "revng/revng", "version": "revng {REVNG_COMMIT} sha256:{REVNG_SHA256}" },
+  "r2sleigh": { "repo": "radareorg/r2sleigh", "version": "r2sleigh {R2SLEIGH_SHA}" },
+  "reko": { "repo": "uxmal/reko", "version": "reko {REKO_TAG} sha256:{REKO_SHA256}" }
 }

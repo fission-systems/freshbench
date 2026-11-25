@@ -1,0 +1,8 @@
+#!/bin/sh
+# ghidra-rs (koute/ghidra-decompiler, the pure-Rust port of Ghidra 12.2's C++
+# decompiler) adapter. See adapters/README.md and src/main.rs.
+# The adapter is its own Cargo project (not a member of the FreshBench
+# workspace); CI builds it once and passes the binary as GHIDRA_RS_BIN:
+#   cargo build --release --locked --manifest-path adapters/ghidra-rs/Cargo.toml
+here=$(cd "$(dirname "$0")" && pwd)
+exec "${GHIDRA_RS_BIN:-$here/target/release/freshbench-ghidra-rs}" "$@"

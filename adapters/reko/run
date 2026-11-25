@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Reko adapter (see adapters/README.md). Needs REKO_DIR: the unpacked
+CmdLine zip of the pinned Reko release (decompile.dll, net8.0), run with
+REKO_DOTNET (default `dotnet`), a .NET 8 host. REKO_CMD, when set, replaces
+`$REKO_DOTNET $REKO_DIR/decompile.dll` (split on whitespace; to run the same
+build in a container). Reko runs as a subprocess in a temporary directory, on
+a copy of the binary; it loads an ELF at its own virtual addresses, so no
+--elf-base translation is needed.
+
+Address mode: a Reko project file (.dcproject) lists every requested start as
+a user procedure (`<procedure><address>`), Reko's own way to declare a
+function at an address, and `decompile <project>` writes the whole program to
+one C file (outputFilePolicy SingleFile). Each procedure is printed as
+`// <entry>: <signature>`, optional `// Called from:` lines, then the C
+definition up to a `}` in column 0; the entry Reko prints identifies the
+function. On 32-bit ARM, Reko decodes user procedures with the image's A32
+architecture only, so a Thumb start (`address | 1`) is not declared: only the
+Thumb procedures Reko found itself (symbols, call targets) are answered.
+
+Evidence: Reko prints no instruction address for any statement of its C
+output (its high-level statements carry none), and no machine-readable
+signature or frame. `line_mappings` and `variables` are empty and
+`return_type` is null, so the decompiled output is not scored; Reko takes
+part in the boundary track.
+
+List mode (--list-functions): `disassemble --dasm-address --dasm-bytes
+<binary>`, Reko's own scan of the image (no project, no user procedures).
+Every procedure Reko printed with a `<name> proc` header in the .asm files is
+listed. The end is the end of the highest instruction of any block the .dis
+file prints under that procedure: blocks are joined by the label Reko gives
+them in both files, the entry block by the procedure header, and an
+instruction's end is its printed address plus its printed bytes. A procedure
+none of whose blocks is found has end null.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HEADER = re.compile(r"^// ([0-9A-Fa-f]+): ")
+PROC = re.compile(r"^(\S+) proc$")
+PROC_ADDR = re.compile(r"^;; (\S+): ([0-9A-Fa-f]+)$")
+LABEL = re.compile(r"^(\S+):$")
+# `<address> <units> \t<mnemonic>`, the units in hex (bytes on x86, 16-bit
+# halfwords on Thumb, 32-bit words on A32/A64); padding and data rows carry no tab
+INSN = re.compile(r"^([0-9A-Fa-f]+) ((?:(?:[0-9A-Fa-f]{2})+ )+)\s*\t")
+DEFINE = re.compile(r"^define (\S+)$")
+
+
+def reko_cmd():
+    if os.environ.get("REKO_CMD"):
+        return shlex.split(os.environ["REKO_CMD"])
+    return [os.environ.get("REKO_DOTNET") or "dotnet", os.path.join(os.environ["REKO_DIR"], "decompile.dll")]
+
+
+def is_arm(path):
+    """32-bit ARM ELF (e_machine 40): bit 0 of a code address is the Thumb bit."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
+def run(td, args, log):
+    with open(log, "w") as f:
+        return subprocess.run(reko_cmd() + args, cwd=td, stdout=f, stderr=subprocess.STDOUT).returncode
+
+
+def tail(path, n=1500):
+    try:
+        return open(path, errors="replace").read()[-n:]
+    except OSError:
+        return ""
+
+
+def parse_c(text):
+    """entry address -> (code, error) for every procedure of Reko's C file."""
+    out, lines, i = {}, text.splitlines(), 0
+    while i < len(lines):
+        m = HEADER.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        entry = int(m.group(1), 16)
+        j = i + 1
+        while j < len(lines) and lines[j].startswith("//"):
+            j += 1
+        k = j
+        while k < len(lines) and lines[k] != "}" and not HEADER.match(lines[k]):
+            k += 1
+        body = lines[j:k + 1] if k < len(lines) and lines[k] == "}" else lines[j:k]
+        exc = next((l for l in body if l.startswith("// Exception ") and "when writing procedure" in l), None)
+        if exc or not body or body[-1] != "}":
+            out[entry] = (None, f"reko: {exc[3:] if exc else 'incomplete procedure text'}")
+        else:
+            out[entry] = ("\n".join(body) + "\n", None)
+        i = k + 1 if k > i else i + 1
+    return out
+
+
+def decompile(a):
+    reqs = [l.strip() for l in open(a.addresses) if l.strip()]
+    arm = is_arm(a.binary)
+    mask = ~1 if arm else ~0
+    # A32 and non-ARM starts are declared; Thumb starts cannot be (see above)
+    declare = sorted({int(r, 16) for r in reqs if not (arm and int(r, 16) & 1)})
+    with tempfile.TemporaryDirectory() as td:
+        shutil.copyfile(a.binary, os.path.join(td, "target.elf"))
+        procs = "".join(f"      <procedure><address>{va:X}</address></procedure>\n" for va in declare)
+        with open(os.path.join(td, "fb.dcproject"), "w") as f:
+            f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+                    '<project xmlns="http://schemata.jklnet.org/Reko/v5">\n'
+                    "  <input>\n    <filename>target.elf</filename>\n"
+                    "    <asmDir>out</asmDir>\n    <srcDir>out</srcDir>\n    <includeDir>out</includeDir>\n"
+                    "    <user>\n" + procs +
+                    "      <extractResources>false</extractResources>\n"
+                    "      <outputFilePolicy>SingleFile</outputFilePolicy>\n"
+                    "    </user>\n  </input>\n</project>\n")
+        log = os.path.join(td, "reko.log")
+        rc = run(td, ["fb.dcproject"], log)
+        c = os.path.join(td, "out", "target.c")
+        if not os.path.exists(c):
+            sys.stderr.write(f"reko exited {rc} without C output:\n{tail(log)}\n")
+            return 1
+        got = {e & mask: v for e, v in parse_c(open(c, errors="replace").read()).items()}
+    with open(a.out, "w") as out:
+        for r in reqs:
+            va = int(r, 16)
+            code, err = got.get(va & mask, (None, None))
+            if code is None and err is None:
+                err = "reko: no procedure at the address"
+                if arm and va & 1:
+                    err += " (Thumb start: Reko decodes user procedures as A32, so it was not declared)"
+            out.write(json.dumps({"address": r, "code": code, "error": err,
+                                  "line_mappings": [], "variables": [], "return_type": None}) + "\n")
+    return 0
+
+
+def list_functions(a):
+    arm = is_arm(a.binary)
+    with tempfile.TemporaryDirectory() as td:
+        shutil.copyfile(a.binary, os.path.join(td, "target.elf"))
+        log = os.path.join(td, "reko.log")
+        rc = run(td, ["disassemble", "--dasm-address", "--dasm-bytes", "target.elf"], log)
+        od = os.path.join(td, "target.reko")
+        asms = sorted(glob.glob(os.path.join(od, "*.asm")))
+        if not asms:
+            sys.stderr.write(f"reko exited {rc} without disassembly:\n{tail(log)}\n")
+            return 1
+        entries, label_end, proc_end = {}, {}, {}
+        for p in asms:
+            pending, key = None, None
+            for line in open(p, errors="replace"):
+                line = line.rstrip("\n")
+                m = PROC_ADDR.match(line)
+                if m:
+                    pending = (m.group(1), int(m.group(2), 16))
+                    continue
+                m = PROC.match(line)
+                if m and pending and pending[0] == m.group(1):
+                    name, entry = pending
+                    if name in entries and entries[name] != entry:
+                        sys.stderr.write(f"reko: procedure name {name} at two entries\n")
+                    entries[name] = entry
+                    key, pending = ("proc", name), None
+                    continue
+                m = LABEL.match(line)
+                if m:
+                    key = ("label", m.group(1))
+                    continue
+                m = INSN.match(line)
+                if m and key:
+                    end = int(m.group(1), 16) + len("".join(m.group(2).split())) // 2
+                    ends = proc_end if key[0] == "proc" else label_end
+                    ends[key[1]] = max(ends.get(key[1], 0), end)
+                elif line.startswith(";;;"):
+                    key = None
+        blocks, cur = {}, None
+        for p in sorted(glob.glob(os.path.join(od, "*.dis"))):
+            for line in open(p, errors="replace"):
+                line = line.rstrip("\n")
+                m = DEFINE.match(line)
+                if m:
+                    cur = m.group(1)
+                    blocks.setdefault(cur, set())
+                    continue
+                m = LABEL.match(line)
+                if m and cur:
+                    blocks[cur].add(m.group(1))
+    found = {}
+    for name, entry in entries.items():
+        ends = [label_end[b] for b in blocks.get(name, ()) if b in label_end]
+        if name in proc_end:
+            ends.append(proc_end[name])
+        start = entry & ~1 if arm else entry
+        end = max(ends) if ends else None
+        found[start] = end if found.get(start) is None else max(found[start], end or 0)
+    with open(a.out, "w") as out:
+        for start, end in sorted(found.items()):
+            out.write(json.dumps({"start": f"{start:#x}", "end": None if end is None else f"{end:#x}"}) + "\n")
+    return 0
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
+a = ap.parse_args()
+if a.list_functions:
+    sys.exit(list_functions(a))
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
+sys.exit(decompile(a))

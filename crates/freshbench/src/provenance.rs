@@ -41,34 +41,45 @@ pub fn read_pins(text: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// The version string a tool ran at: its pins, or the Fission commit built.
+/// The version string a tool ran at: the Fission commit built, or the tool's
+/// `version` rule in the registry (`ci/tools.json`) with each `{KEY}` replaced
+/// by the pin `KEY`. The rules live in the registry, not here, so registering
+/// a tool changes no scorer source and therefore no scorer identity.
 pub fn tool_version(
     tool: &str,
+    registry: &BTreeMap<String, crate::policy::ToolInfo>,
     pins: &BTreeMap<String, String>,
     fission_sha: &str,
 ) -> Result<String> {
-    let pin = |k: &str| {
-        pins.get(k)
-            .cloned()
-            .with_context(|| format!("{k} is not in the pins"))
-    };
-    Ok(match tool {
-        "fission" => format!("fission {fission_sha}"),
-        "ghidra" => format!(
-            "ghidra {} sha256:{}",
-            pin("GHIDRA_DIR")?,
-            pin("GHIDRA_SHA256")?
-        ),
-        "angr" => format!("angr {}", pin("ANGR_VERSION")?),
-        "kuna" => format!("kuna {} sha256:{}", pin("KUNA_TAG")?, pin("KUNA_SHA256")?),
-        "borer" => format!(
-            "borer {} sha256:{}",
-            pin("BORER_TAG")?,
-            pin("BORER_SHA256")?
-        ),
-        "unlace" => format!("unlace {}", pin("UNLACE_SHA")?),
-        other => bail!("no version rule for tool {other}"),
-    })
+    if tool == "fission" {
+        return Ok(format!("fission {fission_sha}"));
+    }
+    let rule = registry
+        .get(tool)
+        .with_context(|| format!("tool {tool} is not in the registry"))?
+        .version
+        .as_deref()
+        .with_context(|| format!("no version rule for tool {tool}"))?;
+    let mut out = String::new();
+    let mut rest = rule;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let j = after
+            .find('}')
+            .with_context(|| format!("{tool}: unclosed {{ in version rule {rule:?}"))?;
+        let key = &after[..j];
+        out.push_str(
+            pins.get(key)
+                .with_context(|| format!("{tool}: {key} is not in the pins"))?,
+        );
+        rest = &after[j + 1..];
+    }
+    if rest.contains('}') {
+        bail!("{tool}: unmatched }} in version rule {rule:?}");
+    }
+    out.push_str(rest);
+    Ok(out)
 }
 
 /// Page metadata from the artifacts' provenance files; an error when one tool
@@ -180,23 +191,94 @@ mod tests {
         }
     }
 
+    fn registry(rules: &[(&str, Option<&str>)]) -> BTreeMap<String, crate::policy::ToolInfo> {
+        rules
+            .iter()
+            .map(|(t, v)| {
+                (
+                    t.to_string(),
+                    crate::policy::ToolInfo {
+                        repo: format!("o/{t}"),
+                        llm: false,
+                        version: v.map(str::to_string),
+                    },
+                )
+            })
+            .collect()
+    }
+
     #[test]
     fn pins_and_versions() {
         let pins = read_pins(
             "# c\nANGR_VERSION=10.0.7\nKUNA_TAG=v1\nKUNA_SHA256=ab\nlower=x\n\nUNLACE_SHA=ed9e\n",
         );
         assert_eq!(pins.len(), 4);
-        assert_eq!(tool_version("angr", &pins, "").unwrap(), "angr 10.0.7");
+        let reg = registry(&[
+            ("angr", Some("angr {ANGR_VERSION}")),
+            ("kuna", Some("kuna {KUNA_TAG} sha256:{KUNA_SHA256}")),
+            ("ghidra", Some("ghidra {GHIDRA_DIR}")),
+            ("norule", None),
+            ("open", Some("x {ANGR_VERSION")),
+            ("close", Some("x ANGR_VERSION}")),
+        ]);
         assert_eq!(
-            tool_version("kuna", &pins, "").unwrap(),
+            tool_version("angr", &reg, &pins, "").unwrap(),
+            "angr 10.0.7"
+        );
+        assert_eq!(
+            tool_version("kuna", &reg, &pins, "").unwrap(),
             "kuna v1 sha256:ab"
         );
         assert_eq!(
-            tool_version("fission", &pins, "24ec").unwrap(),
+            tool_version("fission", &reg, &pins, "24ec").unwrap(),
             "fission 24ec"
         );
-        assert!(tool_version("ghidra", &pins, "").is_err());
-        assert!(tool_version("idk", &pins, "").is_err());
+        // a pin the rule names is missing
+        assert!(tool_version("ghidra", &reg, &pins, "").is_err());
+        assert!(tool_version("norule", &reg, &pins, "").is_err());
+        assert!(tool_version("open", &reg, &pins, "").is_err());
+        assert!(tool_version("close", &reg, &pins, "").is_err());
+        assert!(tool_version("idk", &reg, &pins, "").is_err());
+    }
+
+    /// Every registered tool has a version rule that the checked-in pins
+    /// satisfy, and the tools that had a rule in code before it moved to the
+    /// registry still get the same version string.
+    #[test]
+    fn registered_tools_have_versions_from_the_checked_in_pins() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let pins = read_pins(&std::fs::read_to_string(root.join("ci/pins.env")).unwrap());
+        let reg: BTreeMap<String, crate::policy::ToolInfo> =
+            serde_json::from_str(&std::fs::read_to_string(root.join("ci/tools.json")).unwrap())
+                .unwrap();
+        for tool in reg.keys() {
+            let v = tool_version(tool, &reg, &pins, "abc").unwrap();
+            assert!(v.starts_with(&format!("{tool} ")), "{tool}: {v}");
+        }
+        let pin = |k: &str| pins[k].clone();
+        let before = [
+            (
+                "ghidra",
+                format!(
+                    "ghidra {} sha256:{}",
+                    pin("GHIDRA_DIR"),
+                    pin("GHIDRA_SHA256")
+                ),
+            ),
+            ("angr", format!("angr {}", pin("ANGR_VERSION"))),
+            (
+                "kuna",
+                format!("kuna {} sha256:{}", pin("KUNA_TAG"), pin("KUNA_SHA256")),
+            ),
+            (
+                "borer",
+                format!("borer {} sha256:{}", pin("BORER_TAG"), pin("BORER_SHA256")),
+            ),
+            ("unlace", format!("unlace {}", pin("UNLACE_SHA"))),
+        ];
+        for (tool, want) in before {
+            assert_eq!(tool_version(tool, &reg, &pins, "").unwrap(), want);
+        }
     }
 
     #[test]
