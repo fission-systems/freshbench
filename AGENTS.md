@@ -110,6 +110,12 @@ Resolve conflicts in that order; easy but wrong numbers are not progress.
    merely because the code compiles.
 
 ## Validation
+Once per clone, enable the pre-commit format check:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 Run from the repository root. These are the repository-supported gates:
 
 ```bash
