@@ -417,6 +417,13 @@ pub fn summarize_with_truth(
 /// so a difference between compilers, levels or architectures is not a
 /// difference in which functions were measured.
 pub fn matched(table: &Table) -> Table {
+    matched_with_truth(table, None)
+}
+
+pub fn matched_with_truth(
+    table: &Table,
+    truth: Option<&crate::ground_truth::Index>,
+) -> Table {
     use std::collections::{BTreeSet, HashMap};
     type Build<'a> = (&'a str, &'a str, &'a str);
     let builds: BTreeSet<Build> = table
@@ -425,8 +432,8 @@ pub fn matched(table: &Table) -> Table {
         .collect();
     let mut seen: HashMap<(String, String, String), BTreeSet<Build>> = HashMap::new();
     for (k, per) in table {
-        if let Some(r) = per.values().next() {
-            seen.entry(r.identity()).or_default().insert((
+        if let Some(id) = source_identity(k, per.values().next(), truth) {
+            seen.entry(id).or_default().insert((
                 k.arch.as_str(),
                 k.compiler.as_str(),
                 k.config.as_str(),
@@ -435,13 +442,23 @@ pub fn matched(table: &Table) -> Table {
     }
     table
         .iter()
-        .filter(|(_, per)| {
-            per.values()
-                .next()
-                .is_some_and(|r| seen[&r.identity()].len() == builds.len())
+        .filter(|(k, per)| {
+            source_identity(k, per.values().next(), truth)
+                .is_some_and(|id| seen[&id].len() == builds.len())
         })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect()
+}
+
+fn source_identity(
+    key: &crate::rows::RowKey,
+    row: Option<&crate::rows::Row>,
+    truth: Option<&crate::ground_truth::Index>,
+) -> Option<(String, String, String)> {
+    truth
+        .and_then(|index| index.get(key))
+        .map(|t| (key.project.clone(), t.source.clone(), key.function.clone()))
+        .or_else(|| row.map(crate::rows::Row::identity))
 }
 
 /// Drop the rows of functions that `freshbench duplicates` found to be copies
@@ -452,6 +469,15 @@ pub fn dedup(
     table: &Table,
     reports: &[crate::clones::Report],
     level: crate::clones::Level,
+) -> anyhow::Result<Table> {
+    dedup_with_truth(table, reports, level, None)
+}
+
+pub fn dedup_with_truth(
+    table: &Table,
+    reports: &[crate::clones::Report],
+    level: crate::clones::Level,
+    truth: Option<&crate::ground_truth::Index>,
 ) -> anyhow::Result<Table> {
     use std::collections::{BTreeMap, HashSet};
     type Id = (String, String, String);
@@ -479,10 +505,7 @@ pub fn dedup(
             .get(&Some(k.arch.as_str()))
             .or_else(|| drop.get(&None))
             .ok_or_else(|| anyhow::anyhow!("no duplicates report covers {}", k.arch))?;
-        if per
-            .values()
-            .next()
-            .is_none_or(|r| !set.contains(&r.identity()))
+        if source_identity(k, per.values().next(), truth).is_none_or(|id| !set.contains(&id))
         {
             out.insert(k.clone(), per.clone());
         }
