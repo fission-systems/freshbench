@@ -9,6 +9,9 @@
 # which is architecture-independent - the same source functions are chosen on
 # every architecture where they are eligible.
 set -uo pipefail
+# FRESHBENCH_BIN: a Linux build of freshbench, run in the image; on the runner
+# itself the same binary records the status file
+FRESHBENCH_BIN_HOST="${FRESHBENCH_BIN_HOST:-$FRESHBENCH_BIN}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 source "$here/ci/pins.env"
 spec="$1"; out="$2"; arch="$3"
@@ -17,16 +20,7 @@ repo="${spec%@*}"; pin="${spec#*@}"
 slug="${repo//\//__}"
 img="$BUILD_IMAGE_CROSS"
 mkdir -p "$out/builds" "$out/prep"
-status() { python3 - "$out/status.json" "$@" <<'PY'
-import json, sys
-p = sys.argv[1]; d = {}
-try: d = json.load(open(p))
-except Exception: pass
-for kv in sys.argv[2:]:
-    k, v = kv.split("=", 1); d[k] = v
-json.dump(d, open(p, "w"), indent=1)
-PY
-}
+status() { "$FRESHBENCH_BIN_HOST" status "$out/status.json" "$@"; }
 status repo="$repo" arch="$arch" image="$img" stage=clone
 src="$RUNNER_TEMP/src/$slug"
 git init -q "$src" && git -C "$src" fetch -q --depth 1 "https://github.com/$repo" "$pin" \
@@ -47,8 +41,7 @@ fb() {
     -v "$here/overlap:/overlap:ro" "$img" freshbench "$@"
 }
 quick() {
-  docker run --rm --network none -v "$out/builds:/out:ro" -v "$here/pipeline:/p:ro" "$img" \
-    python3 /p/quickcount.py "/out/$1" 2>/dev/null | tail -1
+  fb quickcount "/w/builds/$1" 2>/dev/null | tail -1
 }
 for c in gcc clang; do
   status stage="build_$c-O0"; build "$c" O0

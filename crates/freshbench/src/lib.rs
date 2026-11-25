@@ -22,6 +22,7 @@ pub mod headroom;
 pub mod joern;
 pub mod manifest;
 pub mod prepare;
+pub mod provenance;
 pub mod recompile;
 pub mod report;
 pub mod rows;

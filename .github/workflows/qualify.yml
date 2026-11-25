@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: m
-        run: echo "repos=$(python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' '${{ inputs.batch }}')" >> "$GITHUB_OUTPUT"
+        run: echo "repos=$(jq -c . '${{ inputs.batch }}')" >> "$GITHUB_OUTPUT"
   wheel:
     runs-on: ubuntu-24.04
     steps:
