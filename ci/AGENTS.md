@@ -12,6 +12,8 @@ change is a benchmark change.
   repository, a working adapter, an evaluation path and a registration entry. LLM-based
   decompilers are not added to the public ranking.
 - Never replace a pinned commit with a branch, tag or "latest".
+- `ci/leaderboard_runs.json` lists the `evaluate` run IDs the public ranking is built from. A push
+  to `main` that changes it publishes the ranking, so change it only with a reviewed PR.
 
 ## Current v2 path
 
