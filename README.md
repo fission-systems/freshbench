@@ -37,12 +37,24 @@ functions a corpus holds; see
 **Measured: how close the output is to the source, and a static agreement
 signal against the binary.**
 
+**No fixups.** Every metric reads the decompiler's output exactly as it was
+printed. FreshBench does not rewrite keywords, define pseudo-types, inject
+declarations the compiler asks for, or repair code before compiling or
+parsing it. Such fixups measure the fixer, and a fixer written around one
+decompiler's dialect favours that decompiler. Output that needs a type or
+declaration it did not print fails to compile, and that counts against the
+decompiler that printed it. The only uniform inputs are the compiler flags
+(`-w -fpermissive -std=gnu17 -fno-builtin` plus the build's own) and, for
+choosing the scored function, the rule "the function with the source's name,
+else the only function defined in the output" (prototypes are not
+definitions), applied the same way for both CFG families.
+
 | metric | compares | perfect |
 |---|---|---|
 | GED | the output's CFG vs the source function's CFG, both built by FreshBench's one CFG builder (`cfg.rs`) | 0 |
 | Joern GED | the same comparison on Joern's basic-block CFG (vendored rust-joern, `joern.rs`), scored with the same GED engine | 0 |
 | types | return and parameter type classes (`int<N>`, `float<N>`, bool, ptr, array, struct, void) vs DWARF (`types.rs`, `dwarf.rs`); locals as coverage only | arity, every parameter and the return right |
-| recompile | the output, with a type prelude and declarations added from compiler diagnostics (at most 5 rounds), built by the binary's own compiler and flags; its disassembly vs the original's (`recompile.rs`) | instruction-identical |
+| recompile | the output exactly as printed (no prelude, no injected declarations, no repair loop), built by the binary's own compiler and flags plus one fixed permissive flag set; its disassembly vs the original's (`recompile.rs`) | instruction-identical |
 | Union | any of GED, Joern GED, types or recompile perfect | |
 | size bands | every table split by source CFG nodes: <6, 6-20, 21-50, 51-100, >100 | |
 | normalized GED | GED / (source nodes + edges) | 0 |
