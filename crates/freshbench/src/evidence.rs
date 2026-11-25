@@ -313,18 +313,27 @@ mod tests {
     fn invalid_and_duplicate_lines_cannot_inflate_coverage() {
         let s = Starts::new("x86_64", 0x1000, 0x1002, &[0x90, 0xc3]);
         let mut e = Evidence {
-            line_mappings: [(0, 0x1000), (1, 0x1000), (1, 0x1000), (1, 0x1001),
-                (2, 0x1001), (4, 0x1000)]
-                .into_iter()
-                .map(|(line, address)| LineMap {
-                    line,
-                    addresses: vec![address],
-                })
-                .collect(),
+            line_mappings: [
+                (0, 0x1000),
+                (1, 0x1000),
+                (1, 0x1000),
+                (1, 0x1001),
+                (2, 0x1001),
+                (4, 0x1000),
+            ]
+            .into_iter()
+            .map(|(line, address)| LineMap {
+                line,
+                addresses: vec![address],
+            })
+            .collect(),
             ..Default::default()
         };
         let c = validate(&mut e, &s, "return 1;\n\n}");
-        assert_eq!((c.mapped_lines, c.code_lines, c.mapped_instructions), (1, 2, 2));
+        assert_eq!(
+            (c.mapped_lines, c.code_lines, c.mapped_instructions),
+            (1, 2, 2)
+        );
         assert_eq!(c.invalid_lines, 3);
         assert_eq!(e.line_mappings[0].addresses, [0x1000, 0x1001]);
     }
