@@ -4,7 +4,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ['site-bootstrap/**']
+    paths: ['site-bootstrap/**', 'crates/freshbench/src/report.css', 'crates/freshbench/src/report-theme.js']
   workflow_dispatch:
     inputs:
       evaluate_runs: { description: "JSON list of completed evaluate run IDs; [] for landing page only", default: "[]" }
@@ -45,9 +45,16 @@ jobs:
             200) echo "Existing summary; refusing to overwrite it."; echo "publish=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "Cannot safely determine published state (HTTP $status)" >&2; exit 1 ;;
           esac
+      - name: assemble landing page
+        if: steps.guard.outputs.publish == 'true'
+        run: |
+          mkdir -p bootstrap-site
+          cp site-bootstrap/index.html bootstrap-site/index.html
+          cp crates/freshbench/src/report.css bootstrap-site/theme.css
+          cp crates/freshbench/src/report-theme.js bootstrap-site/theme.js
       - uses: actions/upload-pages-artifact@v3
         if: steps.guard.outputs.publish == 'true'
-        with: { path: site-bootstrap }
+        with: { path: bootstrap-site }
       - id: d
         if: steps.guard.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
@@ -133,7 +140,7 @@ jobs:
               ("site/dedup/index.html", '<nav><a href="../index.html">All M1 rows</a> · <b>Renamed-clone-deduplicated</b> · <a href="summary.json">JSON</a></nav>'),
           ]:
               p = Path(filename)
-              p.write_text(p.read_text().replace("<body>", "<body>" + nav, 1))
+              p.write_text(p.read_text().replace("<!-- publication-nav -->", nav.replace("<nav>", '<nav class="section-nav" aria-label="Population">'), 1))
           PY
           # what each tool cost: CPU and wall time and memory per binary and per function
           target/release/freshbench speed dl > site/speed.md
