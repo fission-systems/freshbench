@@ -632,7 +632,6 @@ fn run() -> Result<ExitCode> {
                         env: vec![],
                         flags: flags.split_whitespace().map(str::to_string).collect(),
                         objdump: dir.join("llvm-objdump"),
-                        long_bytes: 8,
                     },
                 }
             };

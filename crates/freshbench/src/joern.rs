@@ -12,58 +12,7 @@ use std::collections::BTreeMap;
 use rust_joern::graph::{Cfg, Options};
 
 use crate::cfg::{Graph, Label};
-
-/// Decompiler output cleanup before parsing, ported from rust-joern's Python
-/// `_preprocess_decompilation` (itself a port of PyJoern's decompilation option):
-/// spell MSVC-style integer and calling-convention keywords as C, and keep
-/// C++ keywords `new`/`delete` in the first lines from breaking a C parse.
-pub fn preprocess_decompilation(source: &str) -> String {
-    let mut s = String::with_capacity(source.len());
-    // `undefined [N] __rustcall` -> `undefined`
-    let mut rest = source;
-    while let Some(i) = rest.find("undefined") {
-        s.push_str(&rest[..i]);
-        let tail = &rest[i + "undefined".len()..];
-        let t = tail.trim_start();
-        if let Some(after_bracket) = t.strip_prefix('[') {
-            if let Some(close) = after_bracket.find(']') {
-                let digits = &after_bracket[..close];
-                let after = after_bracket[close + 1..].trim_start();
-                if (1..=4).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit()) {
-                    if let Some(after_rc) = after.strip_prefix("__rustcall") {
-                        s.push_str("undefined");
-                        rest = after_rc;
-                        continue;
-                    }
-                }
-            }
-        }
-        s.push_str("undefined");
-        rest = tail;
-    }
-    s.push_str(rest);
-    for (old, new) in [
-        ("__int8", "char"),
-        ("__int16", "short"),
-        ("__int32", "int"),
-        ("__int64", "long"),
-        ("__fastcall", ""),
-        ("__noreturn", ""),
-        ("__cdecl", ""),
-        ("__rustcall", ""),
-    ] {
-        s = s.replace(old, new);
-    }
-    let mut lines: Vec<String> = s.split('\n').map(str::to_string).collect();
-    for line in lines.iter_mut().take(3) {
-        for (old, new) in [("new", "new_joern_token"), ("delete", "delete_joern_token")] {
-            if line.contains(old) {
-                *line = line.replace(old, new);
-            }
-        }
-    }
-    lines.join("\n")
-}
+use crate::csyntax;
 
 /// Joern CFG -> FreshBench graph: entry and exit blocks labelled, ids renumbered
 /// in node order, edges sorted and deduplicated. Joern's CFG has no separate
@@ -117,12 +66,30 @@ pub fn source_cfgs(tu: &str) -> BTreeMap<String, Option<Graph>> {
 
 /// Joern CFG of the function a decompiler printed: the one named `name`, else the only one.
 pub fn output_cfg(text: &str, name: &str) -> Option<Graph> {
-    let src = preprocess_decompilation(text);
-    let a = rust_joern::analyze(&src, "output.c", &options(false)).ok()?;
-    let named: Vec<_> = a.functions.iter().filter(|f| f.name == name).collect();
-    let f = match named.as_slice() {
-        [f] => *f,
-        [] if a.functions.len() == 1 => &a.functions[0],
+    // parsed exactly as printed: no keyword rewriting or other dialect fixups
+    // (the FreshBench CFG does none either)
+    let a = rust_joern::analyze(text, "output.c", &options(false)).ok()?;
+    // rust-joern also lists prototypes (`extern T free();`) as functions; the
+    // output's functions are its definitions, the same set the FreshBench CFG
+    // chooses from (`csyntax::output_function`), so a decompiler that prints
+    // `sub_4108a4` next to its callees' prototypes is scored on both families
+    let defined: std::collections::BTreeSet<String> = csyntax::parse(text)
+        .map(|t| {
+            csyntax::definitions(&t, text)
+                .into_iter()
+                .filter_map(|(n, d)| d.map(|_| n))
+                .collect()
+        })
+        .unwrap_or_default();
+    let defs: Vec<_> = a
+        .functions
+        .iter()
+        .filter(|f| defined.contains(&f.name))
+        .collect();
+    let named: Vec<_> = defs.iter().filter(|f| f.name == name).collect();
+    let f = match (named.as_slice(), defs.as_slice()) {
+        ([f], _) => **f,
+        ([], [only]) => *only,
         _ => return None,
     };
     Some(to_graph(&f.cfg))
@@ -133,20 +100,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn preprocess() {
-        assert_eq!(
-            preprocess_decompilation("undefined [8] __rustcall f(__int64 a)"),
-            "undefined f(long a)"
-        );
-        assert_eq!(
-            preprocess_decompilation("void __fastcall f(void)"),
-            "void  f(void)"
-        );
-        assert_eq!(
-            preprocess_decompilation("x\ny\nz\nint new;"),
-            "x\ny\nz\nint new;"
-        );
-        assert_eq!(preprocess_decompilation("int new;"), "int new_joern_token;");
+    fn output_function_beside_prototypes() {
+        // a decompiler's own name, callee prototypes in both preprocessor arms
+        let out = "#if defined(X)\nextern unsigned long long free(...);\n#else\nextern unsigned long long free();\n#endif\n\
+                   void sub_4108a4(long *p)\n{\n    if (!p) {\n        return;\n    }\n    free(p);\n}\n";
+        let g = output_cfg(out, "align_effect_destroy").expect("the only definition");
+        assert_eq!(g, output_cfg(out, "sub_4108a4").unwrap());
+        assert!(g.nodes() > 2);
     }
 
     #[test]
