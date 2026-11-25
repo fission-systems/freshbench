@@ -19,10 +19,10 @@ of function starts, as any user who knows a function's address would give it.
 
 | tool | adapter | needs |
 |---|---|---|
-| ghidra | `ghidra/run` + `FreshBenchDecompile.java` | `GHIDRA_INSTALL_DIR`, JDK 21 |
+| ghidra | `ghidra/run` + `FreshBenchDecompile.java` (list mode: `FreshBenchFunctions.java`) | `GHIDRA_INSTALL_DIR`, JDK 21 |
 | kuna | `kuna/run` (Kuna's own CLI: `decompile-project --addr ...`, per-function `decompile --addr --json` for the rest) | `KUNA_BIN` |
 | angr | `angr/run` | Python with `angr` |
-| borer | `borer/run` | `BORER_BIN` |
+| borer | `borer/run` (list mode: `borer functions` pages, then `borer function` per entry for its range; `BORER_LIST_JOBS` parallel calls, default CPU count) | `BORER_BIN` |
 | fission | built in (`--fission-cli`) | `fission_cli` |
 
 ## Function boundaries (`freshbench boundaries`)
@@ -42,6 +42,10 @@ of a stripped binary itself. The same adapter is called in list mode:
   Leave out what the tool itself marks as not a function of the binary
   (PLT stubs, imported/external symbols, SimProcedures, alignment padding).
 * Exit non-zero only when the tool could not analyze the binary at all.
+
+Found starts inside PLT sections are not scored for any tool (some tools
+list PLT stubs, others filter them). Kuna's `size` reaches to the next entry,
+padding included, so its ends count as padded, rarely exact.
 
 Ground truth comes from the unstripped binary: every `STT_FUNC` symbol with a
 size in an executable section, and every DWARF subprogram with a range

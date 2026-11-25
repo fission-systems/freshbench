@@ -8,13 +8,23 @@ export cut for its block budget are decompiled alone with
 prototype in a `// signature:` comment. If borer reports entries at a load
 base, the constant offset that maps the most entries onto requested addresses
 is used.
+
+List mode (--list-functions): `borer functions <bin> "" <offset> 300`, paged,
+is borer's own function table (import thunks and exception funclets left out by
+borer itself); each row is `entry size blocks instrs callers callees src name`,
+where `size` is the code bytes the blocks hold, not the span. The end is read
+from `borer function <bin> <entry>`, whose `range: <start>..<end>` line gives
+the end of the highest decoded instruction (exclusive); null when that call
+fails. Entries are ELF virtual addresses (borer maps ELF sections at sh_addr).
 """
 import argparse
 import collections
+import concurrent.futures
 import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 
 HEADER = re.compile(r"^// (\S+) @ (0x[0-9a-fA-F]+)(?::\s*(.*))?$")
@@ -70,11 +80,57 @@ def best_delta(entries, targets):
     return best
 
 
+SHOWING = re.compile(r"^# showing (\d+) of (\d+) ")
+ROW = re.compile(r"^(0x[0-9a-fA-F]+) \d+ \d+ \d+ \d+ \d+ \S+ ")
+RANGE = re.compile(r"^range:\s+0x[0-9a-fA-F]+\.\.(0x[0-9a-fA-F]+)", re.M)
+PAGE = 300  # the most rows `borer functions` gives at once
+
+
+def list_functions():
+    entries, offset, total = [], 0, None
+    while total is None or offset < total:
+        p = subprocess.run([borer, "functions", a.binary, "", str(offset), str(PAGE)],
+                           capture_output=True, text=True, env=ENV)
+        if p.returncode != 0:
+            sys.stderr.write(f"borer functions exited {p.returncode}: {p.stderr[-500:]}\n")
+            return 1
+        lines = p.stdout.splitlines()
+        m = next((SHOWING.match(l) for l in lines if SHOWING.match(l)), None)
+        if m is None:
+            sys.stderr.write(f"borer functions: no '# showing' header in {p.stdout[:300]!r}\n")
+            return 1
+        total = int(m.group(2))
+        page = [int(r.group(1), 16) for r in map(ROW.match, lines) if r]
+        if not page:
+            break
+        entries += page
+        offset += len(page)
+
+    def end_of(entry):
+        q = subprocess.run([borer, "function", a.binary, f"{entry:#x}"], capture_output=True, text=True, env=ENV)
+        r = RANGE.search(q.stdout) if q.returncode == 0 else None
+        return int(r.group(1), 16) if r else None
+
+    jobs = int(os.environ.get("BORER_LIST_JOBS") or os.cpu_count() or 1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        ends = dict(zip(entries, pool.map(end_of, entries)))
+    with open(a.out, "w") as out:
+        for start in sorted(ends):
+            end = ends[start]
+            out.write(json.dumps({"start": f"{start:#x}", "end": None if end is None else f"{end:#x}"}) + "\n")
+    return 0
+
+
 ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
 for k in ("binary", "addresses", "elf_base", "out"):
-    ap.add_argument("--" + k.replace("_", "-"), required=True)
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
 a = ap.parse_args()
 borer = os.environ["BORER_BIN"]
+if a.list_functions:
+    sys.exit(list_functions())
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
 reqs = [l.strip() for l in open(a.addresses) if l.strip()]
 want = {int(r, 16) & ~1: r for r in reqs}
 with tempfile.TemporaryDirectory() as td:
