@@ -374,14 +374,28 @@ pub fn summarize(rows: &[Row]) -> Summary {
     s
 }
 
-/// Boundary rows from files or directories of `*.jsonl` (other lines skipped).
+/// Whether a `.jsonl` file holds boundary rows: `evaluate` writes them to a
+/// `boundaries` directory (`boundaries/<tool>-<variant>.jsonl`).
+pub fn is_boundary_file(p: &std::path::Path) -> bool {
+    p.extension().is_some_and(|e| e == "jsonl")
+        && p.parent()
+            .and_then(|d| d.file_name())
+            .is_some_and(|d| d == "boundaries")
+}
+
+/// Boundary rows from every `boundaries/*.jsonl` under the given directories
+/// and from the files given. Every line must be a row: a damaged file is an
+/// error, not fewer rows. A row found twice with the same content (one
+/// artifact collected twice) is kept once; twice with different content (two
+/// runs mixed) is an error. Sorted by (tool, variant, binary key).
 pub fn load(paths: &[impl AsRef<std::path::Path>]) -> Result<Vec<Row>> {
+    use anyhow::Context;
     let mut files = Vec::new();
     for p in paths {
         let p = p.as_ref();
         if p.is_dir() {
             crate::rows::walk_sorted(p, &mut |f| {
-                if f.extension().is_some_and(|e| e == "jsonl") {
+                if is_boundary_file(f) {
                     files.push(f.to_path_buf())
                 }
             })?;
@@ -389,15 +403,43 @@ pub fn load(paths: &[impl AsRef<std::path::Path>]) -> Result<Vec<Row>> {
             files.push(p.to_path_buf());
         }
     }
-    let mut out = Vec::new();
+    type Key = (String, String, String, String, String, String, String);
+    let mut rows: BTreeMap<Key, Row> = BTreeMap::new();
+    let mut conflicts = Vec::new();
     for f in files {
-        for line in std::fs::read_to_string(&f)?.lines() {
-            if let Ok(r) = serde_json::from_str::<Row>(line) {
-                out.push(r);
+        let text = std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?;
+        for (i, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let r: Row = serde_json::from_str(line)
+                .with_context(|| format!("{}:{}: not a boundary row", f.display(), i + 1))?;
+            let k = (
+                r.tool.clone(),
+                r.variant.clone(),
+                r.project.clone(),
+                r.arch.clone(),
+                r.compiler.clone(),
+                r.config.clone(),
+                r.binary.clone(),
+            );
+            match rows.get(&k) {
+                Some(old) if *old != r => conflicts.push(format!("{k:?}")),
+                Some(_) => {}
+                None => {
+                    rows.insert(k, r);
+                }
             }
         }
     }
-    Ok(out)
+    if !conflicts.is_empty() {
+        anyhow::bail!(
+            "{} boundary rows occur twice with different content, e.g. {}",
+            conflicts.len(),
+            conflicts[0]
+        );
+    }
+    Ok(rows.into_values().collect())
 }
 
 #[cfg(test)]
