@@ -16,6 +16,7 @@ jobs:
             ~/.cargo/git
             target
           key: cargo-${{ hashFiles('Cargo.lock') }}
+      - run: python -m unittest ci.test_leaderboard_gate
       - run: cargo fmt -p freshbench --check
       - run: cargo clippy --locked -p freshbench --all-targets -- -D warnings
       - run: cargo test --locked -p freshbench
