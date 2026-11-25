@@ -38,7 +38,7 @@ enum Cmd {
         #[arg(long)]
         function: String,
     },
-    /// Score a tool's decompiled code in a dataset tree with FreshBench's metrics (v2 rows, JSON lines).
+    /// Score a tool's decompiled code in a dataset tree with FreshBench's metrics (native rows, JSON lines).
     Rescore {
         root: PathBuf,
         #[arg(long)]

@@ -1,12 +1,12 @@
-# FreshBench v2 build image: the v1 x86-64 image, unchanged, plus cross
+# FreshBench build image: the pinned native x86-64 image plus cross
 # toolchains for i386, AArch64 and ARMv7 (hard-float, Thumb-2).
 #
-# * x86-64 keeps the v1 image's GCC 16.2.0 (official gcc image) and Clang/LLVM
+# * x86-64 keeps the native image's GCC 16.2.0 (official gcc image) and Clang/LLVM
 #   23.1.6 bit for bit: the base is pinned by digest.
 # * Cross GCC is built here from the same GCC 16.2.0 release tarball (sha256
 #   pinned, GPG signature checked against the GNU keyring when the pin was
 #   recorded), so every architecture uses one GCC version. Upstream defaults
-#   are kept (no --enable-default-pie, as the v1 native GCC); ARMv7 uses
+#   are kept (no --enable-default-pie, as the native GCC); ARMv7 uses
 #   Debian armhf's ABI (armv7-a, vfpv3-d16, hard float, Thumb-2 by default).
 # * Clang cross-compiles with the same /opt/llvm 23.1.6 (--target), using the
 #   cross GCC's crt files and libgcc (--gcc-install-dir) and the target's

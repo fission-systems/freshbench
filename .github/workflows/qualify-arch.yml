@@ -1,5 +1,5 @@
 name: qualify-arch
-# v2: build + prepare corpus candidates per architecture with the cross image.
+# Build + prepare corpus candidates per architecture with the cross image.
 # max-parallel is kept below the org's concurrency so Fission's own CI is not starved.
 on:
   workflow_dispatch:
