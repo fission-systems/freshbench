@@ -496,7 +496,9 @@ fn run() -> Result<ExitCode> {
             };
             let mut order: Vec<usize> = (0..work.len()).collect();
             order.sort_by_key(|&k| std::cmp::Reverse(size(&work[k])));
-            let pool = rayon::ThreadPoolBuilder::new().num_threads(jobs.max(1)).build()?;
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(jobs.max(1))
+                .build()?;
             let done: Vec<(usize, Result<Vec<adapters::Record>>)> = pool.install(|| {
                 order
                     .par_iter()
