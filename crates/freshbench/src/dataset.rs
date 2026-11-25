@@ -307,7 +307,7 @@ pub fn rescore_records(
         .take(limit_tus.unwrap_or(usize::MAX))
         .collect();
     let sigs = SignatureCache::default();
-    let starts = instruction_starts(root, &targets);
+    let starts = instruction_starts(root, &targets)?;
     // Recursive-descent parsers and the CFG builder recurse with the nesting of the
     // text; deeply nested decompiler output overflows a default thread stack.
     let pool = big_stack_pool()?;
@@ -327,7 +327,10 @@ pub fn rescore_records(
 /// function may start. Each binary is read once.
 pub type StartsMap = HashMap<(String, u64), crate::evidence::Starts>;
 
-pub fn instruction_starts(root: &Path, targets: &[Target]) -> StartsMap {
+/// A binary that cannot be read or whose DWARF cannot be parsed is an error:
+/// without its instruction index every output for it would read as having no
+/// valid line mapping, an infrastructure failure charged to the tool.
+pub fn instruction_starts(root: &Path, targets: &[Target]) -> Result<StartsMap> {
     let mut by_bin: BTreeMap<&str, Vec<(&str, u64)>> = BTreeMap::new();
     for t in targets {
         if let (Some(b), Some(a)) = (&t.binary_path, t.address) {
@@ -337,21 +340,35 @@ pub fn instruction_starts(root: &Path, targets: &[Target]) -> StartsMap {
                 .push((t.key.arch.as_str(), a));
         }
     }
-    by_bin
+    let per_bin: Vec<Result<Vec<_>>> = by_bin
         .par_iter()
-        .flat_map_iter(|(bin, fns)| {
-            let data = std::fs::read(root.join(bin)).unwrap_or_default();
-            let ranges = crate::dwarf::ranges(&data).unwrap_or_default();
-            fns.iter()
+        .map(|(bin, fns)| {
+            let p = root.join(bin);
+            let data = std::fs::read(&p)
+                .with_context(|| format!("instruction index: read {}", p.display()))?;
+            let ranges = crate::dwarf::ranges(&data)
+                .with_context(|| format!("instruction index: DWARF ranges of {}", p.display()))?;
+            Ok(fns
+                .iter()
                 .filter_map(|(arch, low)| {
                     let st =
                         crate::evidence::starts_in(&data, arch, *low, ranges.get(low).copied())?;
                     Some(((bin.to_string(), *low), st))
                 })
-                .collect::<Vec<_>>()
+                .collect())
         })
-        .collect()
+        .collect();
+    let mut out = StartsMap::new();
+    for r in per_bin {
+        out.extend(r?);
+    }
+    Ok(out)
 }
+
+/// Tag of a row that cannot be scored because the target has no instruction
+/// index (its address is in no section of the binary, or the target has no
+/// binary or address): a truth or infrastructure failure, never the tool's.
+pub const NO_INSTRUCTION_INDEX: &str = "no_instruction_index";
 
 /// Tag of an output that is not scored because no line maps to an instruction
 /// of the function.
@@ -485,6 +502,15 @@ fn score_tu(
             (Some(b), Some(a)) => starts.get(&(b.clone(), a)),
             _ => None,
         };
+        // no instruction index for the target (its address is in no section
+        // of the binary): a ground-truth problem, not the tool's, and named
+        // as such instead of reading as "no valid line mapping"
+        if st.is_none() {
+            row.outcome = Outcome::Unscored;
+            row.tags = vec![NO_INSTRUCTION_INDEX.into()];
+            out.push(row);
+            continue;
+        }
         let checked = match (&mut ev, st) {
             (Some(e), Some(st)) => crate::evidence::validate(e, st, text),
             _ => crate::evidence::Checked::default(),
@@ -903,6 +929,47 @@ mod tests {
         assert!(!t.perfect);
         assert_eq!(t.params_output, 0);
         assert!(score(&crate::types::Signature::default()).is_none());
+    }
+
+    /// An unreadable binary stops scoring with an error naming it, and a
+    /// target with no instruction index is tagged as such: neither may read
+    /// as the tool's "no valid line mapping".
+    #[test]
+    fn missing_instruction_index_is_not_charged_as_no_line_mappings() {
+        let d = tempfile::tempdir().unwrap();
+        tree(d.path());
+        let ok = rescore(d.path(), "t", None, 1000, &ScoreCache::default(), &[]).unwrap();
+        assert!(ok
+            .iter()
+            .all(|r| !r.tags.iter().any(|t| t == NO_INSTRUCTION_INDEX)));
+        // the target's address lies in no section of the binary
+        let m = d.path().join("gcc-O3/manifest.json");
+        let mut pb: PreparedBuild = serde_json::from_slice(&std::fs::read(&m).unwrap()).unwrap();
+        pb.binaries.get_mut("bin").unwrap().functions[0].address = 0x10_0000;
+        std::fs::write(&m, serde_json::to_vec(&pb).unwrap()).unwrap();
+        let p = d.path().join("results/t/gcc-O3/p/records.jsonl.gz");
+        let mut recs: Vec<Record> = {
+            use std::io::BufRead;
+            std::io::BufReader::new(flate2::read::GzDecoder::new(
+                std::fs::File::open(&p).unwrap(),
+            ))
+            .lines()
+            .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+            .collect()
+        };
+        recs[0].address = 0x10_0000;
+        write_records(&p, &recs).unwrap();
+        let rows = rescore(d.path(), "t", None, 1000, &ScoreCache::default(), &[]).unwrap();
+        let o3 = rows.iter().find(|r| r.key.config == "O3").unwrap();
+        assert_eq!(o3.outcome, Outcome::Unscored);
+        assert_eq!(o3.tags, [NO_INSTRUCTION_INDEX]);
+        // the binary is gone: an error, not a column of unscored rows
+        std::fs::remove_file(d.path().join("gcc-Os/binaries/bin")).unwrap();
+        let e = format!(
+            "{:#}",
+            rescore(d.path(), "t", None, 1000, &ScoreCache::default(), &[]).unwrap_err()
+        );
+        assert!(e.contains("gcc-Os/binaries/bin"), "{e}");
     }
 
     #[test]
