@@ -1,7 +1,9 @@
 # FreshBench
 
-FreshBench is a decompiler benchmark built on fresh, license-clean C
-programs that no decompiler has been tuned on. It does two jobs: it compares
+FreshBench is a decompiler benchmark built on recent, license-clean C
+programs chosen to be outside the corpora decompilers are usually tuned on
+(DecBench's functions are excluded by fingerprint; this lowers the chance
+that a tool has seen them, it does not prove it). It does two jobs: it compares
 decompilers on the same functions, and it shows each decompiler where it can
 improve. It has its own ground truth and its own metrics, written in Rust
 (`crates/freshbench`).
@@ -31,6 +33,9 @@ to this reuse of its metric design on 2026-11-25, with one request we keep:
 be honest about duplication. Row counts overstate how many different
 functions a corpus holds; see
 [how many functions M1 really is](corpus/m1/README.md#how-many-functions-this-really-is).
+The scoring defects DecBench found over the years are tracked against this
+implementation, each with its status and a regression test, in
+[`docs/decbench-compatibility-audit.md`](docs/decbench-compatibility-audit.md).
 
 ## What is measured, and what is not
 
@@ -54,9 +59,11 @@ definitions), applied the same way for both CFG families.
 | GED | the output's CFG vs the source function's CFG, both built by FreshBench's one CFG builder (`cfg.rs`) | 0 |
 | Joern GED | the same comparison on Joern's basic-block CFG (vendored rust-joern, `joern.rs`), scored with the same GED engine | 0 |
 | types | return and parameter type classes (`int<N>`, `float<N>`, bool, ptr, array, struct, void) vs DWARF (`types.rs`, `dwarf.rs`); locals as coverage only | arity, every parameter and the return right |
-| recompile | the output exactly as printed (no prelude, no injected declarations, no repair loop), built by the binary's own compiler and flags plus one fixed permissive flag set; its disassembly vs the original's (`recompile.rs`) | instruction-identical |
-| Union | any of GED, Joern GED, types or recompile perfect | |
-| size bands | every table split by source CFG nodes: <6, 6-20, 21-50, 51-100, >100 | |
+| recompile | the output exactly as printed (no prelude, no injected declarations, no repair loop), built by the binary's own compiler and flags plus one fixed permissive flag set; its instructions vs the original's with every constant, displacement and register kept, where only an operand the object file has a relocation for may differ (`recompile.rs`) | instruction-identical |
+| Union | any of GED, Joern GED, types or recompile perfect (one is enough: a right signature with a wrong body counts) | |
+| Intersection, both CFGs, strict | every metric that applies perfect; GED 0 on both graph families; GED 0 from output that parsed without error recovery | |
+| with control flow | the perfect rate over rows whose source function has a branch or a loop. A source without control flow is `entry -> exit` and matches any output without control flow, an empty body included, so those perfects carry no information about structure and are also reported as their own `straight-line` band | |
+| size bands | every table split by source CFG nodes: straight-line (≤2), 3-5, 6-20, 21-50, 51-100, >100 | |
 | normalized GED | GED / (source nodes + edges) | 0 |
 | call sites | direct call instructions in the unstripped binary vs calls printed (`callsites.rs`) | nothing missing, nothing extra |
 | shape tags | over/under-noded, extra goto/return/ternary/calls, lost `&&`/`||`, lost switch (`taxonomy.rs`) | |

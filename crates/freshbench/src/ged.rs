@@ -519,19 +519,169 @@ fn dfs_order(g: &Adj) -> Vec<u32> {
     order
 }
 
+/// Steps the isomorphism search may take; independent of the GED budget.
+pub const ISO_CAP: u64 = 5_000_000;
+
+/// Are the two graphs isomorphic as directed graphs with entry/exit/block
+/// labels? `Some(answer)`, or `None` when the search took more than `cap`
+/// steps (then nothing is known).
+///
+/// GED 0 means isomorphic, and a budget-limited GED search can stop above 0 on
+/// two large isomorphic graphs. This check does not share that budget: colour
+/// refinement (Weisfeiler-Lehman over labels, in- and out-neighbours) splits
+/// the nodes into classes, which decides most pairs outright, and a
+/// backtracking search maps the rest class by class.
+pub fn isomorphic(a: &Graph, b: &Graph, cap: u64) -> Option<bool> {
+    use std::collections::{BTreeMap, HashSet};
+    let n = a.nodes();
+    if n != b.nodes() || a.edges.len() != b.edges.len() {
+        return Some(false);
+    }
+    let adj = |g: &Graph| {
+        let (mut out, mut inn) = (vec![Vec::new(); n], vec![Vec::new(); n]);
+        for &(x, y) in &g.edges {
+            out[x as usize].push(y as usize);
+            inn[y as usize].push(x as usize);
+        }
+        (out, inn)
+    };
+    let ((oa, ia), (ob, ib)) = (adj(a), adj(b));
+    // colours shared by both graphs: ids of sorted signatures
+    let label = |l: &Label| match l {
+        Label::Entry => 0u64,
+        Label::Exit => 1,
+        Label::Block => 2,
+    };
+    let mut ca: Vec<u64> = a.labels.iter().map(label).collect();
+    let mut cb: Vec<u64> = b.labels.iter().map(label).collect();
+    let mut classes = 0;
+    loop {
+        let sig = |c: &[u64], out: &[Vec<usize>], inn: &[Vec<usize>], v: usize| {
+            let mut o: Vec<u64> = out[v].iter().map(|&w| c[w]).collect();
+            let mut i: Vec<u64> = inn[v].iter().map(|&w| c[w]).collect();
+            o.sort_unstable();
+            i.sort_unstable();
+            (c[v], o, i)
+        };
+        let sa: Vec<_> = (0..n).map(|v| sig(&ca, &oa, &ia, v)).collect();
+        let sb: Vec<_> = (0..n).map(|v| sig(&cb, &ob, &ib, v)).collect();
+        let mut ids = BTreeMap::new();
+        for s in sa.iter().chain(sb.iter()) {
+            let next = ids.len() as u64;
+            ids.entry(s.clone()).or_insert(next);
+        }
+        ca = sa.iter().map(|s| ids[s]).collect();
+        cb = sb.iter().map(|s| ids[s]).collect();
+        let (mut ha, mut hb) = (ca.clone(), cb.clone());
+        ha.sort_unstable();
+        hb.sort_unstable();
+        if ha != hb {
+            return Some(false);
+        }
+        if ids.len() == classes {
+            break;
+        }
+        classes = ids.len();
+    }
+    // map a's nodes in order of rarest colour first
+    let mut size: BTreeMap<u64, usize> = BTreeMap::new();
+    for &c in &ca {
+        *size.entry(c).or_default() += 1;
+    }
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by_key(|&v| (size[&ca[v]], v));
+    let eb: HashSet<(usize, usize)> = b
+        .edges
+        .iter()
+        .map(|&(x, y)| (x as usize, y as usize))
+        .collect();
+    let mut by_colour: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
+    for (v, &c) in cb.iter().enumerate() {
+        by_colour.entry(c).or_default().push(v);
+    }
+    const NONE: usize = usize::MAX;
+    let (mut map, mut used) = (vec![NONE; n], vec![false; n]);
+    let mut steps = 0u64;
+    // iterative backtracking: choice[i] = index into the candidate list tried at depth i
+    let mut choice = vec![0usize; n];
+    let mut depth = 0usize;
+    loop {
+        if depth == n {
+            return Some(true);
+        }
+        let u = order[depth];
+        let cands = &by_colour[&ca[u]];
+        let mut placed = false;
+        while choice[depth] < cands.len() {
+            let v = cands[choice[depth]];
+            choice[depth] += 1;
+            steps += 1;
+            if steps > cap {
+                return None;
+            }
+            if used[v] {
+                continue;
+            }
+            // every edge of a between u and an already mapped node (or u itself) is in b;
+            // with equal edge counts and a bijection that is edge equality
+            let ok = oa[u].iter().all(|&w| {
+                let t = if w == u { v } else { map[w] };
+                t == NONE || eb.contains(&(v, t))
+            }) && ia[u].iter().all(|&w| {
+                let t = if w == u { v } else { map[w] };
+                t == NONE || eb.contains(&(t, v))
+            });
+            if ok {
+                map[u] = v;
+                used[v] = true;
+                placed = true;
+                break;
+            }
+        }
+        if placed {
+            depth += 1;
+            if depth < n {
+                choice[depth] = 0;
+            }
+        } else {
+            if depth == 0 {
+                return Some(false);
+            }
+            depth -= 1;
+            let pu = order[depth];
+            used[map[pu]] = false;
+            map[pu] = NONE;
+        }
+    }
+}
+
 pub fn distance(a: &Graph, b: &Graph) -> Ged {
     distance_with_budget(a, b, DEFAULT_BUDGET)
 }
 
 pub fn distance_with_budget(a: &Graph, b: &Graph, budget: u64) -> Ged {
+    // GED 0 is decided by its own check, whatever the budget
+    let iso = isomorphic(a, b, ISO_CAP);
+    if iso == Some(true) {
+        return Ged {
+            value: 0,
+            exact: true,
+            lower_bound: 0,
+            method: "isomorphism",
+            expanded: 0,
+        };
+    }
     let (g1, g2) = (Adj::new(a), Adj::new(b));
-    let lb = lower_bound(a, b);
+    // not isomorphic: at least one edit
+    let lb = lower_bound(a, b).max(u64::from(iso == Some(false)));
     let mut init = assignment(&g1, &g2);
     let ub = local_search(&g1, &g2, &mut init, 50, budget.saturating_mul(4));
-    let method = if g1.n + g2.n <= HUNGARIAN_MAX {
-        "bipartite"
-    } else {
-        "greedy"
+    let method = match (g1.n + g2.n <= HUNGARIAN_MAX, iso.is_none()) {
+        (true, false) => "bipartite",
+        (false, false) => "greedy",
+        // the isomorphism check ran out of steps: GED 0 is not ruled out
+        (true, true) => "bipartite, isomorphism unknown",
+        (false, true) => "greedy, isomorphism unknown",
     };
     if ub == lb {
         return Ged {
@@ -720,5 +870,77 @@ mod tests {
         let a = hungarian(&c);
         let total: i64 = a.iter().enumerate().map(|(i, &j)| c[i][j]).sum();
         assert_eq!(total, 5);
+    }
+
+    /// DecBench #57: two large isomorphic CFGs must score 0 whatever the
+    /// search budget is.
+    #[test]
+    fn large_isomorphic_graphs_are_perfect_without_budget() {
+        let n = 400u32;
+        // a CFG-like graph: a chain with forward branches and back edges
+        let mut edges = Vec::new();
+        for i in 0..n - 1 {
+            edges.push((i, i + 1));
+            if i % 3 == 0 && i + 7 < n {
+                edges.push((i, i + 7));
+            }
+            if i % 11 == 5 && i >= 4 {
+                edges.push((i, i - 4));
+            }
+        }
+        let a = graph(n as usize, &edges);
+        // the same graph with its nodes renumbered
+        let perm: Vec<u32> = (0..n).map(|i| (i * 137 + 29) % n).collect();
+        let mut labels = vec![Label::Block; n as usize];
+        for (old, &new) in perm.iter().enumerate() {
+            labels[new as usize] = a.labels[old];
+        }
+        let mut pe: Vec<(u32, u32)> = edges
+            .iter()
+            .map(|&(x, y)| (perm[x as usize], perm[y as usize]))
+            .collect();
+        pe.sort_unstable();
+        let b = Graph { labels, edges: pe };
+        assert_eq!(isomorphic(&a, &b, ISO_CAP), Some(true));
+        let d = distance_with_budget(&a, &b, 1);
+        assert_eq!((d.value, d.exact, d.method), (0, true, "isomorphism"));
+        // one edge moved: not isomorphic, and never reported as 0
+        let mut other = b.clone();
+        let last = other.edges.len() - 1;
+        other.edges[last].1 = (other.edges[last].1 + 1) % n;
+        other.edges.sort_unstable();
+        other.edges.dedup();
+        if other.edges.len() == b.edges.len() {
+            assert_eq!(isomorphic(&a, &other, ISO_CAP), Some(false));
+            let d = distance_with_budget(&a, &other, 1);
+            assert!(d.value > 0 && d.lower_bound >= 1);
+        }
+    }
+
+    #[test]
+    fn isomorphism_beyond_colour_refinement_and_the_cap() {
+        let blocks = |n: usize, edges: &[(u32, u32)]| {
+            let mut e = edges.to_vec();
+            e.sort_unstable();
+            Graph {
+                labels: vec![Label::Block; n],
+                edges: e,
+            }
+        };
+        // one 6-cycle against two 3-cycles: every node looks the same to
+        // colour refinement, only the search tells them apart
+        let c6 = blocks(6, &[(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)]);
+        let c33 = blocks(6, &[(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 3)]);
+        assert_eq!(isomorphic(&c6, &c33, ISO_CAP), Some(false));
+        assert_eq!(isomorphic(&c6, &c6, ISO_CAP), Some(true));
+        // a rotated cycle is the same graph
+        let rot = blocks(6, &[(1, 2), (2, 3), (3, 4), (4, 5), (5, 0), (0, 1)]);
+        assert_eq!(isomorphic(&c6, &rot, ISO_CAP), Some(true));
+        // out of steps: unknown, not "no"
+        assert_eq!(isomorphic(&c6, &c33, 1), None);
+        // a self loop has to map to a self loop
+        let l1 = blocks(2, &[(0, 0), (0, 1)]);
+        let l2 = blocks(2, &[(0, 1), (1, 1)]);
+        assert_eq!(isomorphic(&l1, &l2, ISO_CAP), Some(false));
     }
 }

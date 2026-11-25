@@ -4,8 +4,17 @@
 //! large functions. Every table is also reported per band of source CFG nodes.
 
 /// (label, lowest node count, highest node count), inclusive.
-pub const BANDS: [(&str, u32, u32); 5] = [
-    ("<6", 0, 5),
+///
+/// `straight-line`: the source function has no control flow at all (entry and
+/// exit only). Any output without control flow has GED 0 against it, an
+/// empty or truncated body included, so a perfect score there says nothing
+/// about structure recovery; it is its own band and is left out of
+/// `perfect on functions with control flow` (DecBench #6).
+pub const STRAIGHT_LINE: &str = "straight-line";
+
+pub const BANDS: [(&str, u32, u32); 6] = [
+    (STRAIGHT_LINE, 0, 2),
+    ("3-5", 3, 5),
     ("6-20", 6, 20),
     ("21-50", 21, 50),
     ("51-100", 51, 100),
@@ -48,13 +57,26 @@ mod tests {
 
     #[test]
     fn edges() {
+        assert_eq!(band(Some(2)), STRAIGHT_LINE);
+        assert_eq!(band(Some(3)), "3-5");
         let got: Vec<_> = [0, 5, 6, 20, 21, 50, 51, 100, 101, 10_000]
             .iter()
             .map(|n| band(Some(*n)))
             .collect();
         assert_eq!(
             got,
-            ["<6", "<6", "6-20", "6-20", "21-50", "21-50", "51-100", "51-100", ">100", ">100"]
+            [
+                STRAIGHT_LINE,
+                "3-5",
+                "6-20",
+                "6-20",
+                "21-50",
+                "21-50",
+                "51-100",
+                "51-100",
+                ">100",
+                ">100"
+            ]
         );
         assert_eq!(band(None), "unknown");
     }
