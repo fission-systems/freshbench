@@ -8,13 +8,9 @@ decompilers on the same functions, and it shows each decompiler where it can
 improve. It has its own ground truth and its own metrics, written in Rust
 (`crates/freshbench`).
 
-**Status (2026-11-25):** v2 is in progress. The scorer, the CFG builders,
-GED, type and recompile metrics, `gaps` and manifests are done and tested.
-The M1 corpus is published ([`corpus/m1`](corpus/m1/README.md)); tool
-results on it are being produced. The v1 release (DecBench-based)
-is preserved at tag [`v1`](../../tree/v1) and in
-[`sjkim1127/freshbench`](https://huggingface.co/datasets/sjkim1127/freshbench).
-v1 numbers and v2 numbers are not comparable.
+**Status:** The M1 corpus is published ([`corpus/m1`](corpus/m1/README.md));
+verified tool results are pending. The Rust-native evaluation engine is the
+only supported scoring pipeline.
 
 ## M1 leaderboard
 
@@ -47,8 +43,7 @@ reported outside the distance aggregate.
 FreshBench's metric families follow [DecBench](https://github.com/Noelo-Lab/decbench)
 (Noelo-Lab): control-flow graph edit distance against the source, type recovery
 against DWARF, recompilation byte match, and a Union of perfect scores.
-FreshBench v1 was built on DecBench and its rust-joern CFG parser. v2 uses no
-DecBench code. Its own CFG definition, GED computation, type and
+FreshBench uses no DecBench code. Its own CFG definition, GED computation, type and
 recompilation scoring, and ground-truth path are documented below and in the
 source. For the second CFG family it vendors
 [rust-joern](https://github.com/Noelo-Lab/rust-joern) (Apache-2.0,
@@ -161,20 +156,8 @@ worse one is not evidence that it is wrong.
   output text are scored once, across builds, tools and runs.
   `rescore --cache FILE` keeps the cache between runs.
 
-Measured on the whole v1 corpus (Fission's outputs, 354,167 rows, 14-core Mac,
-budget 200k, other work on the machine):
-* **Cold cache:** 3,151 s CPU (8.9 ms per row), 380 s wall. 16% of rows hit
-  the cache within the run (identical output in another build).
-* **Warm cache:** 247 s CPU (0.7 ms per row), 40 s wall. The rows are
-  byte-identical to the cold run.
-* **Upper bound only:** 25% of scored rows. Raising the budget to 2M on a
-  2,446-row sample cut that from 15% to 13%, changed the GED total by 0.7%,
-  changed no perfect row, and cost 5x the CPU.
-
-For reference, DecBench's scorer in the full-dataset sweep used 4.5 ms per
-row. In both sweeps decompiling costs far more than scoring (Fission: 4,554 s
-CPU for 96,103 functions). With a warm cache a before/after comparison
-rescores only the rows whose output changed.
+Cold- and warm-cache timings for M1 will be reported with verified results.
+A resumed comparison rescores only inputs whose cache keys changed.
 
 ## Improvement targets: `freshbench gaps`
 
@@ -256,7 +239,6 @@ cache; a resumed run decompiles only what has no checkpoint.
 
 | milestone | languages | architectures | compilers | optimization | status |
 |---|---|---|---|---|---|
-| v1 | C | x86-64 | GCC 16.2.0, Clang 23.1.6 | O0 O1 O2 O3 Os O2-noinline | released (tag `v1`, DecBench-based) |
 | **M1** | C | x86-64, i686, AArch64, ARMv7 (Thumb-2, hard float) | GCC 16.2.0, Clang 23.1.6 | same six | corpus published ([`corpus/m1`](corpus/m1/README.md)); tool results pending |
 | M2 | C++, C | + PE/PDB | + MSVC, MinGW-w64 | | planned |
 | M3 | Rust, Go | | rustc, gc | | planned; no C source CFG, so binary-grounded signals only |
@@ -280,7 +262,7 @@ Rules:
 
 Storage: the harness and per-milestone manifests (path, size, sha256,
 provenance) are in this repository. Corpus files and results are on
-Hugging Face at a pinned revision (`sjkim1127/freshbench-v2` from M1 on).
+Hugging Face at a pinned revision (`sjkim1127/freshbench-v2`, the published M1 dataset identifier).
 Git LFS is not used.
 
 ## Layout
@@ -289,9 +271,8 @@ Git LFS is not used.
 |---|---|
 | `crates/freshbench/` | the scorer and CLI (Rust): `csyntax`, `cfg`, `ged`, `joern`, `types`, `dwarf`, `recompile`, `score`, `dataset`, `prepare`, `adapters`, `report`, `taxonomy`, `headroom`, `bands`, `callsites`, `manifest`, `rows` |
 | `crates/rust-joern/` | vendored rust-joern (Apache-2.0), see its `VENDORED.md` |
-| `build/` | build images (`Dockerfile` = v1 x86-64, `Dockerfile.cross` = v2 cross toolchains), compiler wrapper `fbcc.py`, `build_project.py` |
+| `build/` | build images (`Dockerfile` = native base, `Dockerfile.cross` = cross toolchains), compiler wrapper `fbcc.py`, `build_project.py` |
 | `ci/`, `.github/workflows/` | pins, corpus qualification per architecture, image builds, tests |
-| `selection/` | candidate enumeration and corpus lists (`corpus100.json`, `m1/`) |
-| `pipeline/` | v1 pipeline (DecBench-based); replaced by Rust adapters in v2 |
+| `selection/` | candidate enumeration and corpus lists (M1 selection and candidate provenance) |
 
 Harness: Apache-2.0 (`LICENSE`). Corpus files keep their projects' licenses.

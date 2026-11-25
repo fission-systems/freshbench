@@ -3,7 +3,7 @@
 
 usage: build_project <src_dir> <compiler gcc|clang> <config> <out_dir> [arch]
 config: O0 O1 O2 O3 Os O2-noinline
-arch:   x86_64 (default, the v1 native build) | i686 | aarch64 | armv7
+arch:   x86_64 (default, the native build) | i686 | aarch64 | armv7
 
 A non-native arch is a cross build: configure gets --host=<triplet>, CMake
 gets CMAKE_SYSTEM_NAME/PROCESSOR, meson a cross file, and every build system

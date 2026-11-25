@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# v2: build one corpus project for ONE architecture at all 12 (compiler, opt)
+# Build one corpus project for ONE architecture at all 12 (compiler, opt)
 # configurations with the cross image, and prepare its rows.
 # usage: qualify_arch.sh <owner/repo@sha> <out_dir> <arch>
 #   arch: x86_64 | i686 | aarch64 | armv7
-# Same gates as v1 (ci/qualify.sh): both O0 builds need >= 300 eligible
+# Both O0 builds need >= 300 eligible
 # functions, then `freshbench prepare` (Rust, no DecBench; FRESHBENCH_BIN = a
 # Linux build of it) selects 300 per build in the same sha256 order,
 # which is architecture-independent - the same source functions are chosen on
