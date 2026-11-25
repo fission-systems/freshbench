@@ -16,7 +16,7 @@
 #   architecture where Debian can co-install them, never removing a native
 #   package (--no-remove). The installed set is written to
 #   /etc/freshbench/foreign-packages.txt and is part of the image identity.
-ARG BASE=ghcr.io/sjkim1127/freshbench-build@sha256:f7a2626e8d294c14c379fdf61b8d3bd0276fdb78ed6f6adf75e3b3b71b1b10d7
+ARG BASE=ghcr.io/fission-systems/freshbench-build@sha256:f7a2626e8d294c14c379fdf61b8d3bd0276fdb78ed6f6adf75e3b3b71b1b10d7
 FROM ${BASE}
 ARG GCC_VER=16.2.0
 ARG GCC_SHA256=e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e

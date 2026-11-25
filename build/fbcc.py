@@ -16,7 +16,7 @@ import hashlib, json, os, re, subprocess, sys
 me = os.path.basename(sys.argv[0])
 cxx = me.startswith("fbcxx")
 fam = "clang" if me.endswith("clang") else "gcc"
-# FB_ARCH selects the target (default x86_64 = the v1 native build, unchanged).
+# FB_ARCH selects the target (default x86_64 = the base image's native build, unchanged).
 # Cross GCC is GCC 16.2.0 built from the same release (build/Dockerfile.cross);
 # cross Clang is the same /opt/llvm 23.1.6 with --target, the cross GCC's crt
 # files and libgcc, and the target's binutils ld.

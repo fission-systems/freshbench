@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the v1 image's project library packages for each foreign
+# Install the base image's project library packages for each foreign
 # architecture, one package at a time, never removing anything (--no-remove).
 # A package Debian cannot co-install with the native one is skipped and
 # recorded; the result file is part of the image identity.
