@@ -169,6 +169,14 @@ enum Cmd {
     /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
     /// `boundaries` rows (files or directories of *.jsonl); JSON.
     BoundariesSummary { rows: Vec<PathBuf> },
+    /// How fast each tool is: CPU time, wall time and peak memory per binary and
+    /// per function, from `timing.jsonl` files (`decompile`) and boundary rows.
+    Speed {
+        /// files or directories searched for *.jsonl
+        paths: Vec<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
     /// The Fission quality sweep: decompile a corpus with one fission_cli, score
     /// it, and keep a run directory that can be resumed, reported and compared.
     Sweep {
@@ -597,7 +605,8 @@ fn run() -> Result<ExitCode> {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(jobs.max(1))
                 .build()?;
-            let done: Vec<(usize, Result<Vec<adapters::Record>>)> = pool.install(|| {
+            type Done = (Vec<adapters::Record>, adapters::CallStats);
+            let done: Vec<(usize, Result<Done>)> = pool.install(|| {
                 order
                     .par_iter()
                     .map(|&k| {
@@ -609,7 +618,7 @@ fn run() -> Result<ExitCode> {
                             .iter()
                             .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
                             .collect();
-                        let r = adapters::decompile_binary(
+                        let r = adapters::decompile_binary_stats(
                             &t,
                             &root.join(&units[i].stripped).join(bin),
                             bin,
@@ -622,21 +631,39 @@ fn run() -> Result<ExitCode> {
                     })
                     .collect()
             });
-            let mut by_k: Vec<Option<Vec<adapters::Record>>> = vec![None; work.len()];
+            let mut by_k: Vec<Option<Done>> = vec![None; work.len()];
             for (k, r) in done {
                 by_k[k] = Some(r?);
             }
             let (mut ok, mut failed) = (0u64, 0u64);
             for (i, u) in units.iter().enumerate() {
                 let mut recs = Vec::new();
-                for (k, (wi, _)) in work.iter().enumerate() {
+                let mut timing = String::new();
+                let pb = &u.targets;
+                for (k, (wi, bin)) in work.iter().enumerate() {
                     if *wi == i {
-                        recs.extend(by_k[k].take().unwrap_or_default());
+                        let (r, stats) = by_k[k].take().unwrap_or_default();
+                        let line = freshbench::speed::Timing {
+                            tool: t.name().to_string(),
+                            track: "decompile".into(),
+                            project: pb.project.clone(),
+                            arch: pb.arch.clone(),
+                            compiler: pb.compiler.clone(),
+                            config: pb.config.clone(),
+                            binary: (*bin).clone(),
+                            functions: r.len() as u64,
+                            calls: stats.calls,
+                            failed_calls: stats.failed_calls,
+                            jobs: jobs.max(1) as u32,
+                            usage: stats.usage,
+                        };
+                        timing.push_str(&serde_json::to_string(&line)?);
+                        timing.push('\n');
+                        recs.extend(r);
                     }
                 }
                 ok += recs.iter().filter(|x| x.code.is_some()).count() as u64;
                 failed += recs.iter().filter(|x| x.code.is_none()).count() as u64;
-                let pb = &u.targets;
                 // results are keyed by the arch-qualified build, so rows of a
                 // non-x86-64 build never read back as x86-64
                 let out = root
@@ -646,6 +673,8 @@ fn run() -> Result<ExitCode> {
                     .join(&pb.project)
                     .join("records.jsonl.gz");
                 adapters::write_records(&out, &recs)?;
+                // what each binary cost: wall, CPU and peak memory of the tool
+                std::fs::write(out.with_file_name("timing.jsonl"), timing)?;
                 eprintln!("{}/{}: {} functions", u.build, pb.project, recs.len());
             }
             eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
@@ -715,7 +744,7 @@ fn run() -> Result<ExitCode> {
                             std::fs::write(&p, bytes)?;
                             input = p;
                         }
-                        let listed = adapters::list_functions(
+                        let listed = adapters::list_functions_measured(
                             &t,
                             &input,
                             std::time::Duration::from_secs(binary_timeout_s),
@@ -723,11 +752,16 @@ fn run() -> Result<ExitCode> {
                         if variant == "no-unwind" {
                             let _ = std::fs::remove_file(&input);
                         }
-                        let (counts, error) = match listed {
-                            Ok(found) => (boundaries::score(&truth, &found, arm, &plt), None),
+                        let (counts, error, usage) = match listed {
+                            Ok((found, usage)) => (
+                                boundaries::score(&truth, &found, arm, &plt),
+                                None,
+                                Some(usage),
+                            ),
                             Err(e) => (
                                 boundaries::score(&truth, &[], arm, &plt),
                                 Some(format!("{e:#}").chars().take(300).collect()),
+                                None,
                             ),
                         };
                         eprintln!(
@@ -745,6 +779,8 @@ fn run() -> Result<ExitCode> {
                             stripped_sha256: pb.binaries[bin].stripped_sha256.clone(),
                             counts,
                             error,
+                            usage,
+                            jobs: jobs.max(1) as u32,
                         })
                     })
                     .collect()
@@ -778,6 +814,14 @@ fn run() -> Result<ExitCode> {
                 }
             }
             print_json(&freshbench::boundaries::summarize(&rows))?
+        }
+        Cmd::Speed { paths, json } => {
+            let s = freshbench::speed::summarize(&freshbench::speed::load(&paths)?);
+            if json {
+                print_json(&s)?
+            } else {
+                print!("{}", freshbench::speed::render(&s))
+            }
         }
         Cmd::Sweep { action } => match action {
             SweepCmd::Run {

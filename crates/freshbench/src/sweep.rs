@@ -10,8 +10,9 @@
 //! * The tool sees stripped binaries and function starts only.
 //! * One checkpoint per binary, written atomically (`bin/<build>/<project>/
 //!   <binary>.json`); a run that was interrupted continues from them. A run
-//!   directory belongs to one CLI binary, one scorer and one function set: a
-//!   resume with another is refused.
+//!   directory belongs to one CLI binary and one function set: a resume with
+//!   another is refused. After the scorer changed, running the same command
+//!   again keeps the outputs and scores every row again.
 //! * A call that crashes or times out is bisected until the failing function
 //!   is alone (`adapters::bisect`); the others keep their output.
 //! * The scorer is this binary. Its id (`score::SCORER`, a hash of the scoring
@@ -255,9 +256,15 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
     };
     if run.join("meta.json").exists() {
         let old = read_meta(&run)?;
+        if old.scorer != meta.scorer {
+            // the outputs are in the checkpoints: only the scores are redone
+            eprintln!(
+                "sweep {}: scored by {} before; every row is scored again by {}",
+                a.label, old.scorer, meta.scorer
+            );
+        }
         for (what, was, is) in [
             ("fission_cli", &old.cli_sha256, &meta.cli_sha256),
-            ("scorer", &old.scorer, &meta.scorer),
             ("function set", &old.corpus_id, &meta.corpus_id),
         ] {
             if was != is {
@@ -359,6 +366,28 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
             code.insert(key, (r.code.unwrap_or_default(), r.error));
         }
     }
+    // per-binary cost in the same form `freshbench speed` reads for every tool
+    let mut timing = String::new();
+    for j in &jobs {
+        let c: Checkpoint = serde_json::from_slice(&std::fs::read(j.checkpoint(&run))?)?;
+        let line = crate::speed::Timing {
+            tool: TOOL.into(),
+            track: "decompile".into(),
+            project: j.project.clone(),
+            arch: j.arch.clone(),
+            compiler: j.compiler.clone(),
+            config: j.config.clone(),
+            binary: j.binary.clone(),
+            functions: j.funcs.len() as u64,
+            calls: c.stats.calls,
+            failed_calls: c.stats.failed_calls,
+            jobs: n_jobs as u32,
+            usage: c.stats.usage,
+        };
+        timing.push_str(&serde_json::to_string(&line)?);
+        timing.push('\n');
+    }
+    write_atomic(&run.join("timing.jsonl"), timing.as_bytes())?;
     let cache_path = a.runs.join("score-cache.jsonl");
     let cache = ScoreCache::load(&cache_path)?;
     let mut rows =
@@ -445,6 +474,11 @@ impl Counts {
 pub struct Timing {
     /// summed over sessions
     pub decompile_wall_s: f64,
+    /// CPU time of every fission_cli process (the figure to compare between runs)
+    pub decompile_cpu_s: f64,
+    pub cpu_ms_per_function: f64,
+    /// the largest fission_cli process
+    pub max_rss_mb: f64,
     /// the last session's (a resumed run scores everything again, from the cache)
     pub score_wall_s: f64,
     pub sessions: usize,
@@ -516,6 +550,8 @@ pub fn report(run: &Path) -> Result<Report> {
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
     {
         let c: Checkpoint = serde_json::from_slice(&std::fs::read(p)?)?;
+        rep.timing.decompile_cpu_s += c.stats.usage.cpu_s;
+        rep.timing.max_rss_mb = rep.timing.max_rss_mb.max(c.stats.usage.max_rss_mb);
         rep.timing.tool_calls += u64::from(c.stats.calls);
         rep.timing.failed_calls += u64::from(c.stats.failed_calls);
         let id = p
@@ -529,6 +565,8 @@ pub fn report(run: &Path) -> Result<Report> {
     slow.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     slow.truncate(10);
     rep.timing.slowest_binaries = slow;
+    rep.timing.cpu_ms_per_function =
+        1000.0 * rep.timing.decompile_cpu_s / (rep.overall.rows.max(1) as f64);
     rep.timing.sessions = meta.sessions.len();
     rep.timing.decompile_wall_s = meta.sessions.iter().map(|s| s.decompile_wall_s).sum();
     rep.timing.score_wall_s = meta.sessions.last().map_or(0.0, |s| s.score_wall_s);
@@ -595,9 +633,12 @@ pub fn render_report(r: &Report) -> String {
         r.unscored
     );
     s += &format!(
-        "\nTime: decompile {:.1} s over {} session(s), score {:.1} s; {} tool calls, {} failed (bisected).\n",
+        "\nTime: decompile {:.1} s wall over {} session(s), {:.1} s CPU ({:.1} ms per function), peak {:.0} MB; score {:.1} s; {} tool calls, {} failed (bisected).\n",
         r.timing.decompile_wall_s,
         r.timing.sessions,
+        r.timing.decompile_cpu_s,
+        r.timing.cpu_ms_per_function,
+        r.timing.max_rss_mb,
         r.timing.score_wall_s,
         r.timing.tool_calls,
         r.timing.failed_calls
@@ -647,6 +688,9 @@ pub struct Diff {
     pub improvements: Vec<Change>,
     pub decompile_wall_a: f64,
     pub decompile_wall_b: f64,
+    /// CPU seconds of every fission_cli process
+    pub decompile_cpu_a: f64,
+    pub decompile_cpu_b: f64,
 }
 
 /// Compare two runs: outputs first, scores only where the output changed.
@@ -660,6 +704,11 @@ pub fn diff(run_a: &Path, run_b: &Path, keep: usize) -> Result<Diff> {
         );
     }
     let (ra, rb) = (read_rows(run_a)?, read_rows(run_b)?);
+    let cpu = |run: &Path| -> f64 {
+        crate::speed::load(&[run.join("timing.jsonl")])
+            .map(|t| t.iter().map(|x| x.usage.cpu_s).sum())
+            .unwrap_or(0.0)
+    };
     let mut d = Diff {
         a: ma.label.clone(),
         b: mb.label.clone(),
@@ -668,6 +717,8 @@ pub fn diff(run_a: &Path, run_b: &Path, keep: usize) -> Result<Diff> {
         only_b: rb.keys().filter(|k| !ra.contains_key(*k)).count(),
         decompile_wall_a: ma.sessions.iter().map(|s| s.decompile_wall_s).sum(),
         decompile_wall_b: mb.sessions.iter().map(|s| s.decompile_wall_s).sum(),
+        decompile_cpu_a: cpu(run_a),
+        decompile_cpu_b: cpu(run_b),
         ..Default::default()
     };
     let branching = |r: &Row| {
@@ -813,8 +864,16 @@ pub fn render_diff(d: &Diff) -> String {
         }
     }
     s += &format!(
-        "\nDecompile time: {:.1} s -> {:.1} s.\n",
-        d.decompile_wall_a, d.decompile_wall_b
+        "\nDecompile CPU time: {:.1} s -> {:.1} s ({:+.1}%); wall {:.1} s -> {:.1} s (wall depends on --jobs and on what was resumed).\n",
+        d.decompile_cpu_a,
+        d.decompile_cpu_b,
+        if d.decompile_cpu_a > 0.0 {
+            100.0 * (d.decompile_cpu_b - d.decompile_cpu_a) / d.decompile_cpu_a
+        } else {
+            0.0
+        },
+        d.decompile_wall_a,
+        d.decompile_wall_b
     );
     s
 }
