@@ -30,7 +30,8 @@ The canonical description is `adapters/README.md`. Preserve it:
 - Keep shared code in `common/` tool-neutral. A change for Kuna must not change Unlace behaviour
   unless both are tested.
 - Report a per-function failure in `error`; exit non-zero only when the tool could not analyse the
-  binary at all. Keep diagnostics on stderr.
+  binary at all. Keep diagnostics on stderr. One exception, documented in `revng/run`: on 32-bit
+  ARM a failed `revng project init` is reported per function, since bisecting only repeats it.
 - Respect the pinned versions in `ci/pins.env`. Do not download or update a tool at runtime.
 - A new decompiler also needs a `ci/tools.json` entry, a maintained upstream repository and an
   evaluation path. LLM-based decompilers are not added to the public ranking.

@@ -172,6 +172,7 @@ jobs:
       FB_BUILDS: ${{ matrix.build != '' && format('--builds={0}', matrix.build) || '' }}
       # ci/setup_tool.sh rejects any name it does not install
       MATRIX_TOOL: ${{ matrix.tool }}
+      MATRIX_ARCH: ${{ inputs.arch }}
     steps:
       # The job's hard limit is 350 minutes. Every tool call ends by 290
       # minutes after the job starts and whatever is left is recorded as a
@@ -251,6 +252,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
           case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          # one armv7 binary at a time: rev.ng's analysis of one can fill the runner
+          if [ "$MATRIX_TOOL/$MATRIX_ARCH" = revng/armv7 ]; then J=1; fi
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
             found=""
@@ -271,6 +274,7 @@ jobs:
           R="$RUNNER_TEMP/w/prep"
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
           case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          if [ "$MATRIX_TOOL/$MATRIX_ARCH" = revng/armv7 ]; then J=1; fi
           if [ "$MATRIX_TOOL" = fission ]; then
             ci/capped.sh "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
