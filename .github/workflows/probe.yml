@@ -64,5 +64,5 @@ jobs:
             --addr "$PROBE_ADDR" --json --no-header --no-warnings --prehir --timeout-ms 600000 \
             > ../out/out.json 2> ../out/trace.txt || echo "exit $?" >> ../out/uname.txt
           gzip -f ../out/trace.txt; ls -la ../out
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: "probe-${{ matrix.os }}", path: out }
