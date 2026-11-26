@@ -42,6 +42,14 @@ Variables come from rev.ng's own markup, never from parsing C:
 Register locals (`var_N`) carry no declaration span and no slot; they are
 left out.
 
+32-bit ARM: when `project init` fails, every requested function gets that
+failure as its error and the adapter exits 0, instead of exiting non-zero for
+FreshBench to bisect. `init` takes no function addresses, so a retry on a
+subset repeats the same work; on armv7 it can take all the runner's memory,
+and bisection repeated that for each binary until its time budget. evaluate.yml
+runs one armv7 binary at a time, so no neighbouring process can be the cause.
+Other failures, and `init` on other architectures, exit non-zero as before.
+
 List mode (--list-functions): the model's `Functions` after
 `initial-auto-analysis` (rev.ng's own discovery, no hints); `end` is the
 highest `End` of the blocks of the function's own CFG (`artifact emit-cfg`,
@@ -103,7 +111,8 @@ class Revng:
         """(ok, stderr tail) of `revng project <args>` in the project directory."""
         p = subprocess.run([self.bin, "project", "--storage-provider", STORAGE, *args],
                            cwd=self.cwd, capture_output=True, text=True)
-        return p.returncode == 0, (p.stderr or p.stdout or "")[-600:]
+        said = (p.stderr or p.stdout or "").strip()
+        return p.returncode == 0, (said or f"exit status {p.returncode}")[-600:]
 
     def model(self):
         with open(os.path.join(self.cwd, "revng.yml")) as f:
@@ -127,6 +136,10 @@ class Revng:
         return got, None
 
 
+class InitFailed(Exception):
+    """`revng project init` failed: rev.ng could not analyse the binary."""
+
+
 def init_project(tmp, binary):
     # a copy with a plain name: the model records the path it imported
     target = os.path.join(tmp, "target")
@@ -134,9 +147,30 @@ def init_project(tmp, binary):
     r = Revng(tmp)
     ok, err = r.run("init", "target")
     if not ok:
-        sys.stderr.write(f"revng project init failed: {err}\n")
-        raise SystemExit(1)
+        raise InitFailed(err)
     return r
+
+
+def is_arm32(path):
+    """32-bit ARM ELF (e_machine 40)."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
+def report_init_failure(a, reqs, err):
+    """On 32-bit ARM, one error line per requested function (see the module
+    docstring); the harness counts it as the crash it is ("adapter failed")."""
+    sys.stderr.write(f"revng project init failed: {err}\n")
+    if not is_arm32(a.binary):
+        return 1
+    # the end of the message, where rev.ng names the failure; one line
+    why = " ".join(err.split())[-300:]
+    with open(a.out, "w") as out:
+        for q in reqs:
+            out.write(json.dumps({"address": q, "code": None,
+                                  "error": f"adapter failed: revng project init failed: {why}"}) + "\n")
+    return 0
 
 
 def segment_delta(model, elf_lo):
@@ -303,7 +337,10 @@ def decompile(a):
     reqs = [l.strip() for l in open(a.addresses) if l.strip()]
     elf_lo = lowest_load(a.binary)
     with tempfile.TemporaryDirectory() as tmp:
-        r = init_project(tmp, a.binary)
+        try:
+            r = init_project(tmp, a.binary)
+        except InitFailed as e:
+            return report_init_failure(a, reqs, str(e))
         model = r.model()
         arch = model.get("Architecture")
         if arch not in CODE_TYPE:
@@ -404,7 +441,11 @@ if a.list_functions:
     # an empty list is an answer, so a stale file must not pass for one
     if os.path.exists(a.out):
         os.remove(a.out)
-    sys.exit(list_functions(a))
+    try:
+        sys.exit(list_functions(a))
+    except InitFailed as e:
+        sys.stderr.write(f"revng project init failed: {e}\n")
+        sys.exit(1)
 if a.addresses is None:
     ap.error("--addresses is required without --list-functions")
 sys.exit(decompile(a))
