@@ -98,6 +98,32 @@ jobs:
           # QuickJS is vendored in the zip: no download during the build
           (cd r2dsrc && meson setup build --buildtype=release --wrap-mode=nodownload && ninja -C build)
           mkdir -p r2dec-bin && cp r2dsrc/build/libcore_pdd.so r2dec-bin/
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: mfc
+        if: contains(inputs.tools, 'manifold')
+        with:
+          path: manifold-bin
+          key: "manifold-${{ hashFiles('ci/pins.env', 'adapters/manifold/Cargo.lock') }}"
+      - if: contains(inputs.tools, 'manifold') && steps.mfc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          echo "$MANIFOLD_LOCK_SHA256  adapters/manifold/Cargo.lock" | sha256sum -c -
+          mkdir -p z3 && curl -fsSL -o z3/z3.zip "$MANIFOLD_Z3_URL"
+          echo "$MANIFOLD_Z3_SHA256  z3/z3.zip" | sha256sum -c -
+          unzip -q z3/z3.zip -d z3 && Z3="$PWD/z3/$MANIFOLD_Z3_DIR"
+          git init -q msrc && git -C msrc fetch -q --depth 1 "$MANIFOLD_REPO" "$MANIFOLD_SHA" && git -C msrc checkout -q FETCH_HEAD
+          git -C msrc submodule update --init --recursive --depth 1
+          test "$(git -C msrc rev-parse HEAD:ascent-plusplus)" = "$MANIFOLD_ASCENT_SHA"
+          cp adapters/manifold/Cargo.lock msrc/Cargo.lock
+          rustup toolchain install "$MANIFOLD_RUST" --profile minimal
+          # rustc needs ~14 GB for the manifold crate; 2 jobs, no incremental dep graph
+          (cd msrc && Z3_LIBRARY_PATH_OVERRIDE="$Z3/bin" CARGO_INCREMENTAL=0 \
+            RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN' \
+            cargo "+$MANIFOLD_RUST" build --release --locked -j 2)
+          mkdir -p manifold-bin && cp msrc/target/release/manifold "$Z3/bin/libz3.so" manifold-bin/
+          cp "$Z3/LICENSE.txt" manifold-bin/z3-LICENSE.txt
+          ldd manifold-bin/manifold | grep -q "libz3.so => $PWD/manifold-bin/libz3.so"
+          rm -rf msrc z3
       # rev.ng's distribution (564 MB) is fetched from rev.ng once per pin, not
       # once per job; run jobs take it from this run's artifact
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -122,6 +148,7 @@ jobs:
             ghidra-rs-bin
             r2sleigh-bin
             r2dec-bin
+            manifold-bin
   run:
     needs: build
     runs-on: ubuntu-24.04
@@ -161,7 +188,7 @@ jobs:
           FB="$B/target/release/freshbench"
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
-          case "$MATRIX_TOOL" in ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
             if [ "$MATRIX_TOOL" = fission ]; then
@@ -179,7 +206,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
-          case "$MATRIX_TOOL" in ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           if [ "$MATRIX_TOOL" = fission ]; then
             "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else

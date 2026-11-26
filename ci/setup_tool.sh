@@ -82,6 +82,12 @@ case "$tool" in
     echo "R2_BIN=$(command -v r2)" >> "$GITHUB_ENV"
     echo "R2DEC_PLUGIN=$p" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/r2dec/run" >> "$GITHUB_ENV";;
+  manifold)
+    # built once by evaluate.yml's build job at MANIFOLD_SHA (no releases); libz3.so beside it (rpath $ORIGIN)
+    m="$RUNNER_TEMP/bins/manifold-bin"; chmod +x "$m/manifold"
+    ldd "$m/manifold" | grep -q "libz3.so => $m/libz3.so"   # manifold has no --version
+    echo "MANIFOLD_BIN=$m/manifold" >> "$GITHUB_ENV"
+    echo "FB_ADAPTER=$(command -v python) $here/adapters/manifold/run" >> "$GITHUB_ENV";;
   fission) :;;  # built in; see evaluate.yml
   *) echo "unknown tool $tool"; exit 1;;
 esac
