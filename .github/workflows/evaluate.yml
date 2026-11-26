@@ -169,6 +169,12 @@ jobs:
       # ci/setup_tool.sh rejects any name it does not install
       MATRIX_TOOL: ${{ matrix.tool }}
     steps:
+      # The job's hard limit is 350 minutes. Every tool call ends by 290
+      # minutes after the job starts and whatever is left is recorded as a
+      # timeout, leaving time to score and upload: a cancelled job uploads
+      # nothing, so its tool would lose those rows instead of being charged.
+      - name: job deadline
+        run: echo "FB_DEADLINE=$(( $(date +%s) + 290 * 60 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
@@ -196,9 +202,9 @@ jobs:
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
             if [ "$MATRIX_TOOL" = fission ]; then
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
             else
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --variant $v --out "$o" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
             fi
           done
           "$FB" boundaries-summary "$RUNNER_TEMP/up/boundaries" > "$RUNNER_TEMP/up/boundaries/summary.json"
@@ -212,9 +218,9 @@ jobs:
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
           case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           if [ "$MATRIX_TOOL" = fission ]; then
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
           fi
           "$FB" rescore "$R" $FB_BUILDS --tool "$MATRIX_TOOL" --out "$R/rows/$MATRIX_TOOL.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
