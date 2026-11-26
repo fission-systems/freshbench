@@ -10,6 +10,12 @@ by, so it runs in the boundary track only. One with `"sweep": false` is left
 out of sweeps (it cannot run on the standard runners); it stays registered and
 can be dispatched by hand.
 
+The evaluate runs of a sweep share one cap on concurrent jobs
+(`TOTAL_PARALLEL`, sweep.yml's `total_parallel` input): each run gets its own
+`max_parallel`, an equal share of it, the remainder going to the largest runs.
+GitHub has no limit across runs, so a run that ends early frees its share
+only for other repositories.
+
 The population comes from the pinned M1 manifest (its truth files are
 `truth/<build>/<project>/targets.json`), never from a hand-kept list.
 """
@@ -20,6 +26,9 @@ from pathlib import Path
 
 ARCHES = ("x86_64", "i686", "aarch64", "armv7")
 TRACKS = ("decompile", "boundaries")
+# concurrent evaluate jobs of a whole sweep: the organization runs 60 at once,
+# and the rest stay free for other repositories' CI
+TOTAL_PARALLEL = 40
 # builds whose name has no architecture prefix are x86_64 (gcc-O0, clang-Os)
 PREFIXED = tuple(a for a in ARCHES if a != "x86_64")
 
@@ -59,7 +68,20 @@ def tools_for(registry, track):
     return out
 
 
-def plan(pop, registry, split):
+def share(slices, total):
+    """Set each slice's `max_parallel` so that they sum to `total`."""
+    if total < len(slices):
+        raise ValueError(f"total_parallel {total} is below one job for each of {len(slices)} runs")
+    each, rest = divmod(total, len(slices))
+    jobs = lambda s: len(s["tools"]) * len(s["projects"]) * len(s["builds"])
+    for s in slices:
+        s["max_parallel"] = each
+    for s in sorted(slices, key=jobs, reverse=True)[:rest]:
+        s["max_parallel"] += 1
+    return slices
+
+
+def plan(pop, registry, split, total=TOTAL_PARALLEL):
     """The dispatches: one dict of evaluate inputs each."""
     unknown = sorted(set(split) - {p for ps in pop.values() for p in ps})
     if unknown:
@@ -86,7 +108,7 @@ def plan(pop, registry, split):
         # GitHub runs at most 256 jobs from one matrix
         if jobs > 256:
             raise ValueError(f"{s['arch']} {s['track']} {s['projects'][:3]}: {jobs} jobs > 256; split further")
-    return slices
+    return share(slices, total)
 
 
 def main():
@@ -95,12 +117,14 @@ def main():
     ap.add_argument("--registry", type=Path, default=Path("ci/tools.json"))
     ap.add_argument("--split", default='["ComposersDesktop__CDP8"]',
                     help="JSON list of projects that get one job per build")
+    ap.add_argument("--total-parallel", type=int, default=TOTAL_PARALLEL,
+                    help="concurrent evaluate jobs of the whole sweep")
     args = ap.parse_args()
     registry = json.loads(args.registry.read_text())
     split = json.loads(args.split)
     if not isinstance(split, list) or not all(isinstance(p, str) for p in split):
         raise SystemExit("--split must be a JSON list of project names")
-    print(json.dumps(plan(population(args.manifest), registry, split)))
+    print(json.dumps(plan(population(args.manifest), registry, split, args.total_parallel)))
 
 
 if __name__ == "__main__":

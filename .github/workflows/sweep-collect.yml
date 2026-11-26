@@ -1,8 +1,10 @@
 name: sweep-collect
-# Finishes what sweep.yml started. Hourly (and on demand) it takes the oldest
-# open sweep (a sweep/<id> tag with no "M1 sweep <id>" issue yet) and, once
-# every evaluate run in its manifest has completed, runs the publication gate
-# over them (ci/collect_runs.sh, the same script pages.yml uses).
+# Finishes what sweep.yml started. Each of a sweep's evaluate runs asks for a
+# check when it ends; an hourly schedule asks too (it has been seen not to run
+# at all). A check takes the sweep asked for, or the oldest open one (a
+# sweep/<id> tag with no "M1 sweep <id>" issue yet) and, once every evaluate
+# run in its manifest has completed, runs the publication gate over them
+# (ci/collect_runs.sh, the same script pages.yml uses).
 # * Gate passes: it publishes the ranking by dispatching pages.yml on main
 #   with the sweep's runs and deploy=true (pages.yml runs the gate again
 #   before it deploys), and opens an issue recording the published runs.
@@ -17,6 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       sweep: { description: "sweep id to check now (default: the oldest open sweep)", default: "" }
+      finished_run: { description: "set by evaluate.yml: the run that asks, about to complete", default: "" }
 permissions: {}
 concurrency: { group: sweep-collect, cancel-in-progress: false }
 jobs:
@@ -32,8 +35,17 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
           WANT: "${{ inputs.sweep }}"
+          FINISHED: "${{ inputs.finished_run }}"
         run: |
           set -euo pipefail
+          # the run that asked for this check is still in its last job: wait for it
+          if [ -n "$FINISHED" ]; then
+            [[ "$FINISHED" =~ ^[0-9]+$ ]] || { echo "not a run id: $FINISHED" >&2; exit 1; }
+            for _ in $(seq 1 40); do
+              [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FINISHED" --jq .status)" = completed ] && break
+              sleep 15
+            done
+          fi
           if [ -n "$WANT" ]; then
             [[ "$WANT" =~ ^[0-9a-f]{9}-[0-9]+$ ]] || { echo "not a sweep id: $WANT" >&2; exit 1; }
             ids="$WANT"
@@ -43,7 +55,11 @@ jobs:
               | grep -E '^[0-9a-f]{9}-[0-9]+$' | sort -t- -k2 -n || true)
           fi
           for id in $ids; do
-            if [ -z "$WANT" ] && [ -n "$(gh issue list -R "$GITHUB_REPOSITORY" --state all --search "\"M1 sweep $id\" in:title" --json number --jq '.[].number')" ]; then
+            # an issue closes a sweep, however this check was started. Listed,
+            # not searched: the search index lags behind a just-opened issue
+            if gh issue list -R "$GITHUB_REPOSITORY" --state all --limit 200 --json title --jq '.[].title' \
+              | grep -q -F "M1 sweep $id:"; then
+              echo "sweep $id: already reported"
               continue
             fi
             rm -rf manifest

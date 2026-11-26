@@ -91,3 +91,24 @@ case "$tool" in
   fission) :;;  # built in; see evaluate.yml
   *) echo "unknown tool $tool"; exit 1;;
 esac
+
+# What the tool runs on, beyond its pins: part of every reuse key
+# (crates/freshbench/src/reuse.rs), so a change here makes the tool run again.
+# The runner image's weekly rebuilds are left out; the OS release is not.
+[ "$tool" = fission ] && exit 0
+record="$RUNNER_TEMP/tool-env.txt"
+{
+  ( . /etc/os-release; echo "os $ID $VERSION_ID $(uname -m)" )
+  python --version 2>&1
+  case "$tool" in
+    ghidra) java -version 2>&1;;
+    angr) python -m pip freeze --all | LC_ALL=C sort;;
+    revng) python -m pip freeze --all | LC_ALL=C sort | grep -i -E '^pyyaml==';;
+    # built from pinned sources by the build job: the binaries themselves
+    unlace) (cd "$u" && find unlace specs -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum);;
+    ghidra-rs) sha256sum "$g" | cut -d' ' -f1;;
+    r2sleigh) sha256sum "$r/r2s" | cut -d' ' -f1;;
+    r2dec) sha256sum "$p" | cut -d' ' -f1; r2 -v | head -1;;
+    manifold) (cd "$m" && sha256sum manifold libz3.so);;
+  esac
+} > "$record"

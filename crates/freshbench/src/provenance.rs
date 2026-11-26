@@ -24,6 +24,10 @@ pub struct Provenance {
     /// an arch-qualified build, or `all`
     pub build: String,
     pub track: String,
+    /// where each binary's output came from, for a job that may reuse
+    /// outputs ([`crate::reuse`]); empty for one that cannot
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reuse: Vec<crate::reuse::Entry>,
 }
 
 /// `KEY=value` lines of a pins file (comments and blank lines skipped).
@@ -188,6 +192,7 @@ mod tests {
             project: "p".into(),
             build: "all".into(),
             track: "decompile".into(),
+            reuse: vec![],
         }
     }
 

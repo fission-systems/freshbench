@@ -21,14 +21,25 @@ BINARY_FIELDS = KEY_FIELDS[:5]
 VARIANTS = ("as-built", "no-unwind")
 
 
-def load_targets(root, manifest):
-    return load_population(root, manifest)[0]
+def sha256_text(text):
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def truth_facts(unit, record):
+    """What a reuse key of this binary must say about it: the stripped file and
+    the functions requested (`crates/freshbench/src/reuse.rs`: the address with
+    the Thumb bit, then the name, in address order)."""
+    funcs = {f["address"] | int(bool(f.get("thumb"))): f["name"] for f in record["functions"]}
+    return {"stripped_sha256": record.get("stripped_sha256"),
+            "requests_sha256": sha256_text("".join(f"{a:#x} {funcs[a]}\n" for a in sorted(funcs)))}
 
 
 def load_population(root, manifest):
-    """(every M1 target, every M1 binary) from the pinned truth files."""
+    """(every M1 target, every M1 binary, reuse facts of each binary by
+    (build, project, binary)) from the pinned truth files."""
     expected = set()
     binaries = set()
+    facts = {}
     with gzip.open(manifest, "rt") as source:
         entries = [json.loads(line) for line in source if line.strip()]
     truth = {entry["path"]: entry for entry in entries
@@ -43,13 +54,14 @@ def load_population(root, manifest):
         unit = json.loads(data)
         for binary, record in unit["binaries"].items():
             binaries.add((unit["project"], unit["arch"], unit["compiler"], unit["config"], binary))
+            facts[(rel.split("/")[1], unit["project"], binary)] = truth_facts(unit, record)
             for function in record["functions"]:
                 key = (unit["project"], unit["arch"], unit["compiler"], unit["config"],
                        binary, function["name"])
                 require(key not in expected, f"duplicate target: {key}")
                 expected.add(key)
     require(len(expected) == EXPECTED_TARGETS, f"unexpected M1 row count: {len(expected)}")
-    return expected, binaries
+    return expected, binaries, facts
 
 
 def validate_rows(rows, expected, registry):
@@ -124,6 +136,58 @@ def validate_boundaries(dirs, binaries, registry):
     return {t for t, _ in seen}
 
 
+def reuse_key(parts):
+    """`reuse::key`: SHA-256 of the compact JSON with sorted names."""
+    return sha256_text(json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+
+
+def validate_reuse(dirs, facts, registry):
+    """Check what every job's `provenance.json` says about reused outputs: each
+    key is the hash of its parts, the parts describe this job's tool, version
+    and track and this corpus's binary and requests, an output taken from an
+    earlier run was recorded there under exactly the same key, fission is
+    never reused, and one tool has one version, adapter and harness in the
+    whole table. Returns (entries, reused entries)."""
+    seen = {}
+    total = reused = 0
+    for d in dirs:
+        for file in sorted(Path(d).rglob("provenance.json")):
+            job = json.loads(file.read_text())
+            for e in job.get("reuse", []):
+                total += 1
+                parts = e["parts"]
+                tool = job["tool"]
+                where = f"{file}: {tool} {parts.get('project')} {parts.get('binary')}"
+                require(e["key"] == reuse_key(parts), f"{where}: key is not the hash of its parts")
+                require(parts["tool"] == tool and tool in registry, f"{where}: key of another tool")
+                require(parts["tool_version"] == job["tool_version"],
+                        f"{where}: key of another tool version")
+                require(parts["track"] == job["track"], f"{where}: key of another track")
+                require(parts["project"] == job["project"], f"{where}: key of another project")
+                truth = facts.get((parts["build"], parts["project"], parts["binary"]))
+                require(truth is not None, f"{where}: not an M1 binary")
+                require(parts["stripped_sha256"] == truth["stripped_sha256"],
+                        f"{where}: key of another binary file")
+                if parts["track"] == "decompile":
+                    require(parts["requests_sha256"] == truth["requests_sha256"],
+                            f"{where}: key of other requested functions")
+                elif parts["variant"] == "as-built":
+                    require(parts["input_sha256"] == truth["stripped_sha256"],
+                            f"{where}: key of another input")
+                if e.get("reused_from") is not None:
+                    reused += 1
+                    require(tool != "fission", f"{where}: a fission output was reused")
+                    require(str(e["reused_from"]).isdigit(), f"{where}: reused from no run")
+                    require(e.get("source_key") == e["key"],
+                            f"{where}: reused output's key does not match")
+                    require(e.get("reusable") is True, f"{where}: reused an output marked unusable")
+                one = (parts["tool_version"], parts["adapter_sha256"], parts["harness_sha256"])
+                require(seen.setdefault(tool, one) == one,
+                        f"{tool}: outputs of two versions, adapters or harnesses in one table")
+    print(f"reuse: {reused} of {total} recorded outputs taken from earlier runs")
+    return total, reused
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, required=True)
@@ -133,14 +197,17 @@ def main():
     parser.add_argument("--registry", type=Path, required=True)
     parser.add_argument("--boundaries", type=Path, nargs="*", default=[],
                         help="directories holding the boundary track's boundaries/*.jsonl")
+    parser.add_argument("--provenance", type=Path, nargs="*", default=[],
+                        help="directories holding the jobs' provenance.json")
     args = parser.parse_args()
     meta = json.loads(args.meta.read_text())
     require(meta["pins"]["corpus build (qualify-arch run)"] == QUALIFY_RUN,
             "result provenance does not match M1 qualification run")
     registry = json.loads(args.registry.read_text())
-    targets, binaries = load_population(args.corpus, args.manifest)
+    targets, binaries, facts = load_population(args.corpus, args.manifest)
     validate_rows(args.rows, targets, registry)
     validate_boundaries(args.boundaries, binaries, registry)
+    validate_reuse(args.provenance, facts, registry)
     print(f"M1 publication gate passed: {REVISION}")
 
 

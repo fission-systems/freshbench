@@ -19,13 +19,25 @@ change is a benchmark change.
   to `main` that changes it publishes the ranking, so change it only with a reviewed PR.
 - A full M1 sweep is `sweep.yml` (manual dispatch on `main`): it tags the commit `sweep/<id>`,
   dispatches every `evaluate` run from that tag as `ci/sweep_plan.py` splits them, and records the
-  run IDs in the artifact `sweep-<id>`. `sweep-collect.yml` (hourly) runs the publication gate
-  (`ci/collect_runs.sh`, shared with `pages.yml`) once they are done; when it passes it publishes
-  them (dispatches `pages.yml` with `deploy=true`) and records the run list in an issue, otherwise
-  it opens an issue with the refusal. A tool whose registry entry has `"decompile": false` (no
-  evidence to score) runs in the boundary track only; one with `"sweep": false` is left out of
-  sweeps. Manifold has it: rustc needs ~14 GB for its crate, and on a 16 GB runner the build
-  is killed (with 16 GB of swap, the runner was lost after 50 minutes).
+  run IDs in the artifact `sweep-<id>`. Each run asks `sweep-collect.yml` to check the sweep when
+  it ends (an hourly schedule does too); once all are done it runs the publication gate
+  (`ci/collect_runs.sh`, shared with `pages.yml`), and publishes when it passes (dispatches
+  `pages.yml` with `deploy=true`) and records the run list in an issue, otherwise it opens an issue
+  with the refusal. A tool whose registry entry has `"decompile": false` (no evidence to score)
+  runs in the boundary track only; one with `"sweep": false` is left out of sweeps. Manifold has
+  it: rustc needs ~14 GB for its crate, and on a 16 GB runner the build is killed (with 16 GB of
+  swap, the runner was lost after 50 minutes).
+- **Concurrency**: one setting, sweep.yml's `total_parallel` (default `TOTAL_PARALLEL` = 40 in
+  `ci/sweep_plan.py`), caps the evaluate jobs of a whole sweep, so other repositories of the
+  organization keep ~20 of its 60 job slots.
+- **Output reuse** (`crates/freshbench/src/reuse.rs`): a non-Fission job takes a binary's output
+  from an earlier run when the key matches exactly (tool, pinned version, adapter files, the
+  environment `ci/setup_tool.sh` records, harness sources, binary, requests, limits), instead of
+  running the tool; every score is recomputed. Each job's `provenance.json` lists every binary's
+  key and the run an output came from, and the publication gate refuses a reused output whose key
+  differs, a reused Fission output, and a table mixing a tool's versions, adapters or harnesses.
+  Outputs live in the runs' artifacts (90 days); a reused output is uploaded again, so a sweep
+  within 90 days of the last keeps them. A new adapter, pin, harness or environment change is a miss.
 
 ## Current v2 path
 

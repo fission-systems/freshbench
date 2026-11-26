@@ -34,6 +34,9 @@ pub struct Timing {
     pub jobs: u32,
     #[serde(flatten)]
     pub usage: Usage,
+    /// the evaluate run that measured this, when the job reused its output
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reused_from: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -187,6 +190,7 @@ pub fn load(paths: &[impl AsRef<Path>]) -> Result<Vec<Timing>> {
                         failed_calls: u32::from(b.error.is_some()),
                         jobs: b.jobs,
                         usage,
+                        reused_from: None,
                     });
                 }
             }
@@ -268,6 +272,7 @@ mod tests {
                 cpu_s: cpu,
                 max_rss_mb: rss,
             },
+            reused_from: None,
         }
     }
 
@@ -326,6 +331,7 @@ mod tests {
                     cpu_s: cpu,
                     max_rss_mb: 1.0,
                 },
+                reused_from: None,
             })
             .unwrap()
         };
