@@ -6,7 +6,9 @@ split the way the manual reruns were: per architecture and track, one
 dispatch for the ordinary projects (every build in one job each) and one for
 each large project, whose builds get a job each. A tool whose registry entry
 says `"decompile": false` prints no evidence a decompile row could be scored
-by, so it runs in the boundary track only.
+by, so it runs in the boundary track only. One with `"sweep": false` is left
+out of sweeps (it cannot run on the standard runners); it stays registered and
+can be dispatched by hand.
 
 The population comes from the pinned M1 manifest (its truth files are
 `truth/<build>/<project>/targets.json`), never from a hand-kept list.
@@ -49,7 +51,7 @@ def tools_for(registry, track):
     """Registered non-LLM tools, in registry order, that run in `track`."""
     out = []
     for tool, info in registry.items():
-        if info.get("llm", False):
+        if info.get("llm", False) or info.get("sweep", True) is False:
             continue
         if track == "decompile" and info.get("decompile", True) is False:
             continue
