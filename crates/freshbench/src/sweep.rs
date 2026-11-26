@@ -385,6 +385,7 @@ pub fn run(a: &RunArgs) -> Result<PathBuf> {
             failed_calls: c.stats.failed_calls,
             jobs: n_jobs as u32,
             usage: c.stats.usage,
+            reused_from: None,
         };
         timing.push_str(&serde_json::to_string(&line)?);
         timing.push('\n');

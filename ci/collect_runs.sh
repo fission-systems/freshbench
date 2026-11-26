@@ -45,4 +45,4 @@ mv meta.tmp meta.json
 
 python ci/leaderboard_gate.py --corpus corpus-data/m1 \
   --manifest corpus/m1/manifest.jsonl.gz --rows site-src/rows \
-  --meta meta.json --registry ci/tools.json --boundaries dl || exit 3
+  --meta meta.json --registry ci/tools.json --boundaries dl --provenance dl || exit 3

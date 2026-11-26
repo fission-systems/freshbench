@@ -228,6 +228,13 @@ A full rerun of M1 is one dispatch of the [sweep](../../actions/workflows/sweep.
 they are done. When the gate passes it publishes them through the pages workflow and records the
 run list in an issue; when it refuses, nothing is published and the issue says why.
 
+Pinned tools are not run again on unchanged input: a sweep takes a binary's output from an earlier
+run when the tool, its version and adapter, its environment, the harness, the binary, the requested
+functions and the limits are all the same, and scores it again. Each job's `provenance.json` names
+the run every reused output came from, the speed numbers of a reused binary are those measured
+then, and Fission always runs. The key and its checks are in
+[`reuse.rs`](crates/freshbench/src/reuse.rs) and the publication gate.
+
 A manual dispatch with `deploy` false only produces the `leaderboard-preview`
 artifact for inspection. The landing page is deployed from `site-bootstrap/` when
 that directory changes on `main`; it contains corpus statistics and no rankings.

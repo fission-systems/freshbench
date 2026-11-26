@@ -27,6 +27,7 @@ pub mod prepare;
 pub mod provenance;
 pub mod recompile;
 pub mod report;
+pub mod reuse;
 pub mod rows;
 pub mod score;
 pub mod speed;

@@ -3,7 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ci.leaderboard_gate import BINARY_FIELDS, KEY_FIELDS, validate_boundaries, validate_rows
+from ci.leaderboard_gate import (BINARY_FIELDS, KEY_FIELDS, reuse_key, truth_facts, validate_boundaries,
+                                 validate_reuse, validate_rows)
 
 
 class LeaderboardGateTest(unittest.TestCase):
@@ -114,6 +115,94 @@ class BoundaryGateTest(unittest.TestCase):
 
     def test_no_boundary_rows_is_allowed(self):
         self.assertEqual(validate_boundaries([], self.bins, self.registry), set())
+
+
+class ReuseGateTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        record = {"stripped_sha256": "s", "functions": [
+            {"address": 0x21, "name": "g"}, {"address": 0x10, "name": "f", "thumb": True}]}
+        self.facts = {("armv7-gcc-O0", "p", "b"): truth_facts({}, record)}
+        self.registry = {"ghidra": {}, "angr": {}, "fission": {}}
+        self.parts = {"schema": "1", "track": "decompile", "tool": "ghidra", "tool_version": "ghidra 1",
+                      "adapter_sha256": "a", "env_sha256": "e", "harness_sha256": "h",
+                      "build": "armv7-gcc-O0", "project": "p", "binary": "b", "stripped_sha256": "s",
+                      "binary_timeout_s": "1800", "function_timeout_s": "300", "jobs": "3",
+                      **self.facts[("armv7-gcc-O0", "p", "b")]}
+
+    def entry(self, reused_from="41", **change):
+        parts = dict(self.parts, **change)
+        e = {"parts": parts, "key": reuse_key(parts), "reusable": True}
+        if reused_from:
+            e.update(reused_from=reused_from, source_key=e["key"])
+        return e
+
+    def run_gate(self, *entries, tool="ghidra", job=0):
+        d = self.root / "dl" / f"{job}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "provenance.json").write_text(json.dumps(
+            {"tool": tool, "tool_version": f"{tool} 1", "track": "decompile", "project": "p",
+             "reuse": list(entries)}))
+        return validate_reuse([self.root / "dl"], self.facts, self.registry)
+
+    def refused(self, pattern, entry, **kw):
+        with self.assertRaisesRegex(ValueError, pattern):
+            self.run_gate(entry, **kw)
+
+    def test_key_and_requests_match_the_harness(self):
+        # reuse.rs: requests are "<addr with thumb bit> <name>" in address order
+        self.assertEqual(self.parts["requests_sha256"],
+                         __import__("hashlib").sha256(b"0x11 f\n0x21 g\n").hexdigest())
+        # reuse.rs the_key_is_the_hash_of_sorted_compact_json
+        self.assertEqual(reuse_key({"b": "2\n\"\u00e9", "a": "1"}),
+                         __import__("hashlib").sha256(
+                             '{"a":"1","b":"2\\n\\"\u00e9"}'.encode()).hexdigest())
+
+    def test_fresh_and_exactly_matching_reuse_pass(self):
+        self.assertEqual(self.run_gate(self.entry(reused_from=None), self.entry()), (2, 1))
+        # jobs without reuse records (older runs) are not refused
+        self.assertEqual(validate_reuse([], self.facts, self.registry), (0, 0))
+
+    def test_reused_key_that_does_not_match_is_refused(self):
+        e = self.entry()
+        e["source_key"] = reuse_key(dict(self.parts, env_sha256="other"))
+        self.refused("does not match", e)
+        e = self.entry()
+        del e["source_key"]
+        self.refused("does not match", e)
+
+    def test_key_must_be_the_hash_of_its_parts(self):
+        e = self.entry()
+        e["parts"]["env_sha256"] = "edited"
+        self.refused("not the hash", e)
+
+    def test_parts_must_describe_this_job_and_corpus(self):
+        for change, pattern in [
+            ({"tool": "angr"}, "another tool"), ({"tool_version": "ghidra 2"}, "another tool version"),
+            ({"track": "boundaries"}, "another track"), ({"project": "q"}, "another project"),
+            ({"binary": "c"}, "not an M1 binary"), ({"stripped_sha256": "x"}, "another binary file"),
+            ({"requests_sha256": "x"}, "other requested functions"),
+        ]:
+            with self.subTest(change=change):
+                self.refused(pattern, self.entry(**change))
+
+    def test_fission_and_unusable_outputs_are_never_reused(self):
+        self.refused("fission output was reused",
+                     self.entry(tool="fission", tool_version="fission 1"), tool="fission")
+        e = self.entry()
+        e["reusable"] = False
+        self.refused("marked unusable", e)
+        self.refused("from no run", self.entry(reused_from="not-a-run"))
+
+    def test_one_tool_one_adapter_and_harness(self):
+        for field in ("adapter_sha256", "harness_sha256"):
+            with self.subTest(field=field):
+                self.run_gate(self.entry(), job=0)
+                with self.assertRaisesRegex(ValueError, "two versions, adapters or harnesses"):
+                    self.run_gate(self.entry(**{field: "other"}), job=1)
+                (self.root / "dl" / "1" / "provenance.json").unlink()
 
 
 if __name__ == "__main__":

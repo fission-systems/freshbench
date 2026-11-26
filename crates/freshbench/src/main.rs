@@ -148,6 +148,13 @@ enum Cmd {
         /// with a hard limit, so a slow tool is charged, not left without rows.
         #[arg(long)]
         deadline: Option<u64>,
+        /// from `reuse context`: record each binary's reuse key, and take
+        /// outputs with an equal key from --reuse-from (never for fission)
+        #[arg(long)]
+        reuse_context: Option<PathBuf>,
+        /// downloaded `eval-*` artifacts of earlier runs
+        #[arg(long)]
+        reuse_from: Vec<PathBuf>,
     },
     /// Function boundary track: each tool lists the functions it finds in every
     /// stripped binary under ROOT (no addresses given); compared with the
@@ -177,10 +184,38 @@ enum Cmd {
         /// not listed by then is recorded as a timeout.
         #[arg(long)]
         deadline: Option<u64>,
+        /// from `reuse context`: record each binary's reuse key, and take
+        /// function lists with an equal key from --reuse-from (never for fission)
+        #[arg(long, requires = "found_out")]
+        reuse_context: Option<PathBuf>,
+        /// downloaded `bound-*` artifacts of earlier runs
+        #[arg(long)]
+        reuse_from: Vec<PathBuf>,
+        /// file for each binary's reuse key and function list
+        #[arg(long)]
+        found_out: Option<PathBuf>,
     },
     /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
     /// `boundaries` rows (files or directories of *.jsonl); JSON.
     BoundariesSummary { rows: Vec<PathBuf> },
+    /// What identifies a tool and its setup, for reusing its outputs
+    /// (`decompile --reuse-context`, `boundaries --reuse-context`).
+    ReuseContext {
+        #[arg(long)]
+        pins: PathBuf,
+        #[arg(long)]
+        registry: PathBuf,
+        #[arg(long)]
+        tool: String,
+        /// the adapter's directories; their files are part of every key
+        #[arg(long, required = true)]
+        adapter_dir: Vec<PathBuf>,
+        /// what `ci/setup_tool.sh` recorded about the environment
+        #[arg(long)]
+        env_file: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Record or check where results came from (CI provenance and page metadata).
     Provenance {
         #[command(subcommand)]
@@ -322,6 +357,8 @@ enum Cmd {
 }
 
 #[derive(Subcommand)]
+// parsed once per process: the size of a variant does not matter
+#[allow(clippy::large_enum_variant)]
 enum ProvCmd {
     /// Write one job's provenance.json.
     Write {
@@ -350,6 +387,9 @@ enum ProvCmd {
         track: String,
         #[arg(long)]
         out: PathBuf,
+        /// the job's output directory: its reuse records go into provenance.json
+        #[arg(long)]
+        reuse_entries: Option<PathBuf>,
     },
     /// Page metadata from every provenance.json under DIR; fails on mixed versions.
     Meta {
@@ -458,6 +498,50 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// The reuse context of a job, if it has one: it must be this tool's, and
+/// never fission's (fission is built per ref and always runs).
+fn reuse_context_of(
+    file: Option<&std::path::Path>,
+    tool: &str,
+) -> Result<Option<freshbench::reuse::Context>> {
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    anyhow::ensure!(tool != "fission", "fission outputs are never reused");
+    let ctx: freshbench::reuse::Context = serde_json::from_slice(
+        &std::fs::read(file).with_context(|| format!("read {}", file.display()))?,
+    )
+    .with_context(|| format!("{}: not a reuse context", file.display()))?;
+    anyhow::ensure!(
+        ctx.tool == tool,
+        "{}: the reuse context is for {}, not {tool}",
+        file.display(),
+        ctx.tool
+    );
+    Ok(Some(ctx))
+}
+
+/// `--adapter` takes every word after it, so an option meant for FreshBench
+/// written after it would silently go to the adapter instead.
+fn check_adapter_command(adapter: &[String]) -> Result<()> {
+    const OWN: [&str; 7] = [
+        "--reuse-context",
+        "--reuse-from",
+        "--found-out",
+        "--deadline",
+        "--jobs",
+        "--builds",
+        "--tool",
+    ];
+    if let Some(a) = adapter.iter().find(|a| {
+        OWN.iter()
+            .any(|o| *a == o || a.strip_prefix(o).is_some_and(|r| r.starts_with('=')))
+    }) {
+        anyhow::bail!("{a} is a FreshBench option: write it before --adapter");
+    }
+    Ok(())
 }
 
 fn read(p: &PathBuf) -> Result<String> {
@@ -648,11 +732,20 @@ fn run() -> Result<ExitCode> {
             builds,
             jobs,
             deadline,
+            reuse_context,
+            reuse_from,
         } => {
             use freshbench::adapters::{self, Tool};
+            use freshbench::reuse;
             use std::time::Duration;
             adapters::refuse_instrumented_run("decompile")?;
+            check_adapter_command(&adapter)?;
             let job = adapters::job_deadline(deadline);
+            let ctx = reuse_context_of(reuse_context.as_deref(), &tool)?;
+            let source = match ctx {
+                Some(_) => reuse::decompiled(&reuse_from),
+                None => Default::default(),
+            };
             let t = if tool == "fission" {
                 Tool::Fission {
                     cli: fission_cli.context("--fission-cli is required for fission")?,
@@ -691,7 +784,12 @@ fn run() -> Result<ExitCode> {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(jobs.max(1))
                 .build()?;
-            type Done = (Vec<adapters::Record>, adapters::CallStats);
+            type Done = (
+                Vec<adapters::Record>,
+                adapters::CallStats,
+                Option<reuse::Entry>,
+                Option<freshbench::speed::Timing>,
+            );
             let done: Vec<(usize, Result<Done>)> = pool.install(|| {
                 order
                     .par_iter()
@@ -704,16 +802,63 @@ fn run() -> Result<ExitCode> {
                             .iter()
                             .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
                             .collect();
-                        let r = adapters::decompile_binary_until(
-                            &t,
-                            &root.join(&units[i].stripped).join(bin),
-                            bin,
-                            &funcs,
-                            Duration::from_secs(binary_timeout_s),
-                            Duration::from_secs(function_timeout_s),
-                            job,
-                        );
-                        eprintln!("{} {bin}: done", units[i].build);
+                        let path = root.join(&units[i].stripped).join(bin);
+                        let r = (|| -> Result<Done> {
+                            let parts = match &ctx {
+                                Some(c) => Some(reuse::decompile_parts(
+                                    c,
+                                    reuse::Binary {
+                                        build: &units[i].build,
+                                        project: &units[i].targets.project,
+                                        name: bin,
+                                        stripped_sha256: &freshbench::manifest::sha256_file(&path)?,
+                                    },
+                                    &funcs,
+                                    binary_timeout_s,
+                                    function_timeout_s,
+                                    jobs,
+                                )),
+                                None => None,
+                            };
+                            if let Some(parts) = &parts {
+                                let key = reuse::key(parts);
+                                if let Some(hit) = source.get(&key) {
+                                    if let (true, Some(timing)) = (hit.answers(&funcs), &hit.timing)
+                                    {
+                                        eprintln!(
+                                            "{} {bin}: reused from run {}",
+                                            units[i].build, hit.run
+                                        );
+                                        let mut timing = timing.clone();
+                                        timing.reused_from = Some(hit.run.clone());
+                                        let entry = reuse::Entry::reused(
+                                            parts.clone(),
+                                            key,
+                                            hit.run.clone(),
+                                        );
+                                        return Ok((
+                                            hit.records.clone(),
+                                            Default::default(),
+                                            Some(entry),
+                                            Some(timing),
+                                        ));
+                                    }
+                                }
+                            }
+                            let (records, stats) = adapters::decompile_binary_until(
+                                &t,
+                                &path,
+                                bin,
+                                &funcs,
+                                Duration::from_secs(binary_timeout_s),
+                                Duration::from_secs(function_timeout_s),
+                                job,
+                            )?;
+                            let entry =
+                                parts.map(|p| reuse::Entry::fresh(p, reuse::reusable(&records)));
+                            eprintln!("{} {bin}: done", units[i].build);
+                            Ok((records, stats, entry, None))
+                        })();
                         (k, r)
                     })
                     .collect()
@@ -726,11 +871,17 @@ fn run() -> Result<ExitCode> {
             for (i, u) in units.iter().enumerate() {
                 let mut recs = Vec::new();
                 let mut timing = String::new();
+                let mut reuse_lines = String::new();
                 let pb = &u.targets;
                 for (k, (wi, bin)) in work.iter().enumerate() {
                     if *wi == i {
-                        let (r, stats) = by_k[k].take().unwrap_or_default();
-                        let line = freshbench::speed::Timing {
+                        let (r, stats, entry, reused_timing) = by_k[k].take().unwrap_or_default();
+                        if let Some(e) = entry {
+                            reuse_lines.push_str(&serde_json::to_string(&e)?);
+                            reuse_lines.push('\n');
+                        }
+                        // a reused binary keeps the cost measured when it ran
+                        let line = reused_timing.unwrap_or_else(|| freshbench::speed::Timing {
                             tool: t.name().to_string(),
                             track: "decompile".into(),
                             project: pb.project.clone(),
@@ -743,7 +894,8 @@ fn run() -> Result<ExitCode> {
                             failed_calls: stats.failed_calls,
                             jobs: jobs.max(1) as u32,
                             usage: stats.usage,
-                        };
+                            reused_from: None,
+                        });
                         timing.push_str(&serde_json::to_string(&line)?);
                         timing.push('\n');
                         recs.extend(r);
@@ -762,6 +914,9 @@ fn run() -> Result<ExitCode> {
                 adapters::write_records(&out, &recs)?;
                 // what each binary cost: wall, CPU and peak memory of the tool
                 std::fs::write(out.with_file_name("timing.jsonl"), timing)?;
+                if ctx.is_some() {
+                    std::fs::write(out.with_file_name("reuse.jsonl"), reuse_lines)?;
+                }
                 eprintln!("{}/{}: {} functions", u.build, pb.project, recs.len());
             }
             eprintln!("{}: {ok} decompiled, {failed} without output", t.name());
@@ -778,11 +933,20 @@ fn run() -> Result<ExitCode> {
             jobs,
             variant,
             deadline,
+            reuse_context,
+            reuse_from,
+            found_out,
         } => {
             use freshbench::adapters::{self, Tool};
             use freshbench::boundaries;
             adapters::refuse_instrumented_run("boundaries")?;
+            check_adapter_command(&adapter)?;
             let job = adapters::job_deadline(deadline);
+            let ctx = reuse_context_of(reuse_context.as_deref(), &tool)?;
+            let source = match ctx {
+                Some(_) => freshbench::reuse::listed(&reuse_from),
+                None => Default::default(),
+            };
             anyhow::ensure!(
                 variant == "as-built" || variant == "no-unwind",
                 "--variant is as-built or no-unwind"
@@ -818,7 +982,8 @@ fn run() -> Result<ExitCode> {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(jobs.max(1))
                 .build()?;
-            let rows: Vec<Result<boundaries::Row>> = pool.install(|| {
+            type Done = (boundaries::Row, Option<freshbench::reuse::Listed>);
+            let rows: Vec<Result<Done>> = pool.install(|| {
                 work.par_iter()
                     .map(|&(i, bin)| {
                         let u = &units[i];
@@ -834,21 +999,66 @@ fn run() -> Result<ExitCode> {
                             std::fs::write(&p, bytes)?;
                             input = p;
                         }
-                        let listed = adapters::within_job(
-                            std::time::Duration::from_secs(binary_timeout_s),
-                            job,
-                        )
-                        .map_err(anyhow::Error::msg)
-                        .and_then(|limit| adapters::list_functions_measured(&t, &input, limit));
+                        use freshbench::reuse;
+                        let parts = match &ctx {
+                            Some(c) => Some(reuse::boundary_parts(
+                                c,
+                                &variant,
+                                reuse::Binary {
+                                    build: &u.build,
+                                    project: &pb.project,
+                                    name: bin,
+                                    stripped_sha256: &freshbench::manifest::sha256_file(
+                                        &root.join(&u.stripped).join(bin),
+                                    )?,
+                                },
+                                &freshbench::manifest::sha256_file(&input)?,
+                                binary_timeout_s,
+                                jobs,
+                            )),
+                            None => None,
+                        };
+                        let hit = parts.as_ref().and_then(|p| source.get(&reuse::key(p)));
+                        let reused = parts.as_ref().zip(hit).map(|(p, h)| reuse::Listed {
+                            entry: reuse::Entry::reused(
+                                p.clone(),
+                                h.entry.key.clone(),
+                                h.entry.reused_from.clone().unwrap_or_default(),
+                            ),
+                            found: h.found.clone(),
+                            usage: h.usage,
+                        });
+                        let listed = match &reused {
+                            Some(r) => Ok((r.found.clone(), r.usage)),
+                            None => adapters::within_job(
+                                std::time::Duration::from_secs(binary_timeout_s),
+                                job,
+                            )
+                            .map_err(anyhow::Error::msg)
+                            .and_then(|limit| adapters::list_functions_measured(&t, &input, limit))
+                            .map(|(found, usage)| (found, Some(usage))),
+                        };
                         if variant == "no-unwind" {
                             let _ = std::fs::remove_file(&input);
                         }
+                        // scored against the truth now, reused list or not
+                        let record = reused.or_else(|| {
+                            parts.map(|p| {
+                                let (found, usage) = match &listed {
+                                    Ok((f, u)) => (f.clone(), *u),
+                                    Err(_) => (Vec::new(), None),
+                                };
+                                reuse::Listed {
+                                    entry: reuse::Entry::fresh(p, !found.is_empty()),
+                                    found,
+                                    usage,
+                                }
+                            })
+                        });
                         let (counts, error, usage) = match listed {
-                            Ok((found, usage)) => (
-                                boundaries::score(&truth, &found, arm, &plt),
-                                None,
-                                Some(usage),
-                            ),
+                            Ok((found, usage)) => {
+                                (boundaries::score(&truth, &found, arm, &plt), None, usage)
+                            }
                             Err(e) => (
                                 boundaries::score(&truth, &[], arm, &plt),
                                 Some(format!("{e:#}").chars().take(300).collect()),
@@ -859,7 +1069,7 @@ fn run() -> Result<ExitCode> {
                             "{} {bin}: {} of {} starts",
                             u.build, counts.start_match, counts.truth
                         );
-                        Ok(boundaries::Row {
+                        let row = boundaries::Row {
                             tool: t.name().to_string(),
                             variant: variant.clone(),
                             project: pb.project.clone(),
@@ -872,7 +1082,8 @@ fn run() -> Result<ExitCode> {
                             error,
                             usage,
                             jobs: jobs.max(1) as u32,
-                        })
+                        };
+                        Ok((row, record))
                     })
                     .collect()
             });
@@ -880,14 +1091,58 @@ fn run() -> Result<ExitCode> {
                 std::fs::create_dir_all(d)?;
             }
             let mut f = std::io::BufWriter::new(std::fs::File::create(&out)?);
+            let mut found = String::new();
             for r in rows {
-                serde_json::to_writer(&mut f, &r?)?;
+                let (row, record) = r?;
+                serde_json::to_writer(&mut f, &row)?;
                 std::io::Write::write_all(&mut f, b"\n")?;
+                if let Some(r) = record {
+                    found.push_str(&serde_json::to_string(&r)?);
+                    found.push('\n');
+                }
+            }
+            if let (Some(path), true) = (found_out, ctx.is_some()) {
+                if let Some(d) = path.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                std::fs::write(&path, found)?;
             }
         }
         Cmd::BoundariesSummary { rows: paths } => {
             let rows = freshbench::boundaries::load(&paths)?;
             print_json(&freshbench::boundaries::summarize(&rows))?
+        }
+        Cmd::ReuseContext {
+            pins,
+            registry,
+            tool,
+            adapter_dir,
+            env_file,
+            out,
+        } => {
+            use freshbench::{provenance as pv, reuse};
+            anyhow::ensure!(tool != "fission", "fission outputs are never reused");
+            let registry: std::collections::BTreeMap<String, freshbench::policy::ToolInfo> =
+                serde_json::from_str(&read(&registry)?)
+                    .with_context(|| format!("{}: not a tool registry", registry.display()))?;
+            let env = read(&env_file)?;
+            anyhow::ensure!(
+                !env.trim().is_empty(),
+                "{}: the environment record is empty",
+                env_file.display()
+            );
+            let ctx = reuse::Context {
+                tool_version: pv::tool_version(
+                    &tool,
+                    &registry,
+                    &pv::read_pins(&read(&pins)?),
+                    "",
+                )?,
+                adapter_sha256: reuse::files_sha256(&adapter_dir)?,
+                env_sha256: freshbench::manifest::sha256_bytes(env.as_bytes()),
+                tool,
+            };
+            std::fs::write(&out, serde_json::to_vec_pretty(&ctx)?)?;
         }
         Cmd::Provenance { action } => match action {
             ProvCmd::Write {
@@ -903,6 +1158,7 @@ fn run() -> Result<ExitCode> {
                 build,
                 track,
                 out,
+                reuse_entries,
             } => {
                 use freshbench::provenance as pv;
                 let pins = pv::read_pins(&read(&pins)?);
@@ -923,6 +1179,10 @@ fn run() -> Result<ExitCode> {
                         build
                     },
                     track,
+                    reuse: match &reuse_entries {
+                        Some(d) if d.is_dir() => freshbench::reuse::entries_under(d)?,
+                        _ => Vec::new(),
+                    },
                 };
                 if let Some(d) = out.parent() {
                     std::fs::create_dir_all(d)?;
@@ -1396,4 +1656,20 @@ fn render_gaps(h: &headroom::Headroom) -> String {
     }
     s += "\nSimilarity gaps (GED), not correctness defects.";
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freshbench_options_after_adapter_are_refused() {
+        let ok = |w: &[&str]| {
+            check_adapter_command(&w.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        };
+        assert!(ok(&["python", "adapters/angr/run"]).is_ok());
+        assert!(ok(&["run", "--jobs-per-call", "2"]).is_ok());
+        assert!(ok(&["run", "--reuse-from", "d"]).is_err());
+        assert!(ok(&["run", "--deadline=5"]).is_err());
+    }
 }

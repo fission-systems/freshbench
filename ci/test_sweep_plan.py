@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ci.sweep_plan import arch_of, plan, population, tools_for
+from ci.sweep_plan import TOTAL_PARALLEL, arch_of, plan, population, tools_for
 
 
 class SweepPlanTest(unittest.TestCase):
@@ -67,11 +67,26 @@ class SweepPlanTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             plan(pop, {f"t{i}": {} for i in range(9)}, [])
 
+    def test_the_runs_share_one_cap(self):
+        pop = {a: {"big": [f"{a}-b{i}" for i in range(12)], "p": [f"{a}-b0"]}
+               for a in ("x86_64", "i686", "aarch64", "armv7")}
+        for total in (16, 40, 41, 60):
+            slices = plan(pop, {"a": {}}, ["big"], total)
+            parallel = [s["max_parallel"] for s in slices]
+            self.assertEqual(sum(parallel), total)
+            self.assertTrue(max(parallel) - min(parallel) <= 1 and min(parallel) >= 1)
+        # the remainder goes to the larger runs
+        slices = plan(pop, {"a": {}}, ["big"], 17)
+        self.assertEqual([s["projects"] for s in slices if s["max_parallel"] == 2], [["big"]])
+        with self.assertRaises(ValueError):
+            plan(pop, {"a": {}}, ["big"], 15)
+
     def test_checked_in_corpus_and_registry(self):
         root = Path(__file__).resolve().parent.parent
         reg = json.loads((root / "ci/tools.json").read_text())
         slices = plan(population(root / "corpus/m1/manifest.jsonl.gz"), reg, ["ComposersDesktop__CDP8"])
         self.assertEqual(len(slices), 16)
+        self.assertEqual(sum(s["max_parallel"] for s in slices), TOTAL_PARALLEL)
         for s in slices:
             self.assertLessEqual(len(s["tools"]) * len(s["projects"]) * len(s["builds"]), 256)
 

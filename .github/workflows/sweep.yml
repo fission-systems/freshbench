@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       split: { description: "JSON list of projects that get one job per build", default: '["ComposersDesktop__CDP8"]' }
-      max_parallel: { description: "concurrent jobs per evaluate run", default: "12" }
+      total_parallel: { description: "concurrent evaluate jobs of the whole sweep; the organization runs 60 at once", default: "40" }
+      reuse: { description: "outputs of pinned tools to reuse: latest (the two newest earlier sweeps), a sweep id, or none", default: "latest" }
 permissions: {}
 concurrency: { group: sweep, cancel-in-progress: false }
 jobs:
@@ -24,25 +25,44 @@ jobs:
       - name: plan
         env:
           SPLIT: "${{ inputs.split }}"
+          TOTAL: "${{ inputs.total_parallel }}"
         run: |
-          python ci/sweep_plan.py --split "$SPLIT" > plan.json
-          jq -r '.[] | "\(.arch) \(.track): \(.tools | length) tools x \(.projects | length) projects x \(.builds | length) builds"' plan.json
+          python ci/sweep_plan.py --split "$SPLIT" --total-parallel "$TOTAL" > plan.json
+          jq -r '.[] | "\(.arch) \(.track): \(.tools | length) tools x \(.projects | length) projects x \(.builds | length) builds, \(.max_parallel) at once"' plan.json
       - name: tag the commit and dispatch every evaluate run from the tag
         env:
           GH_TOKEN: "${{ github.token }}"
-          MAX_PARALLEL: "${{ inputs.max_parallel }}"
+          REUSE: "${{ inputs.reuse }}"
         run: |
           set -euo pipefail
-          [[ "$MAX_PARALLEL" =~ ^[0-9]+$ ]] || { echo "max_parallel must be a number" >&2; exit 1; }
           id="${GITHUB_SHA:0:9}-$GITHUB_RUN_ID"
           tag="sweep/$id"
           qual=$(python -c 'from ci.leaderboard_gate import QUALIFY_RUN; print(QUALIFY_RUN)')
+          # earlier runs whose outputs evaluate jobs may reuse, each only on an
+          # exact key match; a sweep without a manifest is passed over
+          case "$REUSE" in
+            none) earlier="" ;;
+            latest) earlier=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/sweep/" --jq '.[].ref | ltrimstr("refs/tags/sweep/")' \
+              | { grep -E '^[0-9a-f]{9}-[0-9]+$' || true; } | sort -t- -k2 -rn) ;;
+            *) [[ "$REUSE" =~ ^[0-9a-f]{9}-[0-9]+$ ]] || { echo "reuse: latest, none or a sweep id" >&2; exit 1; }
+              earlier="$REUSE" ;;
+          esac
+          reuse_runs='[]'; used=0
+          for old in $earlier; do
+            rm -rf prev
+            gh run download "${old#*-}" -R "$GITHUB_REPOSITORY" -n "sweep-$old" -D prev || continue
+            reuse_runs=$(jq -c --argjson a "$reuse_runs" '$a + .runs' prev/sweep.json)
+            used=$((used + 1)); echo "reusing outputs of sweep $old"
+            [ "$used" -ge 2 ] && break
+          done
+          if [ "$REUSE" != none ] && [ "$REUSE" != latest ] && [ "$used" = 0 ]; then echo "sweep $REUSE has no manifest" >&2; exit 1; fi
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
           n=$(jq length plan.json)
           for i in $(seq 0 $((n - 1))); do
             s=$(jq -c ".[$i]" plan.json)
             gh workflow run evaluate.yml -R "$GITHUB_REPOSITORY" --ref "$tag" \
-              -f qualify_run="$qual" -f sweep="$id" -f max_parallel="$MAX_PARALLEL" \
+              -f qualify_run="$qual" -f sweep="$id" -f max_parallel="$(jq -r .max_parallel <<< "$s")" \
+              -f reuse_runs="$reuse_runs" \
               -f arch="$(jq -r .arch <<< "$s")" -f track="$(jq -r .track <<< "$s")" \
               -f tools="$(jq -c .tools <<< "$s")" -f projects="$(jq -c .projects <<< "$s")" \
               -f builds="$(jq -c .builds <<< "$s")"
@@ -58,13 +78,14 @@ jobs:
           done
           [ "$(jq length <<< "$runs")" -eq "$n" ] || { echo "found $(jq length <<< "$runs") of $n runs: $runs" >&2; exit 1; }
           jq -n --arg id "$id" --arg sha "$GITHUB_SHA" --arg tag "$tag" --arg qual "$qual" \
-            --argjson runs "$runs" --slurpfile plan plan.json \
-            '{id: $id, sha: $sha, tag: $tag, qualify_run: $qual, runs: $runs, slices: $plan[0]}' > sweep.json
+            --argjson runs "$runs" --argjson reuse "$reuse_runs" --slurpfile plan plan.json \
+            '{id: $id, sha: $sha, tag: $tag, qualify_run: $qual, runs: $runs, reuse_runs: $reuse, slices: $plan[0]}' > sweep.json
           echo "SWEEP_ID=$id" >> "$GITHUB_ENV"
           {
             echo "## M1 sweep \`$id\`"
             echo "Commit \`$GITHUB_SHA\` (tag \`$tag\`), $n evaluate runs: \`$runs\`."
-            echo "sweep-collect.yml checks them hourly once they are done."
+            echo "Reusable earlier runs: \`$reuse_runs\`."
+            echo "Each run asks sweep-collect.yml to check the sweep when it ends (also hourly)."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: "sweep-${{ env.SWEEP_ID }}", path: sweep.json, retention-days: 90, if-no-files-found: error }

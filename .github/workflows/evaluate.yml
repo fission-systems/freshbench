@@ -16,6 +16,7 @@ on:
       track: { description: "decompile (given function starts) or boundaries (find the functions; as-built and no-unwind)", default: "decompile" }
       builds: { description: 'JSON list of arch-qualified builds, one job each (gcc-O0, armv7-clang-Os); [""] = every build in one job', default: '[""]' }
       sweep: { description: "set by sweep.yml: the sweep this run belongs to", default: "" }
+      reuse_runs: { description: "JSON list of earlier evaluate run IDs whose outputs pinned tools may reuse (set by sweep.yml); [] runs every tool", default: "[]" }
 permissions: { contents: read, actions: read }
 jobs:
   build:
@@ -192,6 +193,36 @@ jobs:
         if: matrix.tool == 'revng'
         with: { name: revng-dist, path: "${{ runner.temp }}/revng-dist" }
       - run: ci/setup_tool.sh "$MATRIX_TOOL"
+      # A pinned tool's output is taken from an earlier run when nothing that
+      # can change it did: version, adapter, environment, harness, binary,
+      # requests and limits (crates/freshbench/src/reuse.rs). Anything missing
+      # means the tool runs. Fission always runs. Every score is computed here.
+      - name: reuse context and earlier outputs
+        if: matrix.tool != 'fission'
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          REUSE_RUNS: "${{ inputs.reuse_runs }}"
+          ARTIFACT: "${{ inputs.track == 'boundaries' && 'bound' || 'eval' }}-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}"
+        run: |
+          FB="$RUNNER_TEMP/bins/target/release/freshbench"; chmod +x "$FB"
+          "$FB" reuse-context --pins ci/pins.env --registry ci/tools.json --tool "$MATRIX_TOOL" \
+            --adapter-dir "adapters/$MATRIX_TOOL" --adapter-dir adapters/common \
+            --env-file "$RUNNER_TEMP/tool-env.txt" --out "$RUNNER_TEMP/reuse-context.json"
+          cat "$RUNNER_TEMP/tool-env.txt"; cat "$RUNNER_TEMP/reuse-context.json"
+          reuse="--reuse-context $RUNNER_TEMP/reuse-context.json"
+          jq -e 'type == "array" and all(.[]; tostring | test("^[0-9]+$"))' <<< "$REUSE_RUNS" >/dev/null
+          if [ "$(jq length <<< "$REUSE_RUNS")" -gt 0 ]; then
+            # the same job of earlier runs, newest first; two, as the newest may be empty
+            found=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT&per_page=100" || echo '{"artifacts":[]}')
+            n=0
+            for run in $(jq -r --argjson want "$REUSE_RUNS" '[.artifacts[] | select(.expired | not) | .workflow_run.id | select(. as $r | $want | map(tonumber) | index($r))] | .[0:2][]' <<< "$found"); do
+              if gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$ARTIFACT" -D "$RUNNER_TEMP/reuse/$n"; then
+                reuse="$reuse --reuse-from $RUNNER_TEMP/reuse/$n"; n=$((n + 1))
+              fi
+            done
+            echo "$ARTIFACT: $n earlier output(s) offered for reuse"
+          fi
+          echo "FB_REUSE=$reuse" >> "$GITHUB_ENV"
       - name: function boundaries
         if: inputs.track == 'boundaries'
         # --jobs already runs binaries in parallel; one borer call at a time each
@@ -204,10 +235,12 @@ jobs:
           case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
+            found=""
+            if [ -n "${FB_REUSE:-}" ]; then found="--found-out $RUNNER_TEMP/up/found/$MATRIX_TOOL-$v.jsonl"; fi
             if [ "$MATRIX_TOOL" = fission ]; then
               "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
             else
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
+              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool "$MATRIX_TOOL" ${FB_REUSE:-} $found --adapter $FB_ADAPTER
             fi
           done
           "$FB" boundaries-summary "$RUNNER_TEMP/up/boundaries" > "$RUNNER_TEMP/up/boundaries/summary.json"
@@ -223,7 +256,7 @@ jobs:
           if [ "$MATRIX_TOOL" = fission ]; then
             "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool "$MATRIX_TOOL" --adapter $FB_ADAPTER
+            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool "$MATRIX_TOOL" ${FB_REUSE:-} --adapter $FB_ADAPTER
           fi
           "$FB" rescore "$R" $FB_BUILDS --tool "$MATRIX_TOOL" --out "$R/rows/$MATRIX_TOOL.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
@@ -243,7 +276,21 @@ jobs:
           "$FB" provenance write --pins ci/pins.env --registry ci/tools.json --tool "$TOOL" --fission-sha "$FISSION_SHA_USED" \
             --freshbench-commit "$GITHUB_SHA" --qualify-run "$QUALIFY_RUN" --evaluate-run "$GITHUB_RUN_ID" \
             --arch "$ARCH" --project "$PROJECT" --build "$BUILD" --track "$TRACK" \
-            --out "$RUNNER_TEMP/up/provenance.json"
+            --reuse-entries "$RUNNER_TEMP/up" --out "$RUNNER_TEMP/up/provenance.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with: { name: "${{ inputs.track == 'boundaries' && 'bound' || 'eval' }}-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }
+  # The last job of a sweep's run asks for collection itself: the hourly
+  # schedule of sweep-collect.yml has been seen not to run at all. It runs no
+  # decompiler; only it may start workflows.
+  sweep-collect:
+    needs: run
+    if: always() && inputs.sweep != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: { actions: write }
+    steps:
+      - env:
+          GH_TOKEN: "${{ github.token }}"
+          SWEEP: "${{ inputs.sweep }}"
+        run: gh workflow run sweep-collect.yml -R "$GITHUB_REPOSITORY" --ref main -f sweep="$SWEEP" -f finished_run="$GITHUB_RUN_ID"
