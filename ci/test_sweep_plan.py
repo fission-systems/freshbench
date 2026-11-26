@@ -34,7 +34,7 @@ class SweepPlanTest(unittest.TestCase):
                                          "x86_64": {"p": ["gcc-O0", "gcc-O2"]}})
 
     def test_tools_without_evidence_skip_the_decompile_track(self):
-        reg = {"a": {}, "b": {"decompile": False}, "c": {"llm": True}}
+        reg = {"a": {}, "b": {"decompile": False}, "c": {"llm": True}, "d": {"sweep": False}}
         self.assertEqual(tools_for(reg, "decompile"), ["a"])
         self.assertEqual(tools_for(reg, "boundaries"), ["a", "b"])
 

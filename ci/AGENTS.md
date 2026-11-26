@@ -23,7 +23,9 @@ change is a benchmark change.
   (`ci/collect_runs.sh`, shared with `pages.yml`) once they are done; when it passes it publishes
   them (dispatches `pages.yml` with `deploy=true`) and records the run list in an issue, otherwise
   it opens an issue with the refusal. A tool whose registry entry has `"decompile": false` (no
-  evidence to score) runs in the boundary track only.
+  evidence to score) runs in the boundary track only; one with `"sweep": false` is left out of
+  sweeps. Manifold has it: rustc needs ~14 GB for its crate, and on a 16 GB runner the build
+  is killed (with 16 GB of swap, the runner was lost after 50 minutes).
 
 ## Current v2 path
 

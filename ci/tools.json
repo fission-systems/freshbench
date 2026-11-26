@@ -10,5 +10,5 @@
   "r2sleigh": { "repo": "radareorg/r2sleigh", "version": "r2sleigh {R2SLEIGH_SHA}" },
   "reko": { "repo": "uxmal/reko", "version": "reko {REKO_TAG} sha256:{REKO_SHA256}", "decompile": false },
   "r2dec": { "repo": "wargio/r2dec-js", "version": "r2dec {R2DEC_TAG} sha256:{R2DEC_SRC_SHA256} radare2 {RADARE2_TAG} sha256:{RADARE2_DEB_SHA256}" },
-  "manifold": { "repo": "changliu98/manifold", "version": "manifold {MANIFOLD_SHA} ascent {MANIFOLD_ASCENT_SHA} lock sha256:{MANIFOLD_LOCK_SHA256} rust {MANIFOLD_RUST} z3 {MANIFOLD_Z3_VERSION} sha256:{MANIFOLD_Z3_SHA256}", "decompile": false }
+  "manifold": { "repo": "changliu98/manifold", "version": "manifold {MANIFOLD_SHA} ascent {MANIFOLD_ASCENT_SHA} lock sha256:{MANIFOLD_LOCK_SHA256} rust {MANIFOLD_RUST} z3 {MANIFOLD_Z3_VERSION} sha256:{MANIFOLD_Z3_SHA256}", "decompile": false, "sweep": false }
 }
