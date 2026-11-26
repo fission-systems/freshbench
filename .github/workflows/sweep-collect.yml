@@ -3,12 +3,10 @@ name: sweep-collect
 # open sweep (a sweep/<id> tag with no "M1 sweep <id>" issue yet) and, once
 # every evaluate run in its manifest has completed, runs the publication gate
 # over them (ci/collect_runs.sh, the same script pages.yml uses).
-# * Gate passes: it pushes branch leaderboard/sweep-<id>, which sets
-#   ci/leaderboard_runs.json to the sweep's runs, and opens an issue with the
-#   link to open that pull request. A person opens and merges it; merging
-#   publishes (pages.yml). The workflow token cannot open pull requests in
-#   this repository, and checks would not run on one it opened.
-# * Gate refuses: it opens an issue with the reason.
+# * Gate passes: it publishes the ranking by dispatching pages.yml on main
+#   with the sweep's runs and deploy=true (pages.yml runs the gate again
+#   before it deploys), and opens an issue recording the published runs.
+# * Gate refuses: nothing is published; it opens an issue with the reason.
 # The issue closes the sweep for this workflow. A failure before the gate
 # (a download) fails the job and the next run tries again.
 # Polling instead of workflow_run: no privileged trigger on another
@@ -25,7 +23,7 @@ jobs:
   collect:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    permissions: { contents: write, actions: read, issues: write }
+    permissions: { contents: read, actions: write, issues: write }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { persist-credentials: false }
@@ -106,18 +104,12 @@ jobs:
           done)
           gatelog=$(grep -E '^(.*: [0-9]+/[0-9]+ rows|M1 publication gate passed|ValueError|error)' gate.log | tail -40 || true)
           if [ "$RC" = 0 ]; then
-            branch="leaderboard/sweep-$ID"
-            main=$(gh api "repos/$R/git/ref/heads/main" --jq .object.sha)
-            gh api "repos/$R/git/refs" -f ref="refs/heads/$branch" -f sha="$main" >/dev/null
-            blob=$(gh api "repos/$R/contents/ci/leaderboard_runs.json?ref=$branch" --jq .sha)
-            content=$(jq -c . <<< "$RUNS" | base64 -w0)
-            gh api -X PUT "repos/$R/contents/ci/leaderboard_runs.json" -f branch="$branch" -f sha="$blob" \
-              -f content="$content" -f message="leaderboard: publish M1 sweep $ID" >/dev/null
-            title="M1 sweep $ID: ready to publish"
-            next="The gate passed. Open the pull request from [\`$branch\`](https://github.com/$R/compare/main...$branch?expand=1); merging it publishes the ranking."
+            gh workflow run pages.yml -R "$R" --ref main -f evaluate_runs="$(jq -c . <<< "$RUNS")" -f deploy=true
+            title="M1 sweep $ID: published"
+            next="The gate passed and the ranking was published from these runs ([pages](https://github.com/$R/actions/workflows/pages.yml) runs the gate again before it deploys). \`ci/leaderboard_runs.json\` is not changed by a sweep."
           else
             title="M1 sweep $ID: refused by the publication gate"
-            next="The gate refused these runs; nothing was proposed. Rerun what is missing (a new sweep, or a manual dispatch from tag \`sweep/$ID\` if the scorer is unchanged)."
+            next="The gate refused these runs; nothing was published. Rerun what is missing (a new sweep, or a manual dispatch from tag \`sweep/$ID\` if the scorer is unchanged)."
           fi
           body=$(printf '%s\n\nCommit `%s`, tag `sweep/%s`.\n\n| run | name | conclusion |\n|---|---|---|\n%s\n\nGate:\n```\n%s\n```\n' \
             "$next" "$sha" "$ID" "$table" "$gatelog")

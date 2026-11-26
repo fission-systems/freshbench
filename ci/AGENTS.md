@@ -20,9 +20,10 @@ change is a benchmark change.
 - A full M1 sweep is `sweep.yml` (manual dispatch on `main`): it tags the commit `sweep/<id>`,
   dispatches every `evaluate` run from that tag as `ci/sweep_plan.py` splits them, and records the
   run IDs in the artifact `sweep-<id>`. `sweep-collect.yml` (hourly) runs the publication gate
-  (`ci/collect_runs.sh`, shared with `pages.yml`) once they are done and opens an issue: with a
-  `leaderboard/sweep-<id>` branch to open as the publishing PR, or with the refusal. A tool whose
-  registry entry has `"decompile": false` (no evidence to score) runs in the boundary track only.
+  (`ci/collect_runs.sh`, shared with `pages.yml`) once they are done; when it passes it publishes
+  them (dispatches `pages.yml` with `deploy=true`) and records the run list in an issue, otherwise
+  it opens an issue with the refusal. A tool whose registry entry has `"decompile": false` (no
+  evidence to score) runs in the boundary track only.
 
 ## Current v2 path
 
