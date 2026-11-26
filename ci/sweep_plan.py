@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""The evaluate dispatches of one full M1 sweep.
+
+A sweep runs every registered tool over every M1 target in both tracks. It is
+split the way the manual reruns were: per architecture and track, one
+dispatch for the ordinary projects (every build in one job each) and one for
+each large project, whose builds get a job each. A tool whose registry entry
+says `"decompile": false` prints no evidence a decompile row could be scored
+by, so it runs in the boundary track only.
+
+The population comes from the pinned M1 manifest (its truth files are
+`truth/<build>/<project>/targets.json`), never from a hand-kept list.
+"""
+import argparse
+import gzip
+import json
+from pathlib import Path
+
+ARCHES = ("x86_64", "i686", "aarch64", "armv7")
+TRACKS = ("decompile", "boundaries")
+# builds whose name has no architecture prefix are x86_64 (gcc-O0, clang-Os)
+PREFIXED = tuple(a for a in ARCHES if a != "x86_64")
+
+
+def arch_of(build):
+    for arch in PREFIXED:
+        if build.startswith(arch + "-"):
+            return arch
+    return "x86_64"
+
+
+def population(manifest):
+    """{arch: {project: [builds]}} from the manifest's truth files."""
+    out = {}
+    with gzip.open(manifest, "rt") as source:
+        for line in source:
+            if not line.strip():
+                continue
+            path = json.loads(line)["path"]
+            parts = path.split("/")
+            if len(parts) != 4 or parts[0] != "truth" or parts[3] != "targets.json":
+                continue
+            build, project = parts[1], parts[2]
+            out.setdefault(arch_of(build), {}).setdefault(project, []).append(build)
+    return {a: {p: sorted(b) for p, b in sorted(ps.items())} for a, ps in sorted(out.items())}
+
+
+def tools_for(registry, track):
+    """Registered non-LLM tools, in registry order, that run in `track`."""
+    out = []
+    for tool, info in registry.items():
+        if info.get("llm", False):
+            continue
+        if track == "decompile" and info.get("decompile", True) is False:
+            continue
+        out.append(tool)
+    return out
+
+
+def plan(pop, registry, split):
+    """The dispatches: one dict of evaluate inputs each."""
+    unknown = sorted(set(split) - {p for ps in pop.values() for p in ps})
+    if unknown:
+        raise ValueError(f"split projects not in the corpus: {unknown}")
+    slices = []
+    for arch in ARCHES:
+        projects = pop.get(arch)
+        if not projects:
+            raise ValueError(f"no M1 targets for {arch}")
+        for track in TRACKS:
+            tools = tools_for(registry, track)
+            if not tools:
+                raise ValueError(f"no tools for the {track} track")
+            ordinary = [p for p in projects if p not in split]
+            if ordinary:
+                slices.append({"arch": arch, "track": track, "tools": tools,
+                               "projects": ordinary, "builds": [""]})
+            for project in split:
+                if project in projects:
+                    slices.append({"arch": arch, "track": track, "tools": tools,
+                                   "projects": [project], "builds": projects[project]})
+    for s in slices:
+        jobs = len(s["tools"]) * len(s["projects"]) * len(s["builds"])
+        # GitHub runs at most 256 jobs from one matrix
+        if jobs > 256:
+            raise ValueError(f"{s['arch']} {s['track']} {s['projects'][:3]}: {jobs} jobs > 256; split further")
+    return slices
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--manifest", type=Path, default=Path("corpus/m1/manifest.jsonl.gz"))
+    ap.add_argument("--registry", type=Path, default=Path("ci/tools.json"))
+    ap.add_argument("--split", default='["ComposersDesktop__CDP8"]',
+                    help="JSON list of projects that get one job per build")
+    args = ap.parse_args()
+    registry = json.loads(args.registry.read_text())
+    split = json.loads(args.split)
+    if not isinstance(split, list) or not all(isinstance(p, str) for p in split):
+        raise SystemExit("--split must be a JSON list of project names")
+    print(json.dumps(plan(population(args.manifest), registry, split)))
+
+
+if __name__ == "__main__":
+    main()

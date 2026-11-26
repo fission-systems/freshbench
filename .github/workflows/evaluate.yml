@@ -1,6 +1,9 @@
 name: evaluate
 # Decompile prepared builds with one tool and score them with FreshBench's
 # own metrics (Rust; no DecBench). Inputs come from a qualify-arch run.
+# A run dispatched by sweep.yml carries its sweep id in the run name, so
+# sweep.yml can list the runs it started.
+run-name: "evaluate ${{ inputs.arch }} ${{ inputs.track }}${{ inputs.sweep != '' && format(' [sweep {0}]', inputs.sweep) || '' }}"
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +15,7 @@ on:
       max_parallel: { description: "concurrent jobs", default: "12" }
       track: { description: "decompile (given function starts) or boundaries (find the functions; as-built and no-unwind)", default: "decompile" }
       builds: { description: 'JSON list of arch-qualified builds, one job each (gcc-O0, armv7-clang-Os); [""] = every build in one job', default: '[""]' }
+      sweep: { description: "set by sweep.yml: the sweep this run belongs to", default: "" }
 permissions: { contents: read, actions: read }
 jobs:
   build:

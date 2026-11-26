@@ -1,0 +1,70 @@
+name: sweep
+# One full M1 sweep: every registered tool over every M1 target, both tracks.
+# Tags the commit as sweep/<id> and dispatches every evaluate run from that
+# tag, so a push to main during the sweep cannot give its runs two scorers.
+# The split comes from ci/sweep_plan.py; the run IDs are recorded in the
+# artifact sweep-<id>. sweep-collect.yml checks the runs when they are done.
+# Publishing stays a reviewed change of ci/leaderboard_runs.json.
+on:
+  workflow_dispatch:
+    inputs:
+      split: { description: "JSON list of projects that get one job per build", default: '["ComposersDesktop__CDP8"]' }
+      max_parallel: { description: "concurrent jobs per evaluate run", default: "12" }
+permissions: {}
+concurrency: { group: sweep, cancel-in-progress: false }
+jobs:
+  start:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions: { contents: write, actions: write }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - name: plan
+        env:
+          SPLIT: "${{ inputs.split }}"
+        run: |
+          python ci/sweep_plan.py --split "$SPLIT" > plan.json
+          jq -r '.[] | "\(.arch) \(.track): \(.tools | length) tools x \(.projects | length) projects x \(.builds | length) builds"' plan.json
+      - name: tag the commit and dispatch every evaluate run from the tag
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          MAX_PARALLEL: "${{ inputs.max_parallel }}"
+        run: |
+          set -euo pipefail
+          [[ "$MAX_PARALLEL" =~ ^[0-9]+$ ]] || { echo "max_parallel must be a number" >&2; exit 1; }
+          id="${GITHUB_SHA:0:9}-$GITHUB_RUN_ID"
+          tag="sweep/$id"
+          qual=$(python -c 'from ci.leaderboard_gate import QUALIFY_RUN; print(QUALIFY_RUN)')
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+          n=$(jq length plan.json)
+          for i in $(seq 0 $((n - 1))); do
+            s=$(jq -c ".[$i]" plan.json)
+            gh workflow run evaluate.yml -R "$GITHUB_REPOSITORY" --ref "$tag" \
+              -f qualify_run="$qual" -f sweep="$id" -f max_parallel="$MAX_PARALLEL" \
+              -f arch="$(jq -r .arch <<< "$s")" -f track="$(jq -r .track <<< "$s")" \
+              -f tools="$(jq -c .tools <<< "$s")" -f projects="$(jq -c .projects <<< "$s")" \
+              -f builds="$(jq -c .builds <<< "$s")"
+            sleep 2
+          done
+          # the dispatch API returns no run id: list the runs that carry the sweep id
+          runs='[]'
+          for _ in $(seq 1 60); do
+            runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/evaluate.yml/runs?event=workflow_dispatch&head_sha=$GITHUB_SHA&per_page=100" \
+              --jq ".workflow_runs[] | select(.display_title | endswith(\"[sweep $id]\")) | .id" | jq -s -c 'sort')
+            [ "$(jq length <<< "$runs")" -eq "$n" ] && break
+            sleep 10
+          done
+          [ "$(jq length <<< "$runs")" -eq "$n" ] || { echo "found $(jq length <<< "$runs") of $n runs: $runs" >&2; exit 1; }
+          jq -n --arg id "$id" --arg sha "$GITHUB_SHA" --arg tag "$tag" --arg qual "$qual" \
+            --argjson runs "$runs" --slurpfile plan plan.json \
+            '{id: $id, sha: $sha, tag: $tag, qualify_run: $qual, runs: $runs, slices: $plan[0]}' > sweep.json
+          echo "SWEEP_ID=$id" >> "$GITHUB_ENV"
+          {
+            echo "## M1 sweep \`$id\`"
+            echo "Commit \`$GITHUB_SHA\` (tag \`$tag\`), $n evaluate runs: \`$runs\`."
+            echo "sweep-collect.yml checks them hourly once they are done."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with: { name: "sweep-${{ env.SWEEP_ID }}", path: sweep.json, retention-days: 90, if-no-files-found: error }

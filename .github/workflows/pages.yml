@@ -124,45 +124,11 @@ jobs:
             target
           key: cargo-release-${{ hashFiles('Cargo.lock') }}
       - run: cargo build --release --locked -p freshbench
-      - name: collect rows
+      - name: collect rows, truth and provenance; publication gate
         env:
           GH_TOKEN: "${{ github.token }}"
           EVALUATE_RUNS: "${{ needs.plan.outputs.runs }}"
-        run: |
-          mkdir -p site-src/rows
-          jq -e 'type == "array" and length > 0 and all(.[]; tostring | test("^[0-9]+$"))' <<< "$EVALUATE_RUNS" >/dev/null
-          for id in $(jq -r '.[]' <<< "$EVALUATE_RUNS"); do
-            gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'eval-*' -p 'bound-*' -D "dl/$id"
-          done
-          # every rows/<tool>.jsonl of every artifact, named uniquely
-          find dl -path '*/rows/*.jsonl' | sort | while read -r f; do
-            cp "$f" "site-src/rows/$(echo "$f" | tr '/' '_')"
-          done
-          ls site-src/rows | wc -l
-      - name: fetch pinned M1 truth (no binaries or source files)
-        run: |
-          python -m pip install 'huggingface_hub==0.36.0'
-          python - <<'PY'
-          from huggingface_hub import snapshot_download
-          from ci.leaderboard_gate import REVISION
-          snapshot_download(repo_id="sjkim1127/freshbench-v2", repo_type="dataset",
-                            revision=REVISION, allow_patterns=["m1/truth/*"],
-                            local_dir="corpus-data")
-          PY
-      - name: meta (from the runs' own provenance, not the current pins)
-        env:
-          EVALUATE_RUNS: "${{ needs.plan.outputs.runs }}"
-        run: |
-          REVISION=$(python -c 'from ci.leaderboard_gate import REVISION; print(REVISION)')
-          target/release/freshbench provenance meta dl --corpus "M1 · dataset $REVISION" \
-            --note "evaluate runs: $EVALUATE_RUNS" --out meta.json
-          jq '.title = "FreshBench M1 Leaderboard"' meta.json > meta.tmp
-          mv meta.tmp meta.json
-      - name: validate publication inputs
-        run: |
-          python ci/leaderboard_gate.py --corpus corpus-data/m1 \
-            --manifest corpus/m1/manifest.jsonl.gz --rows site-src/rows \
-            --meta meta.json --registry ci/tools.json
+        run: ci/collect_runs.sh "$EVALUATE_RUNS" target/release/freshbench
       - name: last upstream commit of every registered tool
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
