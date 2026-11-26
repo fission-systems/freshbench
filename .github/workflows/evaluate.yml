@@ -123,16 +123,10 @@ jobs:
           test "$(git -C "$M" rev-parse HEAD:ascent-plusplus)" = "$MANIFOLD_ASCENT_SHA"
           cp adapters/manifold/Cargo.lock "$M/Cargo.lock"
           rustup toolchain install "$MANIFOLD_RUST" --profile minimal
-          # rustc needs ~14 GB for the manifold crate alone, on a 16 GB runner:
-          # 16 GB of swap, one job, no incremental dep graph (without the swap
-          # the step was killed as soon as the crate started compiling)
-          sudo swapoff -a || true
-          sudo fallocate -l 16G /mnt/fb-swap && sudo chmod 600 /mnt/fb-swap
-          sudo mkswap /mnt/fb-swap >/dev/null && sudo swapon /mnt/fb-swap && free -g
+          # rustc needs ~14 GB for the manifold crate; 2 jobs, no incremental dep graph
           (cd "$M" && Z3_LIBRARY_PATH_OVERRIDE="$Z3/bin" CARGO_INCREMENTAL=0 \
             RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN' \
-            cargo "+$MANIFOLD_RUST" build --release --locked -j 1)
-          sudo swapoff /mnt/fb-swap && sudo rm -f /mnt/fb-swap
+            cargo "+$MANIFOLD_RUST" build --release --locked -j 2)
           mkdir -p manifold-bin && cp "$M/target/release/manifold" "$Z3/bin/libz3.so" manifold-bin/
           cp "$Z3/LICENSE.txt" manifold-bin/z3-LICENSE.txt
           ldd manifold-bin/manifold | grep -q "libz3.so => $PWD/manifold-bin/libz3.so"
