@@ -87,5 +87,5 @@ jobs:
             echo "Reusable earlier runs: \`$reuse_runs\`."
             echo "Each run asks sweep-collect.yml to check the sweep when it ends (also hourly)."
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: "sweep-${{ env.SWEEP_ID }}", path: sweep.json, retention-days: 90, if-no-files-found: error }

@@ -144,9 +144,9 @@ jobs:
           mkdir -p revng-dist && curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o revng-dist/revng.tar.xz "$REVNG_URL"
           echo "$REVNG_SHA256  revng-dist/revng.tar.xz" | sha256sum -c -
       - if: contains(inputs.tools, 'revng')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: revng-dist, path: revng-dist, compression-level: 0, retention-days: 1 }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bins
           path: |
@@ -304,7 +304,7 @@ jobs:
             --freshbench-commit "$GITHUB_SHA" --qualify-run "$QUALIFY_RUN" --evaluate-run "$GITHUB_RUN_ID" \
             --arch "$ARCH" --project "$PROJECT" --build "$BUILD" --track "$TRACK" \
             --reuse-entries "$RUNNER_TEMP/up" --out "$RUNNER_TEMP/up/provenance.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: { name: "${{ inputs.track == 'boundaries' && 'bound' || 'eval' }}-${{ matrix.project }}-${{ inputs.arch }}-${{ matrix.tool }}${{ matrix.build != '' && format('-{0}', matrix.build) || '' }}", path: "${{ runner.temp }}/up", retention-days: 90 }
   # The last job of a sweep's run asks for collection itself: the hourly

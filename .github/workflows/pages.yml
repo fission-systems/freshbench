@@ -165,7 +165,7 @@ jobs:
           # what each tool cost: CPU and wall time and memory per binary and per function
           target/release/freshbench speed dl > site/speed.md
           target/release/freshbench speed dl --json > site/speed.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: leaderboard-preview, path: site, if-no-files-found: error }
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         if: needs.plan.outputs.deploy == 'true'
