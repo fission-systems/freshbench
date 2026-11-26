@@ -7,24 +7,24 @@ source "$here/ci/pins.env"
 tool="$1"; T="$RUNNER_TEMP/tools"; mkdir -p "$T"
 case "$tool" in
   ghidra)
-    curl -fsSL -o "$T/ghidra.zip" "$GHIDRA_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/ghidra.zip" "$GHIDRA_URL"
     echo "$GHIDRA_SHA256  $T/ghidra.zip" | sha256sum -c -
     unzip -q "$T/ghidra.zip" -d "$T"
     echo "GHIDRA_INSTALL_DIR=$T/$GHIDRA_DIR" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$here/adapters/ghidra/run" >> "$GITHUB_ENV";;
   kuna)
-    curl -fsSL -o "$T/kuna.tgz" "$KUNA_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/kuna.tgz" "$KUNA_URL"
     echo "$KUNA_SHA256  $T/kuna.tgz" | sha256sum -c -
     mkdir -p "$T/kuna"; tar -xzf "$T/kuna.tgz" -C "$T/kuna"
     k=$(find "$T/kuna" -type f -name kuna -perm -u+x | head -1); "$k" --version
     echo "KUNA_BIN=$k" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$here/adapters/kuna/run" >> "$GITHUB_ENV";;
   angr)
-    python -m pip install -q "angr==$ANGR_VERSION"
+    "$here/ci/retry.sh" python -m pip install -q "angr==$ANGR_VERSION"
     python -c "import angr;print('angr',angr.__version__)"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/angr/run" >> "$GITHUB_ENV";;
   borer)
-    curl -fsSL -o "$T/borer.tgz" "$BORER_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/borer.tgz" "$BORER_URL"
     echo "$BORER_SHA256  $T/borer.tgz" | sha256sum -c -
     mkdir -p "$T/borer"; tar -xzf "$T/borer.tgz" -C "$T/borer"
     b=$(find "$T/borer" -type f -name borer -perm -u+x | head -1)
@@ -50,7 +50,7 @@ case "$tool" in
     mkdir -p "$T/revng"; tar -xJf "$a" -C "$T/revng" --strip-components=1
     rm -f "$a"   # 4 GB extracted; keep the runner's disk
     "$T/revng/revng" --version
-    python -m pip install -q "pyyaml==$PYYAML_VERSION"
+    "$here/ci/retry.sh" python -m pip install -q "pyyaml==$PYYAML_VERSION"
     echo "REVNG_BIN=$T/revng/revng" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/revng/run" >> "$GITHUB_ENV";;
   r2sleigh)
@@ -60,9 +60,9 @@ case "$tool" in
     echo "R2S_BIN=$r/r2s" >> "$GITHUB_ENV"
     echo "FB_ADAPTER=$(command -v python) $here/adapters/r2sleigh/run" >> "$GITHUB_ENV";;
   reko)
-    curl -fsSL -o "$T/reko.zip" "$REKO_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/reko.zip" "$REKO_URL"
     echo "$REKO_SHA256  $T/reko.zip" | sha256sum -c -
-    curl -fsSL -o "$T/dotnet.tgz" "$DOTNET_RUNTIME_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/dotnet.tgz" "$DOTNET_RUNTIME_URL"
     echo "$DOTNET_RUNTIME_SHA512  $T/dotnet.tgz" | sha512sum -c -
     mkdir -p "$T/reko" "$T/dotnet"
     unzip -q "$T/reko.zip" -d "$T/reko"; tar -xzf "$T/dotnet.tgz" -C "$T/dotnet"
@@ -73,7 +73,7 @@ case "$tool" in
   r2dec)
     # radare2 from its pinned release .deb; the r2dec plugin was built against it once by
     # evaluate.yml's build job (r2dec's release .so targets another radare2 ABI)
-    curl -fsSL -o "$T/radare2.deb" "$RADARE2_DEB_URL"
+    curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o "$T/radare2.deb" "$RADARE2_DEB_URL"
     echo "$RADARE2_DEB_SHA256  $T/radare2.deb" | sha256sum -c -
     sudo apt-get install -y -q "$T/radare2.deb" >/dev/null
     p="$RUNNER_TEMP/bins/r2dec-bin/libcore_pdd.so"
