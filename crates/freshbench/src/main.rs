@@ -318,6 +318,9 @@ enum ProvCmd {
     Write {
         #[arg(long)]
         pins: PathBuf,
+        /// the tool registry (`ci/tools.json`), which holds each tool's version rule
+        #[arg(long)]
+        registry: PathBuf,
         #[arg(long)]
         tool: String,
         #[arg(long, default_value = "")]
@@ -874,6 +877,7 @@ fn run() -> Result<ExitCode> {
         Cmd::Provenance { action } => match action {
             ProvCmd::Write {
                 pins,
+                registry,
                 tool,
                 fission_sha,
                 freshbench_commit,
@@ -887,8 +891,11 @@ fn run() -> Result<ExitCode> {
             } => {
                 use freshbench::provenance as pv;
                 let pins = pv::read_pins(&read(&pins)?);
+                let registry: std::collections::BTreeMap<String, freshbench::policy::ToolInfo> =
+                    serde_json::from_str(&read(&registry)?)
+                        .with_context(|| format!("{}: not a tool registry", registry.display()))?;
                 let p = pv::Provenance {
-                    tool_version: pv::tool_version(&tool, &pins, &fission_sha)?,
+                    tool_version: pv::tool_version(&tool, &registry, &pins, &fission_sha)?,
                     tool,
                     freshbench_commit,
                     qualify_run,

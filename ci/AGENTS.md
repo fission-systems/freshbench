@@ -11,6 +11,9 @@ change is a benchmark change.
 - `ci/tools.json` is the publishable-tool registry. A new tool needs a maintained upstream
   repository, a working adapter, an evaluation path and a registration entry. LLM-based
   decompilers are not added to the public ranking.
+- Each non-Fission tool's `version` in `ci/tools.json` names the version provenance records, with
+  `{KEY}` for a pin of `ci/pins.env`. It lives in the registry, not in Rust, so registering a tool
+  does not change the scorer identity. `provenance::tests` checks every rule against the pins.
 - Never replace a pinned commit with a branch, tag or "latest".
 - `ci/leaderboard_runs.json` lists the `evaluate` run IDs the public ranking is built from. A push
   to `main` that changes it publishes the ranking, so change it only with a reviewed PR.

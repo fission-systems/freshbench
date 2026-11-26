@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Manifold adapter (see adapters/README.md). Needs MANIFOLD_BIN.
+
+Manifold (changliu98/manifold) runs CompCert's pipeline in reverse with Ascent
+Datalog rules and picks one statement/type choice per program with a Z3 MaxSMT
+selection. It decompiles a whole binary into one C file and takes no function
+starts: `manifold <binary> <out.c> [options]`. It runs as a subprocess in a
+temporary directory; nothing here analyses the binary.
+
+Decompile mode: one call per binary,
+`manifold <binary> <tmp>/out.c --dump-ir --dump-recovered-types`.
+
+* `code`: the definition Manifold printed for the function in out.c (its
+  header line, then `{` ... `}` in column 0), the definition only, without the
+  translation unit's includes, prototypes and type definitions.
+* Which definition belongs to which requested start is read from addresses
+  Manifold itself printed, never from a name the adapter makes up:
+  - a definition named `FUN_<hex>` (Manifold names an unnamed entry after its
+    address) is the function at <hex>;
+  - any other name is looked up in the `;; ---- <name> (0x<entry>) ----`
+    headers of Manifold's `.asm` IR dump (its `func_entry` relation: the
+    function list its analysis built) and in the `function_name` /
+    `function_address` pairs of its `.types.json`. A name that is there with
+    exactly one address is the function at that address.
+  A definition Manifold renamed on output (header-collision `<name>_local`,
+  names recovered from `__assert_fail` strings, sanitized symbol names) is not
+  matched unless one of those files pairs the printed name with an address;
+  the requested start then gets an `error`, not a guess.
+* `line_mappings` are empty: Manifold prints no instruction address on any line
+  of its C output and has no option that records one (`--dump-clight-json`
+  exports the selected Clight IR per instruction, which is not the printed C,
+  and leaves out every `FUN_` function). So its decompiled output is not
+  scored (`no_line_mappings`); Manifold takes part in the boundary track.
+* `variables`: Manifold's own `--dump-recovered-types` export: final C locals
+  whose storage it proved to be one frame slot, `rbp_offset` from the frame
+  pointer -> `kind: stack`, `stack_offset`; `type.spelling`, `type.size`, and
+  the instructions it cites (`evidence_nodes`) as `addresses`. Only
+  frame-pointer locals are exported; parameters are not.
+* `return_type` is null: Manifold exports no machine-readable signature.
+* If Manifold refuses the whole program ("Refusing executable C: N scoped
+  machine effects remain unresolved"), every requested start gets that refusal
+  as its `error` and the adapter exits 0: the refusal is Manifold's answer for
+  this binary, and a retry with fewer addresses would ask the same question.
+  If it exits without C for any other reason (crash, unsupported input), the
+  adapter exits non-zero.
+
+List mode (--list-functions): `manifold <binary> <tmp>/out.c --dump-ir`; the
+functions are the `;; ---- <name> (0x<entry>) ----` headers of the `.asm`
+dump, Manifold's `func_entry` relation (PLT stubs are left out by Manifold
+itself; instructions no function owns are printed under `unknown`, and are
+not listed). The end is null: the dump prints instruction addresses but not
+their lengths, and Manifold prints no function range. The dump is written
+before Manifold decides whether to emit C, so a refused program still lists.
+
+MANIFOLD_TIMEOUT (seconds, optional) bounds one Manifold call; FreshBench's
+own per-binary timeout applies regardless.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+FUN = re.compile(r"^FUN_([0-9a-f]+)$")
+ASM_HEADER = re.compile(r"^;; ---- (.+) \(0x([0-9a-f]+)\) ----$")
+DECL_NAME = re.compile(r"([A-Za-z_]\w*)\(")
+REFUSAL = re.compile(r"^Refusing executable C:.*$", re.M)
+PANIC = re.compile(r"^thread '.*' .*panicked at |^memory allocation of |^Error: |^Failed to ")
+
+
+def is_arm32(path):
+    """32-bit ARM ELF (e_machine 40): bit 0 of a code address is the Thumb bit."""
+    with open(path, "rb") as f:
+        h = f.read(20)
+    return h[:4] == b"\x7fELF" and int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") == 40
+
+
+def tail(text, n=600):
+    text = text.strip()
+    return text[-n:]
+
+
+def failure(rc, log, what):
+    """One line naming how Manifold ended and its own panic/error message (callers keep only a
+    short prefix of stderr), then the log tail."""
+    how = "timed out" if rc is None else (f"was killed by signal {-rc}" if rc < 0 else f"exited {rc}")
+    lines = log.splitlines()
+    cause = ""
+    for i, l in enumerate(lines):
+        if PANIC.search(l):
+            cause = " ".join(x.strip() for x in lines[i:i + 2])
+    return f"manifold {how} without {what}: {cause[:400]}\n{tail(log, 2000)}\n"
+
+
+def run_manifold(binary, td, flags):
+    """Run Manifold on `binary` with output in td; (exit code, stderr+stdout tail, out.c path)."""
+    out_c = os.path.join(td, "out.c")
+    timeout = float(os.environ["MANIFOLD_TIMEOUT"]) if os.environ.get("MANIFOLD_TIMEOUT") else None
+    log = os.path.join(td, "manifold.log")
+    with open(log, "w") as lf:
+        try:
+            p = subprocess.run([os.environ["MANIFOLD_BIN"], os.path.abspath(binary), out_c, *flags],
+                               cwd=td, stdout=lf, stderr=subprocess.STDOUT, timeout=timeout)
+            rc = p.returncode
+        except subprocess.TimeoutExpired:
+            rc = None
+    with open(log, errors="replace") as lf:
+        text = lf.read()
+    return rc, text, out_c
+
+
+def asm_entries(td):
+    """[(name, entry)] from the headers of Manifold's .asm IR dump, in file order."""
+    found = []
+    for path in sorted(glob.glob(os.path.join(td, "*.asm"))):
+        with open(path, errors="replace") as f:
+            for line in f:
+                m = ASM_HEADER.match(line.rstrip("\n"))
+                if m:
+                    found.append((m.group(1), int(m.group(2), 16)))
+    return found
+
+
+def definitions(text):
+    """[(name, definition text)] for every function definition in Manifold's C:
+    a header line ending with `)`, `{` alone on the next line, the body up to
+    the first `}` alone in column 0."""
+    lines = text.split("\n")
+    out, i = [], 0
+    while i + 1 < len(lines):
+        head = lines[i]
+        if (lines[i + 1] == "{" and head and not head[0].isspace() and head.rstrip().endswith(")")
+                and not head.startswith(("#", "//", "/*"))):
+            m = DECL_NAME.search(head)
+            k = i + 2
+            while k < len(lines) and lines[k] != "}":
+                k += 1
+            if m and k < len(lines):
+                out.append((m.group(1), "\n".join(lines[i:k + 1]) + "\n"))
+                i = k + 1
+                continue
+        i += 1
+    return out
+
+
+def variable(v):
+    t = v.get("type") or {}
+    if not t.get("spelling") or v.get("rbp_offset") is None:
+        return None
+    return {"name": v.get("name") or "", "type": t["spelling"], "kind": "stack", "arg_index": None,
+            "stack_offset": int(v["rbp_offset"]), "size": t.get("size"),
+            "addresses": sorted(int(n) for n in v.get("evidence_nodes") or [])}
+
+
+def decompile(a):
+    reqs = list(dict.fromkeys(l.strip() for l in open(a.addresses) if l.strip()))
+    mask = ~1 if is_arm32(a.binary) else ~0
+    with tempfile.TemporaryDirectory(prefix="fb-manifold-") as td:
+        rc, log, out_c = run_manifold(a.binary, td, ["--dump-ir", "--dump-recovered-types"])
+        if not os.path.exists(out_c) and "Failed to export recovered types" in log:
+            # the type export runs before the C is written and stops Manifold if it fails
+            sys.stderr.write("manifold: recovered-types export failed; rerunning without it\n")
+            for p in glob.glob(os.path.join(td, "*")):
+                if os.path.isfile(p):
+                    os.remove(p)
+            rc, log, out_c = run_manifold(a.binary, td, ["--dump-ir"])
+        refusal = REFUSAL.search(log)
+        if not os.path.exists(out_c):
+            if refusal:
+                err = "manifold refused the program: " + refusal.group(0)
+                with open(a.out, "w") as out:
+                    for r in reqs:
+                        out.write(json.dumps({"address": r, "code": None, "error": err[:500],
+                                              "line_mappings": [], "variables": [], "return_type": None}) + "\n")
+                return 0
+            sys.stderr.write(failure(rc, log, "C output"))
+            return 1
+        with open(out_c, errors="replace") as f:
+            defs = definitions(f.read())
+        entries = asm_entries(td)
+        types = {}
+        for p in glob.glob(os.path.join(td, "*.types.json")):
+            with open(p) as f:
+                types = json.load(f)
+    # name -> addresses, from what Manifold printed with both
+    named = {}
+    for name, entry in entries:
+        named.setdefault(name, set()).add(entry)
+    for v in types.get("variables") or []:
+        if v.get("function_name") is not None and v.get("function_address") is not None:
+            named.setdefault(v["function_name"], set()).add(int(v["function_address"]))
+    by_addr, unmatched = {}, []
+    for name, code in defs:
+        m = FUN.match(name)
+        addrs = {int(m.group(1), 16)} if m else named.get(name, set())
+        if len(addrs) != 1:
+            unmatched.append(name)
+            continue
+        va = next(iter(addrs)) & mask
+        if va in by_addr:
+            sys.stderr.write(f"manifold: two definitions at {va:#x} ({by_addr[va][0]}, {name}); first kept\n")
+            continue
+        by_addr[va] = (name, code)
+    if unmatched:
+        sys.stderr.write(f"manifold: {len(unmatched)} definitions with no printed address: "
+                         f"{', '.join(unmatched[:20])}\n")
+    listed = {e & mask: n for n, e in entries if n != "unknown"}
+    variables = {}
+    for v in types.get("variables") or []:
+        rec = variable(v)
+        if rec is not None and v.get("function_address") is not None:
+            variables.setdefault(int(v["function_address"]) & mask, []).append(rec)
+    with open(a.out, "w") as out:
+        for r in reqs:
+            va = int(r, 16) & mask
+            got = by_addr.get(va)
+            if got:
+                code, err = got[1], None
+            elif va in listed:
+                code, err = None, (f"manifold: no C definition tied to this address by an address Manifold "
+                                   f"printed (its function {listed[va]}: definition not printed, or printed "
+                                   f"under another name)")
+            else:
+                code, err = None, "manifold: not a function in Manifold's analysis, and no C definition at it"
+            out.write(json.dumps({"address": r, "code": code, "error": err, "line_mappings": [],
+                                  "variables": variables.get(va, []) if code else [],
+                                  "return_type": None}) + "\n")
+    return 0
+
+
+def list_functions(a):
+    mask = ~1 if is_arm32(a.binary) else ~0
+    with tempfile.TemporaryDirectory(prefix="fb-manifold-") as td:
+        rc, log, _ = run_manifold(a.binary, td, ["--dump-ir"])
+        if not glob.glob(os.path.join(td, "*.asm")):
+            sys.stderr.write(failure(rc, log, "an IR dump"))
+            return 1
+        entries = asm_entries(td)
+    starts = sorted({e & mask for n, e in entries if n != "unknown"})
+    with open(a.out, "w") as out:
+        for s in starts:
+            out.write(json.dumps({"start": f"{s:#x}", "end": None}) + "\n")
+    return 0
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--list-functions", action="store_true")
+for k in ("binary", "addresses", "elf_base", "out"):
+    ap.add_argument("--" + k.replace("_", "-"), required=k != "addresses")
+a = ap.parse_args()
+if a.list_functions:
+    sys.exit(list_functions(a))
+if a.addresses is None:
+    ap.error("--addresses is required without --list-functions")
+sys.exit(decompile(a))

@@ -22,6 +22,10 @@ pub struct ToolInfo {
     /// the decompiler is (or uses) a large language model
     #[serde(default)]
     pub llm: bool,
+    /// how provenance names the version a job ran: `{KEY}` is the pin `KEY`
+    /// of `ci/pins.env` (see `provenance::tool_version`)
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 /// Days since 1970-01-01 of a date that starts with `YYYY-MM-DD`.
@@ -116,6 +120,7 @@ mod tests {
                 ToolInfo {
                     repo: format!("o/{t}"),
                     llm,
+                    version: None,
                 },
             )
         })

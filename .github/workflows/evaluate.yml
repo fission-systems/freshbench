@@ -56,6 +56,88 @@ jobs:
           git init -q usrc && git -C usrc fetch -q --depth 1 "$UNLACE_REPO" "$UNLACE_SHA" && git -C usrc checkout -q FETCH_HEAD
           (cd usrc && cargo build --release --locked -p unlace-cli)
           mkdir -p unlace-bin && cp usrc/target/release/unlace unlace-bin/ && cp -r usrc/specs unlace-bin/specs
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: grc
+        if: contains(inputs.tools, 'ghidra-rs')
+        with:
+          path: ghidra-rs-bin
+          key: "ghidra-rs-${{ hashFiles('ci/pins.env', 'adapters/ghidra-rs/Cargo.toml', 'adapters/ghidra-rs/Cargo.lock', 'adapters/ghidra-rs/src/**') }}"
+      - if: contains(inputs.tools, 'ghidra-rs') && steps.grc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          # the lock file must carry exactly the pinned crate
+          lock=adapters/ghidra-rs/Cargo.lock
+          grep -A3 '^name = "ghidra-decompiler"$' "$lock" | grep -qx "version = \"$GHIDRA_RS_VERSION\""
+          grep -A3 '^name = "ghidra-decompiler"$' "$lock" | grep -qx "checksum = \"$GHIDRA_RS_CRATE_SHA256\""
+          cargo build --release --locked --manifest-path adapters/ghidra-rs/Cargo.toml
+          mkdir -p ghidra-rs-bin && cp adapters/ghidra-rs/target/release/freshbench-ghidra-rs ghidra-rs-bin/
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: rc
+        if: contains(inputs.tools, 'r2sleigh')
+        with: { path: r2sleigh-bin, key: "r2sleigh-${{ hashFiles('ci/pins.env') }}" }
+      - if: contains(inputs.tools, 'r2sleigh') && steps.rc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          git init -q rsrc && git -C rsrc fetch -q --depth 1 "$R2SLEIGH_REPO" "$R2SLEIGH_SHA" && git -C rsrc checkout -q FETCH_HEAD
+          # the toolchain r2sleigh pins in its rust-toolchain.toml
+          (cd rsrc && rustup show active-toolchain || rustup toolchain install)
+          (cd rsrc && cargo build --release --locked -p r2s --features sleigh)
+          mkdir -p r2sleigh-bin && cp rsrc/target/release/r2s r2sleigh-bin/
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: r2c
+        if: contains(inputs.tools, 'r2dec')
+        with: { path: r2dec-bin, key: "r2dec-${{ hashFiles('ci/pins.env') }}" }
+      - if: contains(inputs.tools, 'r2dec') && steps.r2c.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          curl -fsSL -o radare2.deb "$RADARE2_DEB_URL" && echo "$RADARE2_DEB_SHA256  radare2.deb" | sha256sum -c -
+          curl -fsSL -o radare2-dev.deb "$RADARE2_DEV_DEB_URL" && echo "$RADARE2_DEV_DEB_SHA256  radare2-dev.deb" | sha256sum -c -
+          curl -fsSL -o r2dec-src.zip "$R2DEC_SRC_URL" && echo "$R2DEC_SRC_SHA256  r2dec-src.zip" | sha256sum -c -
+          sudo apt-get install -y -q ./radare2.deb ./radare2-dev.deb meson ninja-build pkg-config
+          mkdir r2dsrc && unzip -q r2dec-src.zip -d r2dsrc
+          # QuickJS is vendored in the zip: no download during the build
+          (cd r2dsrc && meson setup build --buildtype=release --wrap-mode=nodownload && ninja -C build)
+          mkdir -p r2dec-bin && cp r2dsrc/build/libcore_pdd.so r2dec-bin/
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: mfc
+        if: contains(inputs.tools, 'manifold')
+        with:
+          path: manifold-bin
+          key: "manifold-${{ hashFiles('ci/pins.env', 'adapters/manifold/Cargo.lock') }}"
+      - if: contains(inputs.tools, 'manifold') && steps.mfc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          echo "$MANIFOLD_LOCK_SHA256  adapters/manifold/Cargo.lock" | sha256sum -c -
+          mkdir -p z3 && curl -fsSL -o z3/z3.zip "$MANIFOLD_Z3_URL"
+          echo "$MANIFOLD_Z3_SHA256  z3/z3.zip" | sha256sum -c -
+          unzip -q z3/z3.zip -d z3 && Z3="$PWD/z3/$MANIFOLD_Z3_DIR"
+          git init -q msrc && git -C msrc fetch -q --depth 1 "$MANIFOLD_REPO" "$MANIFOLD_SHA" && git -C msrc checkout -q FETCH_HEAD
+          git -C msrc submodule update --init --recursive --depth 1
+          test "$(git -C msrc rev-parse HEAD:ascent-plusplus)" = "$MANIFOLD_ASCENT_SHA"
+          cp adapters/manifold/Cargo.lock msrc/Cargo.lock
+          rustup toolchain install "$MANIFOLD_RUST" --profile minimal
+          # rustc needs ~14 GB for the manifold crate; 2 jobs, no incremental dep graph
+          (cd msrc && Z3_LIBRARY_PATH_OVERRIDE="$Z3/bin" CARGO_INCREMENTAL=0 \
+            RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN' \
+            cargo "+$MANIFOLD_RUST" build --release --locked -j 2)
+          mkdir -p manifold-bin && cp msrc/target/release/manifold "$Z3/bin/libz3.so" manifold-bin/
+          cp "$Z3/LICENSE.txt" manifold-bin/z3-LICENSE.txt
+          ldd manifold-bin/manifold | grep -q "libz3.so => $PWD/manifold-bin/libz3.so"
+          rm -rf msrc z3
+      # rev.ng's distribution (564 MB) is fetched from rev.ng once per pin, not
+      # once per job; run jobs take it from this run's artifact
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: rvc
+        if: contains(inputs.tools, 'revng')
+        with: { path: revng-dist, key: "revng-${{ hashFiles('ci/pins.env') }}" }
+      - if: contains(inputs.tools, 'revng') && steps.rvc.outputs.cache-hit != 'true'
+        run: |
+          source ci/pins.env
+          mkdir -p revng-dist && curl -fsSL -o revng-dist/revng.tar.xz "$REVNG_URL"
+          echo "$REVNG_SHA256  revng-dist/revng.tar.xz" | sha256sum -c -
+      - if: contains(inputs.tools, 'revng')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with: { name: revng-dist, path: revng-dist, compression-level: 0, retention-days: 1 }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bins
@@ -63,6 +145,10 @@ jobs:
             target/release/freshbench
             fission-bin
             unlace-bin
+            ghidra-rs-bin
+            r2sleigh-bin
+            r2dec-bin
+            manifold-bin
   run:
     needs: build
     runs-on: ubuntu-24.04
@@ -89,6 +175,9 @@ jobs:
         with: { name: bins, path: "${{ runner.temp }}/bins" }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: "qual-${{ matrix.project }}-${{ inputs.arch }}", path: "${{ runner.temp }}/qual", run-id: "${{ inputs.qualify_run }}", github-token: "${{ github.token }}" }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: matrix.tool == 'revng'
+        with: { name: revng-dist, path: "${{ runner.temp }}/revng-dist" }
       - run: ci/setup_tool.sh "$MATRIX_TOOL"
       - name: function boundaries
         if: inputs.track == 'boundaries'
@@ -99,7 +188,7 @@ jobs:
           FB="$B/target/release/freshbench"
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"; mkdir -p "$RUNNER_TEMP/up/boundaries"
-          case "$MATRIX_TOOL" in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           for v in as-built no-unwind; do
             o="$RUNNER_TEMP/up/boundaries/$MATRIX_TOOL-$v.jsonl"
             if [ "$MATRIX_TOOL" = fission ]; then
@@ -117,7 +206,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/w" && tar -xf "$RUNNER_TEMP/qual/prep.tar" -C "$RUNNER_TEMP/w"
           R="$RUNNER_TEMP/w/prep"
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
-          case "$MATRIX_TOOL" in ghidra|angr) J=3;; fission|unlace) J=2;; *) J=4;; esac
+          case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           if [ "$MATRIX_TOOL" = fission ]; then
             "$FB" decompile "$R" $FB_BUILDS --jobs $J --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
@@ -138,7 +227,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/up"
           FB="$RUNNER_TEMP/bins/target/release/freshbench"; chmod +x "$FB"
-          "$FB" provenance write --pins ci/pins.env --tool "$TOOL" --fission-sha "$FISSION_SHA_USED" \
+          "$FB" provenance write --pins ci/pins.env --registry ci/tools.json --tool "$TOOL" --fission-sha "$FISSION_SHA_USED" \
             --freshbench-commit "$GITHUB_SHA" --qualify-run "$QUALIFY_RUN" --evaluate-run "$GITHUB_RUN_ID" \
             --arch "$ARCH" --project "$PROJECT" --build "$BUILD" --track "$TRACK" \
             --out "$RUNNER_TEMP/up/provenance.json"
