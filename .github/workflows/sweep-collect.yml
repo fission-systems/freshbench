@@ -1,0 +1,116 @@
+name: sweep-collect
+# Finishes what sweep.yml started. Hourly (and on demand) it takes the oldest
+# open sweep (a sweep/<id> tag with no "M1 sweep <id>" issue yet) and, once
+# every evaluate run in its manifest has completed, runs the publication gate
+# over them (ci/collect_runs.sh, the same script pages.yml uses).
+# * Gate passes: it publishes the ranking by dispatching pages.yml on main
+#   with the sweep's runs and deploy=true (pages.yml runs the gate again
+#   before it deploys), and opens an issue recording the published runs.
+# * Gate refuses: nothing is published; it opens an issue with the reason.
+# The issue closes the sweep for this workflow. A failure before the gate
+# (a download) fails the job and the next run tries again.
+# Polling instead of workflow_run: no privileged trigger on another
+# workflow's completion.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      sweep: { description: "sweep id to check now (default: the oldest open sweep)", default: "" }
+permissions: {}
+concurrency: { group: sweep-collect, cancel-in-progress: false }
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions: { contents: read, actions: write, issues: write }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - name: find an open sweep whose runs are all done
+        id: find
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          WANT: "${{ inputs.sweep }}"
+        run: |
+          set -euo pipefail
+          if [ -n "$WANT" ]; then
+            [[ "$WANT" =~ ^[0-9a-f]{9}-[0-9]+$ ]] || { echo "not a sweep id: $WANT" >&2; exit 1; }
+            ids="$WANT"
+          else
+            # oldest first: the id ends in the sweep run's id
+            ids=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/sweep/" --jq '.[].ref | ltrimstr("refs/tags/sweep/")' \
+              | grep -E '^[0-9a-f]{9}-[0-9]+$' | sort -t- -k2 -n || true)
+          fi
+          for id in $ids; do
+            if [ -z "$WANT" ] && [ -n "$(gh issue list -R "$GITHUB_REPOSITORY" --state all --search "\"M1 sweep $id\" in:title" --json number --jq '.[].number')" ]; then
+              continue
+            fi
+            rm -rf manifest
+            if ! gh run download "${id#*-}" -R "$GITHUB_REPOSITORY" -n "sweep-$id" -D manifest; then
+              echo "sweep $id: no manifest (its sweep run failed before recording one)"
+              continue
+            fi
+            pending=0
+            for r in $(jq -r '.runs[]' manifest/sweep.json); do
+              s=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$r" --jq .status)
+              [ "$s" = completed ] || pending=$((pending + 1))
+            done
+            if [ "$pending" -gt 0 ]; then
+              echo "sweep $id: $pending of $(jq '.runs | length' manifest/sweep.json) runs not done yet"
+              continue
+            fi
+            echo "id=$id" >> "$GITHUB_OUTPUT"
+            echo "runs=$(jq -c .runs manifest/sweep.json)" >> "$GITHUB_OUTPUT"
+            exit 0
+          done
+          echo "no sweep ready"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.find.outputs.id != ''
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ hashFiles('Cargo.lock') }}
+      - if: steps.find.outputs.id != ''
+        run: cargo build --release --locked -p freshbench
+      - name: publication gate over the sweep's runs
+        id: gate
+        if: steps.find.outputs.id != ''
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          RUNS: "${{ steps.find.outputs.runs }}"
+        run: |
+          set +e
+          ci/collect_runs.sh "$RUNS" target/release/freshbench 2>&1 | tee gate.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 3: the gate refused the runs (an answer); anything else: try again later
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
+      - name: propose the run list, or report the refusal
+        if: steps.find.outputs.id != ''
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          ID: "${{ steps.find.outputs.id }}"
+          RUNS: "${{ steps.find.outputs.runs }}"
+          RC: "${{ steps.gate.outputs.rc }}"
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          sha=$(jq -r .sha manifest/sweep.json)
+          table=$(for r in $(jq -r '.[]' <<< "$RUNS"); do
+            gh api "repos/$R/actions/runs/$r" --jq '"| [\(.id)](\(.html_url)) | \(.display_title) | \(.conclusion) |"'
+          done)
+          gatelog=$(grep -E '^(.*: [0-9]+/[0-9]+ rows|M1 publication gate passed|ValueError|error)' gate.log | tail -40 || true)
+          if [ "$RC" = 0 ]; then
+            gh workflow run pages.yml -R "$R" --ref main -f evaluate_runs="$(jq -c . <<< "$RUNS")" -f deploy=true
+            title="M1 sweep $ID: published"
+            next="The gate passed and the ranking was published from these runs ([pages](https://github.com/$R/actions/workflows/pages.yml) runs the gate again before it deploys). \`ci/leaderboard_runs.json\` is not changed by a sweep."
+          else
+            title="M1 sweep $ID: refused by the publication gate"
+            next="The gate refused these runs; nothing was published. Rerun what is missing (a new sweep, or a manual dispatch from tag \`sweep/$ID\` if the scorer is unchanged)."
+          fi
+          body=$(printf '%s\n\nCommit `%s`, tag `sweep/%s`.\n\n| run | name | conclusion |\n|---|---|---|\n%s\n\nGate:\n```\n%s\n```\n' \
+            "$next" "$sha" "$ID" "$table" "$gatelog")
+          gh issue create -R "$R" --title "$title" --body "$body"

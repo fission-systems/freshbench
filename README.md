@@ -222,6 +222,12 @@ Publication rules:
 * Deduplicated views (one function per renamed-clone group) are published next to
   the all-row view.
 
+A full rerun of M1 is one dispatch of the [sweep](../../actions/workflows/sweep.yml) workflow on
+`main`. It tags the commit, starts every `evaluate` run from that tag, and
+[sweep-collect](../../actions/workflows/sweep-collect.yml) checks the runs with the same gate once
+they are done. When the gate passes it publishes them through the pages workflow and records the
+run list in an issue; when it refuses, nothing is published and the issue says why.
+
 A manual dispatch with `deploy` false only produces the `leaderboard-preview`
 artifact for inspection. The landing page is deployed from `site-bootstrap/` when
 that directory changes on `main`; it contains corpus statistics and no rankings.
