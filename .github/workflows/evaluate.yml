@@ -40,7 +40,7 @@ jobs:
           ref="$FISSION_REF"
           # a branch, tag, ref pattern or commit; never an option or shell-special text
           if [ -n "$ref" ] && ! [[ "$ref" =~ ^[A-Za-z0-9_./+@*][A-Za-z0-9_./+@*-]*$ ]]; then echo "invalid fission_ref: $ref" >&2; exit 1; fi
-          if [ -n "$ref" ]; then sha=$(git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; else sha="$FISSION_SHA"; fi
+          if [ -n "$ref" ]; then sha=$(ci/retry.sh git ls-remote "$FISSION_REPO" "$ref" | head -1 | cut -f1); [ -n "$sha" ] || sha="$ref"; else sha="$FISSION_SHA"; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"; echo "FISSION_SHA=$sha" >> "$GITHUB_ENV"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: fc
@@ -48,7 +48,7 @@ jobs:
       - if: contains(inputs.tools, 'fission') && steps.fc.outputs.cache-hit != 'true'
         run: |
           source ci/pins.env
-          git init -q fsrc && git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
+          git init -q fsrc && ci/retry.sh git -C fsrc fetch -q --depth 1 "$FISSION_REPO" "$FISSION_SHA" && git -C fsrc checkout -q FETCH_HEAD
           (cd fsrc && cargo build -p fission-cli --release --locked)
           mkdir -p fission-bin && cp fsrc/target/release/fission_cli fission-bin/ && cp -r fsrc/utils fission-bin/utils
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -58,7 +58,7 @@ jobs:
       - if: contains(inputs.tools, 'unlace') && steps.uc.outputs.cache-hit != 'true'
         run: |
           source ci/pins.env
-          git init -q usrc && git -C usrc fetch -q --depth 1 "$UNLACE_REPO" "$UNLACE_SHA" && git -C usrc checkout -q FETCH_HEAD
+          git init -q usrc && ci/retry.sh git -C usrc fetch -q --depth 1 "$UNLACE_REPO" "$UNLACE_SHA" && git -C usrc checkout -q FETCH_HEAD
           (cd usrc && cargo build --release --locked -p unlace-cli)
           mkdir -p unlace-bin && cp usrc/target/release/unlace unlace-bin/ && cp -r usrc/specs unlace-bin/specs
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -83,9 +83,9 @@ jobs:
       - if: contains(inputs.tools, 'r2sleigh') && steps.rc.outputs.cache-hit != 'true'
         run: |
           source ci/pins.env
-          git init -q rsrc && git -C rsrc fetch -q --depth 1 "$R2SLEIGH_REPO" "$R2SLEIGH_SHA" && git -C rsrc checkout -q FETCH_HEAD
+          git init -q rsrc && ci/retry.sh git -C rsrc fetch -q --depth 1 "$R2SLEIGH_REPO" "$R2SLEIGH_SHA" && git -C rsrc checkout -q FETCH_HEAD
           # the toolchain r2sleigh pins in its rust-toolchain.toml
-          (cd rsrc && rustup show active-toolchain || rustup toolchain install)
+          (cd rsrc && rustup show active-toolchain || "$GITHUB_WORKSPACE/ci/retry.sh" rustup toolchain install)
           (cd rsrc && cargo build --release --locked -p r2s --features sleigh)
           mkdir -p r2sleigh-bin && cp rsrc/target/release/r2s r2sleigh-bin/
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -95,9 +95,9 @@ jobs:
       - if: contains(inputs.tools, 'r2dec') && steps.r2c.outputs.cache-hit != 'true'
         run: |
           source ci/pins.env
-          curl -fsSL -o radare2.deb "$RADARE2_DEB_URL" && echo "$RADARE2_DEB_SHA256  radare2.deb" | sha256sum -c -
-          curl -fsSL -o radare2-dev.deb "$RADARE2_DEV_DEB_URL" && echo "$RADARE2_DEV_DEB_SHA256  radare2-dev.deb" | sha256sum -c -
-          curl -fsSL -o r2dec-src.zip "$R2DEC_SRC_URL" && echo "$R2DEC_SRC_SHA256  r2dec-src.zip" | sha256sum -c -
+          curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o radare2.deb "$RADARE2_DEB_URL" && echo "$RADARE2_DEB_SHA256  radare2.deb" | sha256sum -c -
+          curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o radare2-dev.deb "$RADARE2_DEV_DEB_URL" && echo "$RADARE2_DEV_DEB_SHA256  radare2-dev.deb" | sha256sum -c -
+          curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o r2dec-src.zip "$R2DEC_SRC_URL" && echo "$R2DEC_SRC_SHA256  r2dec-src.zip" | sha256sum -c -
           sudo apt-get install -y -q ./radare2.deb ./radare2-dev.deb meson ninja-build pkg-config
           mkdir r2dsrc && unzip -q r2dec-src.zip -d r2dsrc
           # QuickJS is vendored in the zip: no download during the build
@@ -113,17 +113,17 @@ jobs:
         run: |
           source ci/pins.env
           echo "$MANIFOLD_LOCK_SHA256  adapters/manifold/Cargo.lock" | sha256sum -c -
-          mkdir -p z3 && curl -fsSL -o z3/z3.zip "$MANIFOLD_Z3_URL"
+          mkdir -p z3 && curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o z3/z3.zip "$MANIFOLD_Z3_URL"
           echo "$MANIFOLD_Z3_SHA256  z3/z3.zip" | sha256sum -c -
           unzip -q z3/z3.zip -d z3 && Z3="$PWD/z3/$MANIFOLD_Z3_DIR"
           # outside the checkout: Manifold's Cargo.toml has no [workspace] of its
           # own, so under the checkout cargo takes FreshBench's root workspace for it
           M="$RUNNER_TEMP/msrc"
-          git init -q "$M" && git -C "$M" fetch -q --depth 1 "$MANIFOLD_REPO" "$MANIFOLD_SHA" && git -C "$M" checkout -q FETCH_HEAD
-          git -C "$M" submodule update --init --recursive --depth 1
+          git init -q "$M" && ci/retry.sh git -C "$M" fetch -q --depth 1 "$MANIFOLD_REPO" "$MANIFOLD_SHA" && git -C "$M" checkout -q FETCH_HEAD
+          ci/retry.sh git -C "$M" submodule update --init --recursive --depth 1
           test "$(git -C "$M" rev-parse HEAD:ascent-plusplus)" = "$MANIFOLD_ASCENT_SHA"
           cp adapters/manifold/Cargo.lock "$M/Cargo.lock"
-          rustup toolchain install "$MANIFOLD_RUST" --profile minimal
+          ci/retry.sh rustup toolchain install "$MANIFOLD_RUST" --profile minimal
           # rustc needs ~14 GB for the manifold crate; 2 jobs, no incremental dep graph
           (cd "$M" && Z3_LIBRARY_PATH_OVERRIDE="$Z3/bin" CARGO_INCREMENTAL=0 \
             RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN' \
@@ -141,7 +141,7 @@ jobs:
       - if: contains(inputs.tools, 'revng') && steps.rvc.outputs.cache-hit != 'true'
         run: |
           source ci/pins.env
-          mkdir -p revng-dist && curl -fsSL -o revng-dist/revng.tar.xz "$REVNG_URL"
+          mkdir -p revng-dist && curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors -o revng-dist/revng.tar.xz "$REVNG_URL"
           echo "$REVNG_SHA256  revng-dist/revng.tar.xz" | sha256sum -c -
       - if: contains(inputs.tools, 'revng')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
