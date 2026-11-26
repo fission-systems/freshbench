@@ -17,8 +17,18 @@ def require(condition, message):
         raise ValueError(message)
 
 
+BINARY_FIELDS = KEY_FIELDS[:5]
+VARIANTS = ("as-built", "no-unwind")
+
+
 def load_targets(root, manifest):
+    return load_population(root, manifest)[0]
+
+
+def load_population(root, manifest):
+    """(every M1 target, every M1 binary) from the pinned truth files."""
     expected = set()
+    binaries = set()
     with gzip.open(manifest, "rt") as source:
         entries = [json.loads(line) for line in source if line.strip()]
     truth = {entry["path"]: entry for entry in entries
@@ -32,13 +42,14 @@ def load_targets(root, manifest):
                 f"truth digest mismatch: {rel}")
         unit = json.loads(data)
         for binary, record in unit["binaries"].items():
+            binaries.add((unit["project"], unit["arch"], unit["compiler"], unit["config"], binary))
             for function in record["functions"]:
                 key = (unit["project"], unit["arch"], unit["compiler"], unit["config"],
                        binary, function["name"])
                 require(key not in expected, f"duplicate target: {key}")
                 expected.add(key)
     require(len(expected) == EXPECTED_TARGETS, f"unexpected M1 row count: {len(expected)}")
-    return expected
+    return expected, binaries
 
 
 def validate_rows(rows, expected, registry):
@@ -76,6 +87,43 @@ def validate_rows(rows, expected, registry):
     return set(seen)
 
 
+def validate_boundaries(dirs, binaries, registry):
+    """Every tool with boundary rows has one for every M1 binary in both
+    variants. A binary without a row is not counted as found or missed by
+    the summary, so a tool whose job was cancelled would be scored on fewer
+    binaries than the others; an explicit failure (`error`) is a row."""
+    seen = {}
+    for d in dirs:
+        for file in sorted(Path(d).rglob("*.jsonl")):
+            if file.parent.name != "boundaries":
+                continue
+            with file.open() as source:
+                for n, line in enumerate(source, 1):
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    tool, variant = row["tool"], row["variant"]
+                    require(tool in registry, f"unknown tool in boundary rows: {tool}")
+                    require(not registry[tool].get("llm", False), f"LLM tool in M1 boundaries: {tool}")
+                    require(variant in VARIANTS, f"{file}:{n}: unknown variant {variant}")
+                    key = tuple(row[field] for field in BINARY_FIELDS)
+                    require(key in binaries, f"{file}:{n}: unexpected binary {key}")
+                    mine = seen.setdefault((tool, variant), {})
+                    require(key not in mine or mine[key] == row,
+                            f"boundary rows disagree: {tool} {variant} {key}")
+                    mine[key] = row
+    incomplete = []
+    for tool in sorted({t for t, _ in seen}):
+        for variant in VARIANTS:
+            have = seen.get((tool, variant), {})
+            missing = len(binaries - set(have))
+            print(f"{tool} {variant}: {len(have)}/{len(binaries)} binaries ({missing} missing)")
+            if missing:
+                incomplete.append(f"{tool} {variant}")
+    require(not incomplete, f"incomplete boundary results: {', '.join(incomplete)}")
+    return {t for t, _ in seen}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, required=True)
@@ -83,12 +131,16 @@ def main():
     parser.add_argument("--rows", type=Path, required=True)
     parser.add_argument("--meta", type=Path, required=True)
     parser.add_argument("--registry", type=Path, required=True)
+    parser.add_argument("--boundaries", type=Path, nargs="*", default=[],
+                        help="directories holding the boundary track's boundaries/*.jsonl")
     args = parser.parse_args()
     meta = json.loads(args.meta.read_text())
     require(meta["pins"]["corpus build (qualify-arch run)"] == QUALIFY_RUN,
             "result provenance does not match M1 qualification run")
     registry = json.loads(args.registry.read_text())
-    validate_rows(args.rows, load_targets(args.corpus, args.manifest), registry)
+    targets, binaries = load_population(args.corpus, args.manifest)
+    validate_rows(args.rows, targets, registry)
+    validate_boundaries(args.boundaries, binaries, registry)
     print(f"M1 publication gate passed: {REVISION}")
 
 
