@@ -193,6 +193,16 @@ jobs:
         if: matrix.tool == 'revng'
         with: { name: revng-dist, path: "${{ runner.temp }}/revng-dist" }
       - run: ci/setup_tool.sh "$MATRIX_TOOL"
+      # Every tool runs under one cap of the runner's memory (ci/capped.sh):
+      # a tool that exceeds it loses its call, not the job its rows. The cap is
+      # part of the reuse key.
+      - name: memory cap
+        run: |
+          ci/setup_systemd_user.sh
+          # a 16 GB runner, less 2 GB for the system and the runner agent
+          echo "FB_MEMORY_MAX=14G" >> "$GITHUB_ENV"
+          FB_MEMORY_MAX=14G ci/capped.sh true
+          if [ -f "$RUNNER_TEMP/tool-env.txt" ]; then echo "memory cap 14G" >> "$RUNNER_TEMP/tool-env.txt"; fi
       # A pinned tool's output is taken from an earlier run when nothing that
       # can change it did: version, adapter, environment, harness, binary,
       # requests and limits (crates/freshbench/src/reuse.rs). Anything missing
@@ -238,9 +248,9 @@ jobs:
             found=""
             if [ -n "${FB_REUSE:-}" ]; then found="--found-out $RUNNER_TEMP/up/found/$MATRIX_TOOL-$v.jsonl"; fi
             if [ "$MATRIX_TOOL" = fission ]; then
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+              ci/capped.sh "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
             else
-              "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool "$MATRIX_TOOL" ${FB_REUSE:-} $found --adapter $FB_ADAPTER
+              ci/capped.sh "$FB" boundaries "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --variant $v --out "$o" --tool "$MATRIX_TOOL" ${FB_REUSE:-} $found --adapter $FB_ADAPTER
             fi
           done
           "$FB" boundaries-summary "$RUNNER_TEMP/up/boundaries" > "$RUNNER_TEMP/up/boundaries/summary.json"
@@ -254,9 +264,9 @@ jobs:
           # binaries at once on a 4-vCPU / 16 GB runner: JVM and angr need several GB each
           case "$MATRIX_TOOL" in manifold) J=1;; ghidra|angr|revng) J=3;; fission|unlace) J=2;; *) J=4;; esac
           if [ "$MATRIX_TOOL" = fission ]; then
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
+            ci/capped.sh "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool fission --fission-cli "$B/fission-bin/fission_cli" --resource-root "$B/fission-bin/utils"
           else
-            "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool "$MATRIX_TOOL" ${FB_REUSE:-} --adapter $FB_ADAPTER
+            ci/capped.sh "$FB" decompile "$R" $FB_BUILDS --jobs $J --deadline "$FB_DEADLINE" --tool "$MATRIX_TOOL" ${FB_REUSE:-} --adapter $FB_ADAPTER
           fi
           "$FB" rescore "$R" $FB_BUILDS --tool "$MATRIX_TOOL" --out "$R/rows/$MATRIX_TOOL.jsonl"
           mkdir -p "$RUNNER_TEMP/up" && cp -r "$R/results" "$R/rows" "$RUNNER_TEMP/up/"
@@ -272,6 +282,11 @@ jobs:
           TRACK: ${{ inputs.track }}
         run: |
           mkdir -p "$RUNNER_TEMP/up"
+          # outputs of a job where the memory cap killed anything are not reused
+          if [ -f "$RUNNER_TEMP/oom-kills" ]; then
+            cp "$RUNNER_TEMP/oom-kills" "$RUNNER_TEMP/up/oom-kills.txt"
+            find "$RUNNER_TEMP/up" \( -name reuse.jsonl -o -path '*/found/*.jsonl' \) -delete
+          fi
           FB="$RUNNER_TEMP/bins/target/release/freshbench"; chmod +x "$FB"
           "$FB" provenance write --pins ci/pins.env --registry ci/tools.json --tool "$TOOL" --fission-sha "$FISSION_SHA_USED" \
             --freshbench-commit "$GITHUB_SHA" --qualify-run "$QUALIFY_RUN" --evaluate-run "$GITHUB_RUN_ID" \

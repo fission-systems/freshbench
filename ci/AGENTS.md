@@ -50,7 +50,10 @@ change is a benchmark change.
 - The `qualify-arch` and `evaluate` workflows are the v2 entry points. Their artifacts are inputs
   to results, so preserve the run's `provenance.json` and do not edit artifacts by hand.
 
-`ci/setup_systemd_user.sh` is not used by any workflow. Do not add a caller without reviewing it.
+`ci/setup_systemd_user.sh` gives `evaluate.yml` the user systemd that `ci/capped.sh` needs: every
+tool runs under a 14 GB memory cap without swap, so running out of memory costs the killed call,
+not the runner and with it every row of the job. A job with such a kill uploads
+`oom-kills.txt` and offers nothing for reuse. Review the script before adding another caller.
 
 ## Rules
 
