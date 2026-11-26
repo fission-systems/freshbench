@@ -142,6 +142,27 @@ fn reap(pid: u32, block: bool) -> Option<(std::process::ExitStatus, f64, f64)> {
     ))
 }
 
+/// Out of memory, the kernel kills the tool (and what it spawns), not the
+/// harness: the tool's processes start with the highest `oom_score_adj`.
+/// Under a memory cap with equal scores, a run lost FreshBench itself after the
+/// tool, and with it every row of the job.
+#[cfg(target_os = "linux")]
+fn prefer_as_oom_victim(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: open, write and close are async-signal-safe and allocate nothing;
+    // a failure leaves the inherited score.
+    unsafe {
+        cmd.pre_exec(|| {
+            let fd = libc::open(c"/proc/self/oom_score_adj".as_ptr(), libc::O_WRONLY);
+            if fd >= 0 {
+                libc::write(fd, b"1000".as_ptr().cast(), 4);
+                libc::close(fd);
+            }
+            Ok(())
+        });
+    }
+}
+
 /// Run `cmd` in its own process group, killing the whole group after
 /// `timeout` (and any leftovers once it exits). Returns (exit ok, stdout,
 /// stderr tail).
@@ -156,6 +177,8 @@ pub fn run_measured(mut cmd: Command, timeout: Duration) -> Result<(bool, Vec<u8
     let (out_p, err_p) = (dir.path().join("out"), dir.path().join("err"));
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    #[cfg(target_os = "linux")]
+    prefer_as_oom_victim(&mut cmd);
     #[allow(unused_mut)]
     let mut child = cmd
         .stdin(Stdio::null())
@@ -783,6 +806,26 @@ mod tests {
         assert_eq!(failure_kind("missing from output"), "missing");
         assert_eq!(failure_kind("fission_cli output is not JSON"), "adapter");
         assert_eq!(failure_kind("no function at address"), "tool_error");
+    }
+
+    /// The tool and the processes it spawns are the first the kernel kills
+    /// when memory runs out; the harness keeps its own score.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_tool_is_the_out_of_memory_victim() {
+        let own = std::fs::read_to_string("/proc/self/oom_score_adj").unwrap();
+        let mut c = Command::new("sh");
+        c.args([
+            "-c",
+            "cat /proc/self/oom_score_adj; sh -c 'cat /proc/self/oom_score_adj'",
+        ]);
+        let (ok, out, err) = run_with_timeout(c, Duration::from_secs(10)).unwrap();
+        assert!(ok, "{err}");
+        assert_eq!(String::from_utf8(out).unwrap(), "1000\n1000\n");
+        assert_eq!(
+            std::fs::read_to_string("/proc/self/oom_score_adj").unwrap(),
+            own
+        );
     }
 
     #[cfg(unix)]
