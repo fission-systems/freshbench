@@ -353,6 +353,36 @@ pub struct CallStats {
     pub usage: Usage,
 }
 
+/// A job's deadline given as Unix seconds (`--deadline`), as an instant and
+/// the time that was left when the job read it; `None` without one.
+pub fn job_deadline(unix_s: Option<u64>) -> Option<(std::time::Instant, Duration)> {
+    let end = std::time::UNIX_EPOCH + Duration::from_secs(unix_s?);
+    let left = end
+        .duration_since(std::time::SystemTime::now())
+        .unwrap_or(Duration::ZERO);
+    Some((std::time::Instant::now() + left, left))
+}
+
+/// The time limit for one call within a job's deadline: `limit`, or less when
+/// the job ends sooner; `Err` with the timeout text once the job's time is spent.
+pub fn within_job(
+    limit: Duration,
+    job: Option<(std::time::Instant, Duration)>,
+) -> std::result::Result<Duration, String> {
+    let Some((end, len)) = job else {
+        return Ok(limit);
+    };
+    let left = end.saturating_duration_since(std::time::Instant::now());
+    if left.is_zero() {
+        Err(format!(
+            "timeout after {}s: the job's time budget is spent",
+            len.as_secs()
+        ))
+    } else {
+        Ok(limit.min(left))
+    }
+}
+
 /// How many `binary_timeout`s one binary may take in all, bisection included.
 pub const BINARY_BUDGET_FACTOR: u32 = 2;
 
@@ -366,7 +396,8 @@ pub const BINARY_BUDGET_FACTOR: u32 = 2;
 /// (loading the binary, recovering its whole CFG) exceeds the limit times out
 /// on every subset, and bisecting it makes about two calls per function: one
 /// armv7 binary held a CI job for five hours that way. Once the deadline has
-/// passed, every function not yet decompiled is a timeout.
+/// passed, every function not yet decompiled is a timeout, with the deadline's
+/// own reason (`deadline.1`).
 #[allow(clippy::too_many_arguments)]
 fn bisect(
     tool: &Tool,
@@ -374,7 +405,7 @@ fn bisect(
     addrs: &[u64],
     base: u64,
     (binary_timeout, function_timeout): (Duration, Duration),
-    deadline: (std::time::Instant, Duration),
+    deadline: (std::time::Instant, &str),
     stats: &mut CallStats,
     out: &mut BTreeMap<u64, Result<Got, String>>,
 ) {
@@ -383,13 +414,7 @@ fn bisect(
         .saturating_duration_since(std::time::Instant::now());
     if left.is_zero() {
         for a in addrs {
-            out.insert(
-                *a,
-                Err(format!(
-                    "timeout after {}s: the binary's time budget is spent",
-                    deadline.1.as_secs()
-                )),
-            );
+            out.insert(*a, Err(deadline.1.to_string()));
         }
         return;
     }
@@ -461,6 +486,31 @@ pub fn decompile_binary_stats(
     binary_timeout: Duration,
     function_timeout: Duration,
 ) -> Result<(Vec<Record>, CallStats)> {
+    decompile_binary_until(
+        tool,
+        binary,
+        binary_name,
+        funcs,
+        binary_timeout,
+        function_timeout,
+        None,
+    )
+}
+
+/// [`decompile_binary_stats`] within a job's deadline `(when, its length)`:
+/// a binary never runs past it, and every function not decompiled by then
+/// is a timeout. A CI job has a hard time limit; without this, the binaries
+/// still running when it is reached leave no record at all, and a tool that
+/// is slow on a whole build loses its rows instead of being charged for them.
+pub fn decompile_binary_until(
+    tool: &Tool,
+    binary: &Path,
+    binary_name: &str,
+    funcs: &BTreeMap<u64, String>,
+    binary_timeout: Duration,
+    function_timeout: Duration,
+    job: Option<(std::time::Instant, Duration)>,
+) -> Result<(Vec<Record>, CallStats)> {
     let data = std::fs::read(binary)?;
     let base = elf_base(&data)?;
     let addrs: Vec<u64> = funcs.keys().copied().collect();
@@ -468,13 +518,30 @@ pub fn decompile_binary_stats(
     let mut stats = CallStats::default();
     if !addrs.is_empty() {
         let budget = binary_timeout.saturating_mul(BINARY_BUDGET_FACTOR);
+        let own = std::time::Instant::now() + budget;
+        let (when, why) = match job {
+            Some((end, len)) if end < own => (
+                end,
+                format!(
+                    "timeout after {}s: the job's time budget is spent",
+                    len.as_secs()
+                ),
+            ),
+            _ => (
+                own,
+                format!(
+                    "timeout after {}s: the binary's time budget is spent",
+                    budget.as_secs()
+                ),
+            ),
+        };
         bisect(
             tool,
             binary,
             &addrs,
             base,
             (binary_timeout, function_timeout),
-            (std::time::Instant::now() + budget, budget),
+            (when, &why),
             &mut stats,
             &mut got,
         );
@@ -831,6 +898,86 @@ else echo "{\"address\":\"$a\",\"code\":\"int f(void){return 1;}\",\"error\":nul
         assert!(recs
             .iter()
             .all(|r| r.code.is_none() && failure_kind(r.error.as_deref().unwrap()) == "timeout"));
+    }
+
+    /// A job deadline that ends before the binary's own budget stops the
+    /// binary there, and every function is recorded as a timeout, so a slow
+    /// tool is charged for the rest of the build instead of the CI job's hard
+    /// limit cancelling it with no records at all. Once the deadline has
+    /// passed, a binary is not started.
+    #[cfg(unix)]
+    #[test]
+    fn the_job_deadline_stops_a_binary_and_records_timeouts() {
+        let d = tempfile::tempdir().unwrap();
+        let script = d.path().join("run");
+        std::fs::write(&script, "#!/bin/sh\nsleep 30\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let me = std::env::current_exe().unwrap();
+        let tool = Tool::Script {
+            name: "slow".into(),
+            command: vec![script.to_string_lossy().into_owned()],
+        };
+        let funcs: BTreeMap<u64, String> = (0..8u64).map(|i| (0x10 + i, format!("f{i}"))).collect();
+        let job = Some((
+            std::time::Instant::now() + Duration::from_millis(600),
+            Duration::from_millis(600),
+        ));
+        let t = std::time::Instant::now();
+        // binary budget 2 x 60 s; the job ends in 0.6 s
+        let (recs, _) = decompile_binary_until(
+            &tool,
+            &me,
+            "me",
+            &funcs,
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            job,
+        )
+        .unwrap();
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+        assert_eq!(recs.len(), 8);
+        assert!(recs.iter().all(|r| r.code.is_none()
+            && failure_kind(r.error.as_deref().unwrap()) == "timeout"
+            && r.error.as_deref().unwrap().contains("job's time budget")));
+        // the deadline has passed: no call at all
+        let (recs, stats) = decompile_binary_until(
+            &tool,
+            &me,
+            "me",
+            &funcs,
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            job,
+        )
+        .unwrap();
+        assert_eq!(stats.calls, 0);
+        assert!(recs
+            .iter()
+            .all(|r| failure_kind(r.error.as_deref().unwrap()) == "timeout"));
+    }
+
+    #[test]
+    fn job_deadlines() {
+        assert!(job_deadline(None).is_none());
+        // a deadline in the past leaves nothing
+        let (_, left) = job_deadline(Some(1)).unwrap();
+        assert_eq!(left, Duration::ZERO);
+        let e = within_job(Duration::from_secs(9), job_deadline(Some(1))).unwrap_err();
+        assert_eq!(failure_kind(&e), "timeout");
+        let soon = Some((
+            std::time::Instant::now() + Duration::from_secs(5),
+            Duration::from_secs(5),
+        ));
+        assert!(within_job(Duration::from_secs(60), soon).unwrap() <= Duration::from_secs(5));
+        assert_eq!(
+            within_job(Duration::from_secs(2), soon).unwrap(),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            within_job(Duration::from_secs(60), None).unwrap(),
+            Duration::from_secs(60)
+        );
     }
 
     /// One function crashes the tool whenever it is in the batch: bisection

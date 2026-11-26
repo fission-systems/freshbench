@@ -143,6 +143,11 @@ enum Cmd {
         /// binaries decompiled at once (each one a separate tool process)
         #[arg(long, default_value_t = 1)]
         jobs: usize,
+        /// Unix time (seconds) by which every call must have ended: whatever
+        /// is not decompiled by then is recorded as a timeout. For a CI job
+        /// with a hard limit, so a slow tool is charged, not left without rows.
+        #[arg(long)]
+        deadline: Option<u64>,
     },
     /// Function boundary track: each tool lists the functions it finds in every
     /// stripped binary under ROOT (no addresses given); compared with the
@@ -168,6 +173,10 @@ enum Cmd {
         /// as-built (stripped binary as shipped) or no-unwind (unwind tables removed)
         #[arg(long, default_value = "as-built")]
         variant: String,
+        /// Unix time (seconds) by which every call must have ended; a binary
+        /// not listed by then is recorded as a timeout.
+        #[arg(long)]
+        deadline: Option<u64>,
     },
     /// Rates per tool (overall, distinct binaries, by arch/compiler/level) from
     /// `boundaries` rows (files or directories of *.jsonl); JSON.
@@ -638,10 +647,12 @@ fn run() -> Result<ExitCode> {
             function_timeout_s,
             builds,
             jobs,
+            deadline,
         } => {
             use freshbench::adapters::{self, Tool};
             use std::time::Duration;
             adapters::refuse_instrumented_run("decompile")?;
+            let job = adapters::job_deadline(deadline);
             let t = if tool == "fission" {
                 Tool::Fission {
                     cli: fission_cli.context("--fission-cli is required for fission")?,
@@ -693,13 +704,14 @@ fn run() -> Result<ExitCode> {
                             .iter()
                             .map(|f| (f.address | u64::from(f.thumb), f.name.clone()))
                             .collect();
-                        let r = adapters::decompile_binary_stats(
+                        let r = adapters::decompile_binary_until(
                             &t,
                             &root.join(&units[i].stripped).join(bin),
                             bin,
                             &funcs,
                             Duration::from_secs(binary_timeout_s),
                             Duration::from_secs(function_timeout_s),
+                            job,
                         );
                         eprintln!("{} {bin}: done", units[i].build);
                         (k, r)
@@ -765,10 +777,12 @@ fn run() -> Result<ExitCode> {
             builds,
             jobs,
             variant,
+            deadline,
         } => {
             use freshbench::adapters::{self, Tool};
             use freshbench::boundaries;
             adapters::refuse_instrumented_run("boundaries")?;
+            let job = adapters::job_deadline(deadline);
             anyhow::ensure!(
                 variant == "as-built" || variant == "no-unwind",
                 "--variant is as-built or no-unwind"
@@ -820,11 +834,12 @@ fn run() -> Result<ExitCode> {
                             std::fs::write(&p, bytes)?;
                             input = p;
                         }
-                        let listed = adapters::list_functions_measured(
-                            &t,
-                            &input,
+                        let listed = adapters::within_job(
                             std::time::Duration::from_secs(binary_timeout_s),
-                        );
+                            job,
+                        )
+                        .map_err(anyhow::Error::msg)
+                        .and_then(|limit| adapters::list_functions_measured(&t, &input, limit));
                         if variant == "no-unwind" {
                             let _ = std::fs::remove_file(&input);
                         }
