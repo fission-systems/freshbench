@@ -1,7 +1,10 @@
 name: test
 on:
   push: { branches: [main] }
+  # ready_for_review: a free-model draft (free-model-draft.yml) is opened by
+  # GITHUB_TOKEN, which starts no workflow; marking it ready after review does.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 permissions: { contents: read }
 jobs:
@@ -17,7 +20,7 @@ jobs:
             ~/.cargo/git
             target
           key: cargo-${{ hashFiles('Cargo.lock') }}
-      - run: python -m unittest ci.test_leaderboard_gate ci.test_sweep_plan
+      - run: python -m unittest ci.test_leaderboard_gate ci.test_sweep_plan ci.test_free_model_draft
       - run: cargo fmt -p freshbench --check
       - run: cargo clippy --locked -p freshbench --all-targets -- -D warnings
       - run: cargo test --locked -p freshbench

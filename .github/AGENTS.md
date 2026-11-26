@@ -21,6 +21,11 @@ say so and fix the cause.
 
 - `qualify-arch.yml`, `evaluate.yml`, `image-cross.yml` and `pages.yml` are the v2 path.
 - `probe.yml` is a diagnostic. It is not a benchmark result.
+- `free-model-draft.yml` runs when an issue is labelled `agent:free`. An OpenCode Zen free model drafts
+  a documentation-only fix as a draft PR (`agent:free-draft`). `ci/free_model_draft.py` refuses any
+  edit outside Markdown or under `crates/`, `ci/`, `corpus/`, `adapters/` and the other data
+  directories. The draft gets no CI until a reviewer marks it ready (`test.yml` runs on
+  `ready_for_review`).
 - Benchmark build/evaluation workflows are manual `workflow_dispatch` because they are expensive
   and need pinned inputs. Do not make them run automatically on every push or PR.
 
