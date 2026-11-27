@@ -7,7 +7,8 @@ name: sweep-collect
 # (ci/collect_runs.sh, the same script pages.yml uses).
 # * Gate passes: it publishes the ranking by dispatching pages.yml on main
 #   with the sweep's runs and deploy=true (pages.yml runs the gate again
-#   before it deploys), and opens an issue recording the published runs.
+#   before it deploys), waits for it, and opens an issue that says whether
+#   the dashboard was updated, with the published runs.
 # * Gate refuses: nothing is published; it opens an issue with the reason.
 # The issue closes the sweep for this workflow. A failure before the gate
 # (a download) fails the job and the next run tries again.
@@ -25,7 +26,8 @@ concurrency: { group: sweep-collect, cancel-in-progress: false }
 jobs:
   collect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # the gate (~20 minutes), then the pages build and deploy it waits for
+    timeout-minutes: 330
     permissions: { contents: read, actions: write, issues: write }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -104,7 +106,7 @@ jobs:
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           # 3: the gate refused the runs (an answer); anything else: try again later
           [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
-      - name: propose the run list, or report the refusal
+      - name: publish the ranking, or report the refusal
         if: steps.find.outputs.id != ''
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -120,9 +122,31 @@ jobs:
           done)
           gatelog=$(grep -E '^(.*: [0-9]+/[0-9]+ rows|M1 publication gate passed|ValueError|error)' gate.log | tail -40 || true)
           if [ "$RC" = 0 ]; then
+            since=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)
             gh workflow run pages.yml -R "$R" --ref main -f evaluate_runs="$(jq -c . <<< "$RUNS")" -f deploy=true
-            title="M1 sweep $ID: published"
-            next="The gate passed and the ranking was published from these runs ([pages](https://github.com/$R/actions/workflows/pages.yml) runs the gate again before it deploys). \`ci/leaderboard_runs.json\` is not changed by a sweep."
+            # the dispatch returns no run id: take the first run dispatched since
+            page=""
+            for _ in $(seq 1 30); do
+              page=$(gh api -X GET "repos/$R/actions/workflows/pages.yml/runs" -f event=workflow_dispatch -f created=">=$since" \
+                --jq '.workflow_runs | sort_by(.created_at) | .[0].id // empty')
+              [ -n "$page" ] && break; sleep 10
+            done
+            deployed="not found"
+            if [ -n "$page" ]; then
+              for _ in $(seq 1 480); do
+                [ "$(gh api "repos/$R/actions/runs/$page" --jq .status || true)" = completed ] && break; sleep 30
+              done
+              deployed=$(gh api "repos/$R/actions/runs/$page/jobs?per_page=100" \
+                --jq '[.jobs[] | select(.name == "deploy") | .conclusion // "still running"] | first // "not run"')
+              page="[run $page](https://github.com/$R/actions/runs/$page)"
+            fi
+            if [ "$deployed" = success ]; then
+              title="M1 sweep $ID: published"
+              next="The gate passed and the dashboard shows these runs: https://${GITHUB_REPOSITORY_OWNER}.github.io/${R#*/}/ (pages $page). \`ci/leaderboard_runs.json\` is not changed by a sweep."
+            else
+              title="M1 sweep $ID: gate passed, publish failed"
+              next="The gate passed but the dashboard was not updated (pages ${page:-run}: deploy $deployed). Re-run the failed jobs of that run, or dispatch pages.yml with these runs and deploy=true."
+            fi
           else
             title="M1 sweep $ID: refused by the publication gate"
             next="The gate refused these runs; nothing was published. Rerun what is missing (a new sweep, or a manual dispatch from tag \`sweep/$ID\` if the scorer is unchanged)."

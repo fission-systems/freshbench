@@ -23,8 +23,8 @@ change is a benchmark change.
   it ends (an hourly schedule does too); once all are done it runs the publication gate
   (`ci/collect_runs.sh`, shared with `pages.yml`), and publishes when it passes (dispatches
   `pages.yml` with `deploy=true`) and records the run list in an issue, otherwise it opens an issue
-  with the refusal. A tool whose registry entry has `"decompile": false` (no evidence to score)
-  runs in the boundary track only; one with `"sweep": false` is left out of sweeps. Manifold has
+  with the refusal. The issue says "published" only once the pages deploy succeeded. A tool whose
+  registry entry has `"decompile": false` (no evidence to score) runs in the boundary track only; one with `"sweep": false` is left out of sweeps. Manifold has
   it: rustc needs ~14 GB for its crate, and on a 16 GB runner the build is killed (with 16 GB of
   swap, the runner was lost after 50 minutes).
 - **Concurrency**: one setting, sweep.yml's `total_parallel` (default `TOTAL_PARALLEL` = 40 in
