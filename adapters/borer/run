@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """borer adapter (see adapters/README.md). Needs BORER_BIN.
 
-`borer export <bin> --c out.c --library` once; each function is written as
-`// <name> @ 0x<entry>[: status]`, a prototype, `{`, body, `}`. Functions the
-export cut for its block budget are decompiled alone with
-`borer decompile <bin> <addr> full 0 <budget>`, whose text carries the
-prototype in a `// signature:` comment. If borer reports entries at a load
-base, the constant offset that maps the most entries onto requested addresses
-is used.
+`borer export <bin> --c out.c --library --records` once; each function is
+written as `// <name> @ 0x<entry>[: status]`, a prototype, `{`, body, `}`.
+`--records` writes out.records.jsonl beside it (borer's docs/records.md): per
+definition, the lines borer printed from one basic block with that block's
+instruction starts, and the variables with their parameter position and home
+(register, or a stack slot from the CFA). These become `line_mappings` and
+`variables`. Lines are block-granular: a line carries every instruction of
+the block it was printed from, and a line no single block spells (braces,
+loop and `if` tests, declarations) has no mapping. The records are used only
+when their header's size and FNV-1a hash match out.c. No return type is
+recorded. Functions the export cut for its block budget are decompiled alone
+with `borer decompile <bin> <addr> full 0 <budget>`, whose text carries the
+prototype in a `// signature:` comment and has no records. If borer reports
+entries at a load base, the constant offset that maps the most entries onto
+requested addresses is used.
 
 List mode (--list-functions): `borer functions <bin> "" <offset> 300`, paged,
 is borer's own function table (import thunks and exception funclets left out by
@@ -29,6 +37,53 @@ import tempfile
 
 HEADER = re.compile(r"^// (\S+) @ (0x[0-9a-fA-F]+)(?::\s*(.*))?$")
 ENV = {**os.environ, "BORER_NO_UPDATE_CHECK": "1"}
+HOME_KIND = {"register": "register", "frame": "stack"}
+
+
+def fnv1a64(data):
+    h = 0xcbf29ce484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def read_records(c, path):
+    """Per entry: (line_mappings, variables) as borer recorded them. Empty when
+    the file is missing, unreadable or describes another C file."""
+    if not os.path.exists(path) or not os.path.exists(c):
+        return {}
+    try:
+        return parse_records(c, path)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        sys.stderr.write(f"borer: records file not read ({e!r}), not used\n")
+        return {}
+
+
+def parse_records(c, path):
+    with open(path) as f:
+        rows = [json.loads(l) for l in f if l.strip()]
+    data = open(c, "rb").read()
+    head = rows[0] if rows else {}
+    if (head.get("format") != "borer-records" or head.get("version") != 1
+            or head.get("c_bytes") != len(data) or head.get("c_fnv1a64") != f"{fnv1a64(data):016x}"):
+        sys.stderr.write("borer: records file does not match the C file, not used\n")
+        return {}
+    out = {}
+    for r in rows[1:]:
+        starts = {b["start"]: [int(s, 16) for s in b["starts"]] for b in r.get("blocks", [])}
+        lines = [(l["line"], starts.get(l["block"], [])) for l in r.get("lines", [])]
+        variables = []
+        for v in r.get("variables", []):
+            home = v.get("home") or {}
+            var = {"name": v["name"], "type": v["type"], "arg_index": v.get("param")}
+            kind = "arg" if v.get("param") is not None else HOME_KIND.get(home.get("kind"))
+            if kind:
+                var["kind"] = kind
+            if home.get("kind") == "frame":
+                var["stack_offset"] = home["offset"]
+            variables.append(var)
+        out[int(r["entry"], 16)] = ([(n, a) for n, a in lines if a], variables)
+    return out
 
 
 def parse_export(text):
@@ -140,18 +195,25 @@ mask = ~1 if arm else ~0
 want = {int(r, 16) & mask: r for r in reqs}
 with tempfile.TemporaryDirectory() as td:
     c = os.path.join(td, "out.c")
-    p = subprocess.run([borer, "export", a.binary, "--c", c, "--library"], capture_output=True, text=True, env=ENV)
+    p = subprocess.run([borer, "export", a.binary, "--c", c, "--library", "--records"],
+                       capture_output=True, text=True, env=ENV)
     parsed = parse_export(open(c, errors="replace").read()) if os.path.exists(c) else {}
+    records = read_records(c, os.path.join(td, "out.records.jsonl"))
 parsed = {e & mask: v for e, v in parsed.items()}
+records = {e & mask: v for e, v in records.items()}
 delta = best_delta(list(parsed), set(want))
 with open(a.out, "w") as out:
     for va, r in sorted(want.items()):
         code, status = parsed.get(va - delta, (None, "missing"))
-        err = None
+        err, mappings, variables = None, [], []
+        if status == "ok":
+            lines, variables = records.get(va - delta, ([], []))
+            mappings = [{"line_number": n, "addresses": [(x & mask) + delta for x in addrs]} for n, addrs in lines]
         if status == "cut":
             q = subprocess.run([borer, "decompile", a.binary, hex(int(r, 16) - delta), "full", "0", "100000000"],
                                capture_output=True, text=True, env=ENV)
             code = wrap_single(q.stdout, f"sub_{va:x}") if q.returncode == 0 else None
         if not code:
             err = f"borer: {status}" + ("" if parsed else f" (export exited {p.returncode}: {p.stderr[-300:]})")
-        out.write(json.dumps({"address": r, "code": code, "error": err}) + "\n")
+        out.write(json.dumps({"address": r, "code": code, "error": err,
+                              "line_mappings": mappings, "variables": variables}) + "\n")
